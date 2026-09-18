@@ -212,7 +212,6 @@ class AuthController extends Controller
                     'live_selfie' => $storedFiles['live_selfie'] ?? null,
                     'qualification_document' => $storedFiles['qualification_document'] ?? null,
                     'certification_document' => $storedFiles['certification_document'] ?? null,
-                    'points' => 150,
                     'is_accepting_requests' => false,
                 ]);
 
@@ -247,7 +246,7 @@ class AuthController extends Controller
                     [
                         'user_id' => $adminId,
                         'title' => 'Pendaftaran tutor baru',
-                        'message' => "{$user->name} menunggu verifikasi dokumen dan profil tutor.",
+                        'message' => "{$user->name} menunggu verifikasi dokumen serta seleksi dan tes melalui WhatsApp.",
                         'type' => 'info',
                         'target_url' => '/admin/guru',
                         'is_read' => false,
@@ -266,7 +265,9 @@ class AuthController extends Controller
         return response()->json([
             'message' => $emailDeliveryFailed
                 ? 'Akun berhasil dibuat, tetapi kode belum dapat dikirim. Coba kirim ulang kode verifikasi.'
-                : 'Akun berhasil dibuat. Masukkan kode OTP yang dikirim ke email Anda.',
+                : ($user->role === 'teacher'
+                    ? 'Pendaftaran tutor tersimpan. Verifikasi email, lalu admin akan menghubungi WhatsApp Anda untuk seleksi dan tes.'
+                    : 'Akun berhasil dibuat. Masukkan kode OTP yang dikirim ke email Anda.'),
             'requires_email_verification' => true,
             'email_delivery_failed' => $emailDeliveryFailed,
             'resend_after_seconds' => $emailDeliveryFailed ? 0 : OneTimeCodeService::RESEND_SECONDS,
@@ -308,7 +309,7 @@ class AuthController extends Controller
 
         if ($user->role === 'teacher' && $user->status === 'pending') {
             return response()->json([
-                'message' => 'Akun tutor Anda sedang menunggu verifikasi admin.'
+                'message' => 'Akun tutor sedang menunggu pemeriksaan dokumen serta hasil seleksi dan tes melalui WhatsApp.'
             ], 403);
         }
 
@@ -323,17 +324,6 @@ class AuthController extends Controller
 
         if ($user->status === 'rejected') {
             return response()->json(['message' => 'Maaf, akun Anda ditolak atau dinonaktifkan.'], 403);
-        }
-        if (
-            $user->role === 'teacher'
-            && (int) ($user->teacherProfile?->points ?? 0) <= 0
-        ) {
-            $user->update(['status' => 'banned']);
-            $user->tokens()->delete();
-
-            return response()->json([
-                'message' => 'Akun tutor dinonaktifkan karena poin telah mencapai nol.',
-            ], 403);
         }
         if ($user->status !== 'active') {
             return response()->json(['message' => 'Akun Anda sedang tidak aktif.'], 403);

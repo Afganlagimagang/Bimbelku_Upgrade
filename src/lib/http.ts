@@ -32,6 +32,7 @@ const PUBLIC_GET_ENDPOINTS = new Set([
   "/settings/footer",
   "/socials",
   "/settings/teacher-cover",
+  "/website-content",
   "/package-plans",
   "/learning-time-slots",
   "/content/banners",

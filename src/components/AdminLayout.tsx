@@ -137,6 +137,7 @@ const navigation: NavigationSection[] = [
     items: [
       { to: "/admin/ratings", label: "Moderasi ulasan", icon: PieChart, permission: ADMIN_PERMISSIONS.CLASSES_MANAGE },
       { to: "/admin/settings-display", label: "Tampilan tutor", icon: Image, permission: ADMIN_PERMISSIONS.SETTINGS_MANAGE },
+      { to: "/admin/website", label: "Website publik", icon: Globe, permission: ADMIN_PERMISSIONS.SETTINGS_MANAGE },
       { to: "/admin/notes", label: "Catatan admin", icon: NotebookPen, permission: ADMIN_PERMISSIONS.SETTINGS_MANAGE },
       { to: "/admin/settings-footer", label: "Footer website", icon: Globe, permission: ADMIN_PERMISSIONS.SETTINGS_MANAGE },
     ],

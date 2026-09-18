@@ -11,7 +11,7 @@ import ProtectedImage from "@/components/ProtectedImage";
 import { validateUpload } from "@/lib/validation";
 
 const FAQS = [
-  { category: "Akun", question: "Bagaimana cara membuat akun?", answer: "Tekan Daftar, isi nama dan email, lalu buat kata sandi. Pilih Murid jika ingin belajar atau Tutor jika ingin mengajar." },
+  { category: "Akun", question: "Bagaimana cara membuat akun?", answer: "Murid dapat menekan Daftar lalu melengkapi data akun. Calon tutor mengisi data pendaftaran, memverifikasi email, kemudian mengikuti seleksi dan tes melalui WhatsApp sebelum akun diaktifkan admin." },
   { category: "Akun", question: "Saya lupa kata sandi. Apa yang harus dilakukan?", answer: "Tekan Lupa kata sandi di halaman Masuk. Tulis emailmu, lalu ikuti petunjuk yang dikirim ke email." },
   { category: "Pemesanan", question: "Bagaimana cara mencari tutor?", answer: "Pilih Cari Bimbingan, pilih mata pelajaran, jenjang, jadwal, dan cara belajar. Setelah itu sistem akan mencari tutor yang cocok." },
   { category: "Pemesanan", question: "Berapa hari yang boleh dipilih dalam paket?", answer: "Paket 1 sesi hanya boleh memilih 1 hari. Paket 4 sesi boleh memilih paling banyak 2 hari. Beberapa sesi boleh berada di hari yang sama." },
@@ -22,7 +22,7 @@ const FAQS = [
   { category: "Kelas", question: "Di mana saya melihat jadwal kelas?", answer: "Buka menu Kelas Saya. Di sana ada jadwal, nama tutor, cara belajar, dan tombol untuk masuk ke ruang belajar." },
   { category: "Kelas", question: "Bagaimana cara mengirim pesan kepada tutor?", answer: "Buka menu Pesan, pilih kelasnya, lalu tulis pesan. Pesan hanya bisa dikirim pada kelas yang sudah sah." },
   { category: "Kelas", question: "Saya tidak bisa hadir. Apa yang harus dilakukan?", answer: "Buka detail kelas secepatnya dan gunakan pilihan ubah jadwal jika tersedia. Jika ada masalah, segera beri tahu tutor dan admin." },
-  { category: "Tutor", question: "Bagaimana cara menjadi tutor?", answer: "Buat akun sebagai Tutor, lengkapi profil, pilih satu mata pelajaran utama, unggah dokumen yang diminta, lalu tunggu pemeriksaan admin." },
+  { category: "Tutor", question: "Bagaimana cara menjadi tutor?", answer: "Pilih Tutor di halaman Daftar, lengkapi data dan dokumen, lalu verifikasi email. Admin akan menghubungi nomor WhatsApp yang didaftarkan untuk seleksi dan tes. Hanya calon yang lolos dan disetujui admin yang dapat mulai menerima penawaran mengajar." },
 ] as const;
 
 export default function HelpCenter() {

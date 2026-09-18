@@ -10,7 +10,6 @@ use App\Models\Order;
 use App\Models\Payout;
 use App\Models\Refund;
 use App\Models\SessionReport;
-use App\Models\TeacherAppeal;
 use App\Models\TeacherReplacementRequest;
 use App\Models\TicketReply;
 use Illuminate\Http\Request;
@@ -30,17 +29,6 @@ class ProtectedFileController extends Controller
         $this->authorizeBooking($request, $classroomMessage->booking);
 
         return $this->respond($classroomMessage->attachment_path, $classroomMessage->attachment_name);
-    }
-
-    public function teacherAppealEvidence(Request $request, TeacherAppeal $teacherAppeal)
-    {
-        abort_unless(
-            $request->user()->role === 'admin'
-            || (int) $teacherAppeal->teacher_id === (int) $request->user()->id,
-            403
-        );
-
-        return $this->respond($teacherAppeal->evidence_path, $teacherAppeal->evidence_name);
     }
 
     public function teacherReplacementEvidence(Request $request, TeacherReplacementRequest $teacherReplacement)

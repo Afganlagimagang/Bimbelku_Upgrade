@@ -180,7 +180,7 @@ export default function BookingGuru() {
               </div>
               <h1 className="mt-4 text-2xl font-black tracking-tight sm:text-3xl">Permintaan mengajar masuk</h1>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-indigo-100/80">
-                Jadwal baru dikunci setelah permintaan diterima. Penolakan karena jarak tidak mengurangi poin.
+                Jadwal baru dikunci setelah permintaan diterima. Penolakan karena jarak tidak menurunkan rating.
               </p>
             </div>
             <div className="grid grid-cols-[auto_1fr] items-center gap-3 sm:flex">
@@ -253,7 +253,7 @@ export default function BookingGuru() {
             <Textarea value={note} onChange={(event) => setNote(event.target.value)} className="min-h-28 rounded-xl" placeholder="Catatan tambahan, opsional" />
             {reason === "too_far" && (
               <div className="flex gap-3 rounded-xl border border-emerald-100 bg-emerald-50 p-4 text-sm leading-6 text-emerald-800">
-                <AlertTriangle size={18} className="mt-0.5 shrink-0" /> Penolakan karena jarak tidak mengurangi poin tutor.
+                <AlertTriangle size={18} className="mt-0.5 shrink-0" /> Penolakan karena jarak tidak menurunkan rating tutor.
               </div>
             )}
             <div className="flex justify-end gap-3">
@@ -388,7 +388,7 @@ function OfferCard({
         <>
           <div className="mt-4 flex items-start gap-2 rounded-xl bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900">
             <AlertTriangle size={15} className="mt-0.5 shrink-0" />
-            <span>Menolak secara langsung tidak mengurangi poin. Satu kali terlambat merespons belum menangguhkan akun, tetapi pola tidak merespons pada beberapa permintaan berbeda dapat memberi jeda sementara.</span>
+            <span>Menolak secara langsung tidak menurunkan rating. Satu kali terlambat merespons belum menangguhkan akun, tetapi pola tidak merespons pada beberapa permintaan berbeda dapat memberi jeda sementara.</span>
           </div>
           <div className="mt-3 grid grid-cols-2 gap-3">
             <Button variant="outline" className="h-12 rounded-xl border-rose-200 text-rose-600 hover:bg-rose-50 hover:text-rose-700" onClick={onReject} disabled={processing}>

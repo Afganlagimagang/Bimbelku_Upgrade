@@ -28,9 +28,6 @@ return new class extends Migration
             if (!Schema::hasColumn('teacher_profiles', 'max_travel_km')) {
                 $table->unsignedSmallInteger('max_travel_km')->default(12);
             }
-            if (!Schema::hasColumn('teacher_profiles', 'points')) {
-                $table->unsignedSmallInteger('points')->default(150);
-            }
             if (!Schema::hasColumn('teacher_profiles', 'assignment_count')) {
                 $table->unsignedInteger('assignment_count')->default(0);
             }
@@ -173,7 +170,7 @@ return new class extends Migration
 
         Schema::table('teacher_profiles', function (Blueprint $table) {
             $columns = array_filter(
-                ['latitude', 'longitude', 'max_travel_km', 'points', 'assignment_count', 'last_assigned_at', 'is_accepting_requests'],
+                ['latitude', 'longitude', 'max_travel_km', 'assignment_count', 'last_assigned_at', 'is_accepting_requests'],
                 fn ($column) => Schema::hasColumn('teacher_profiles', $column)
             );
             if ($columns) $table->dropColumn($columns);

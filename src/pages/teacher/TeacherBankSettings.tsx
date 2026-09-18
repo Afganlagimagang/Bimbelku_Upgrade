@@ -221,7 +221,7 @@ export default function TeacherBankSettings() {
             <div className="space-y-6 order-1 lg:order-2 flex flex-col items-center lg:items-start">
                
                {/* KARTU ATM REALISTIS */}
-               <div className="group relative flex aspect-[1.58/1] w-full max-w-[360px] flex-col justify-between overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-800 p-5 text-white shadow-2xl shadow-indigo-200 transition-transform duration-500 sm:p-6 sm-hover-scale-105">
+               <div className="group relative flex aspect-[1.58/1] w-full max-w-[360px] flex-col justify-between overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-800 p-5 text-white shadow-2xl shadow-indigo-200 transition-transform duration-500 sm:p-6 hover-scale-105">
                   {/* Efek Background */}
                   <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 rounded-full blur-3xl -mt-10 -mr-10"></div>
                   <div className="absolute bottom-0 left-0 w-32 h-32 bg-purple-500/30 rounded-full blur-3xl -mb-10 -ml-10"></div>

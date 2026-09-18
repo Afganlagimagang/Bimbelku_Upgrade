@@ -12,7 +12,6 @@ use App\Models\Classroom;
 use App\Models\Payout; 
 use App\Models\SocialMedia;
 use App\Models\Booking;
-use App\Models\TeacherAppeal;
 use App\Models\BookingDispute;
 use App\Models\SessionReport;
 use App\Models\BookingRequest;
@@ -72,7 +71,20 @@ class AdminController extends Controller
             'user_id' => 'required|exists:users,id',
             'status'  => 'required|in:active,rejected',
             'notes' => 'nullable|string|max:2000',
+            'screening_passed' => 'nullable|boolean',
         ]);
+
+        if (
+            $validated['status'] === 'active'
+            && (
+                ! $request->boolean('screening_passed')
+                || mb_strlen(trim((string) ($validated['notes'] ?? ''))) < 10
+            )
+        ) {
+            return response()->json([
+                'message' => 'Kelulusan seleksi dan ringkasan hasil tes WhatsApp wajib dicatat sebelum tutor diaktifkan.',
+            ], 422);
+        }
 
         if (
             $validated['status'] === 'rejected'
@@ -110,10 +122,10 @@ class AdminController extends Controller
                     || !is_array($subject?->levels)
                     || count($subject->levels) === 0
                     || (!$subject->is_online && !$subject->is_offline);
-                if ($documentsIncomplete || $subjectIncomplete || (int) $profile->points <= 0) {
+                if ($documentsIncomplete || $subjectIncomplete) {
                     abort(
                         422,
-                        'Dokumen yang dapat dibuka, satu mata pelajaran aktif, jenjang, mode mengajar, dan poin di atas nol wajib terpenuhi.'
+                        'Dokumen yang dapat dibuka, satu mata pelajaran aktif, jenjang, mode mengajar wajib terpenuhi.'
                     );
                 }
             }
@@ -181,7 +193,6 @@ class AdminController extends Controller
             'teaching_method' => $profile?->teaching_method,
             'about' => $profile?->bio,
             'phone' => $profile?->phone ?? $profile?->whatsapp_number,
-            'points' => $profile?->points ?? 150,
             'verification_notes' => $profile?->verification_notes,
             'photo_url' => \App\Support\PublicMedia::url($profile?->photo),
             'identity_document_url' => $documentUrl($profile?->identity_document, 'identity_document'),
@@ -301,9 +312,9 @@ class AdminController extends Controller
             if (
                 $request->status === 'active'
                 && $user->role === 'teacher'
-                && (!$profile?->verified_at || (int) $profile->points <= 0)
+                && (!$profile?->verified_at)
             ) {
-                abort(422, 'Tutor hanya dapat diaktifkan jika verifikasi masih berlaku dan poinnya di atas nol.');
+                abort(422, 'Tutor hanya dapat diaktifkan jika verifikasi masih berlaku.');
             }
             if ($user->status === $request->status) {
                 abort(422, 'Status akun tersebut sudah tersimpan.');
@@ -1018,7 +1029,6 @@ class AdminController extends Controller
             ? SessionReport::where('status', 'pending')->count()
                 + BookingDispute::where('status', 'pending')->count()
                 + Booking::where('status', 'admin_review_required')->count()
-                + TeacherAppeal::where('status', 'pending')->count()
             : 0;
         $monitoringNeedsAttention = $canClasses
             ? Booking::query()

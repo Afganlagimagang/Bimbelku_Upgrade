@@ -1,25 +1,39 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowRight, BookOpenCheck, CheckCircle2, Layers3, Sparkles, Users, type LucideIcon } from "lucide-react";
 import Reveal from "@/components/Reveal";
+import { useWebsiteContent } from "@/components/WebsiteContentProvider";
 
 export default function DashboardPreviewSection() {
+  const { settings, section } = useWebsiteContent();
+  const cms = section("progress");
+  const sectionRef = useRef<HTMLElement>(null);
+  const [active, setActive] = useState(false);
+
+  useEffect(() => {
+    const element = sectionRef.current;
+    if (!element || !("IntersectionObserver" in window)) {
+      setActive(settings.animations_enabled);
+      return;
+    }
+    const observer = new IntersectionObserver(([entry]) => setActive(entry.isIntersecting && settings.animations_enabled), { threshold: 0.08 });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [settings.animations_enabled]);
+
   return (
-    <section className="relative overflow-hidden bg-[#061225] pb-24 pt-16 text-white sm:pb-28 sm:pt-20">
-      <div className="pointer-events-none absolute inset-0" aria-hidden="true">
-        <div className="absolute -left-24 top-10 h-72 w-72 rounded-full bg-orange-500/[0.06] blur-3xl" />
-        <div className="landing-progress-glow absolute -right-28 bottom-[-7rem] h-[26rem] w-[26rem] rounded-full bg-orange-400/[0.09] blur-3xl" />
-      </div>
+    <section ref={sectionRef} data-active={active ? "true" : "false"} className="landing-progress-section relative overflow-hidden bg-[#061225] pb-24 pt-16 text-white sm:pb-28 sm:pt-20">
+      <div className="pointer-events-none absolute -right-24 top-12 h-72 w-72 rounded-full border border-orange-300/10" aria-hidden="true" />
 
       <div className="container relative mx-auto grid items-center gap-12 px-4 lg:grid-cols-[.82fr_1.18fr] lg:gap-14">
         <div>
           <Reveal direction="right" width="100%">
-            <p className="text-xs font-black uppercase tracking-[.2em] text-orange-300">Progress yang tidak bikin penuh</p>
+            <p className="text-xs font-black uppercase tracking-[.2em] text-orange-300">{cms?.eyebrow || "Progress yang mudah dibaca"}</p>
           </Reveal>
           <Reveal direction="right" delay={0.08} width="100%">
-            <h2 className="mt-4 max-w-xl text-3xl font-black leading-tight text-white md:text-4xl">Lihat per paket dulu, buka detail saat dibutuhkan</h2>
+            <h2 className="mt-4 max-w-xl text-3xl font-black leading-tight text-white md:text-4xl">{cms?.title || "Orang tua tahu apa yang dipelajari, siswa tahu apa berikutnya."}</h2>
           </Reveal>
           <Reveal direction="right" delay={0.16} width="100%">
-            <p className="mt-4 max-w-xl leading-7 text-slate-300">BimbelKu tidak menumpuk semua Bab, sesi, dan laporan dalam satu layar. Kamu memilih programnya lebih dulu, baru melihat progress yang relevan.</p>
+            <p className="mt-4 max-w-xl leading-7 text-slate-300">{cms?.description || "Perkembangan materi tersusun per paket dan per Bab, dengan laporan sesi saat tersedia."}</p>
           </Reveal>
           <div className="mt-7 grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
             <Reveal direction="right" delay={0.22} width="100%"><Point icon={Layers3} text="Halaman awal tersusun per Paket Belajar atau Kelas Kelompok" /></Reveal>
@@ -30,7 +44,6 @@ export default function DashboardPreviewSection() {
 
         <Reveal direction="left" delay={0.12} width="100%">
           <div className="relative">
-            <div className="pointer-events-none absolute -inset-8 rounded-[3rem] bg-orange-400/[0.10] blur-3xl" aria-hidden="true" />
             <div className="landing-progress-float relative">
               <div className="hidden sm:block"><DesktopProgressPreview /></div>
               <div className="sm:hidden"><MobileProgressPreview /></div>

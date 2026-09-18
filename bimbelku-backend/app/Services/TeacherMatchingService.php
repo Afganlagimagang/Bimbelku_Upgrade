@@ -31,8 +31,6 @@ class TeacherMatchingService
         'absence_review',
     ];
 
-    public function __construct(private readonly TeacherPointService $pointService) {}
-
     public function dispatchNextOffer(BookingRequest $bookingRequest): ?TeacherOffer
     {
         $bookingRequest->refresh();
@@ -304,7 +302,7 @@ class TeacherMatchingService
             Notification::create([
                 'user_id' => $offer->teacher_id,
                 'title' => 'Permintaan bimbel baru',
-                'message' => "Permintaan {$bookingRequest->subject_name} menunggu jawaban sampai {$expiresAt->translatedFormat('d M Y, H:i')} WIB. Tutor pertama yang menerima akan mendapat jadwal ini.",
+                'message' => "Permintaan {$bookingRequest->subject_name} menunggu jawaban sampai {$expiresAt->translatedFormat('d M Y, H:i')} WIB. Terima sebelum batas waktu jika jadwal ini sesuai.",
                 'type' => 'info',
                 'target_url' => '/guru/permintaan',
             ]);
@@ -661,7 +659,6 @@ class TeacherMatchingService
             ->whereHas('teacherProfile', function ($query) {
                 $query->whereNotNull('verified_at')
                     ->where('is_accepting_requests', true)
-                    ->where('points', '>', 0)
                     ->where(function ($cooldown) {
                         $cooldown->whereNull('suspended_until')->orWhere('suspended_until', '<=', now());
                     });
@@ -711,11 +708,16 @@ class TeacherMatchingService
             })
             ->with(['teacherProfile.subjects', 'availabilities'])
             ->withCount([
+                'teacherBookings as matching_active_booking_count' => fn ($bookings) => $bookings
+                    ->whereIn('status', self::ACTIVE_BOOKING_STATUSES),
                 'teacherOffers as matching_offer_total_count' => fn ($offers) => $offers
                     ->whereIn('status', ['accepted', 'rejected', 'expired']),
                 'teacherOffers as matching_offer_responded_count' => fn ($offers) => $offers
                     ->whereIn('status', ['accepted', 'rejected']),
-            ]);
+            ])
+            ->withMax('teacherOffers as matching_last_offered_at', 'offered_at')
+            ->withAvg('ratings as matching_rating_average', 'rating')
+            ->withCount('ratings as matching_rating_count');
 
         if (
             $bookingRequest->learning_mode === 'offline'
@@ -957,19 +959,8 @@ class TeacherMatchingService
                     }
                 }
 
-                $responseA = $this->responseReliabilityScore($a);
-                $responseB = $this->responseReliabilityScore($b);
-                if ($responseA !== $responseB) {
-                    return $responseB <=> $responseA;
-                }
-
-                $pointWeightA = $this->pointService->recommendationWeight((int) ($a->teacherProfile->points ?? 0));
-                $pointWeightB = $this->pointService->recommendationWeight((int) ($b->teacherProfile->points ?? 0));
-                if ($pointWeightA !== $pointWeightB) {
-                    return $pointWeightA <=> $pointWeightB;
-                }
-
                 if ($continuityTeacherId) {
+
                     $continuityA = $a->id === (int) $continuityTeacherId ? 0 : 1;
                     $continuityB = $b->id === (int) $continuityTeacherId ? 0 : 1;
                     if ($continuityA !== $continuityB) {
@@ -977,20 +968,49 @@ class TeacherMatchingService
                     }
                 }
 
-                $assignmentA = (int) ($a->teacherProfile->assignment_count ?? 0);
-                $assignmentB = (int) ($b->teacherProfile->assignment_count ?? 0);
-                if ($assignmentA !== $assignmentB) {
-                    return $assignmentA <=> $assignmentB;
+                $activeA = (int) ($a->matching_active_booking_count ?? 0);
+                $activeB = (int) ($b->matching_active_booking_count ?? 0);
+                if ($activeA !== $activeB) {
+                    return $activeA <=> $activeB;
                 }
 
-                $randomA = crc32($bookingRequest->id.'|'.$a->id);
-                $randomB = crc32($bookingRequest->id.'|'.$b->id);
+                $lastOfferedA = $a->matching_last_offered_at
+                    ? Carbon::parse($a->matching_last_offered_at)->timestamp
+                    : 0;
+                $lastOfferedB = $b->matching_last_offered_at
+                    ? Carbon::parse($b->matching_last_offered_at)->timestamp
+                    : 0;
+                if ($lastOfferedA !== $lastOfferedB) {
+                    return $lastOfferedA <=> $lastOfferedB;
+                }
 
-                return $randomA <=> $randomB;
+                $responseA = $this->responseReliabilityScore($a);
+                $responseB = $this->responseReliabilityScore($b);
+                if ($responseA !== $responseB) {
+                    return $responseB <=> $responseA;
+                }
+
+                $ratingA = $this->ratingScore($a);
+                $ratingB = $this->ratingScore($b);
+                if ($ratingA !== $ratingB) {
+                    return $ratingB <=> $ratingA;
+                }
+
+                return $a->id <=> $b->id;
+
             })
             ->values();
     }
 
+    private function ratingScore(User $teacher): int
+    {
+        $count = (int) ($teacher->matching_rating_count ?? 0);
+        $average = (float) ($teacher->matching_rating_average ?? 0);
+
+        // Prior netral mencegah satu ulasan mengalahkan rekam jejak yang mapan
+        // sekaligus memberi tutor baru kesempatan yang wajar.
+        return (int) round((($average * $count) + (4.0 * 5)) / ($count + 5) * 1000);
+    }
     private function responseReliabilityScore(User $teacher): int
     {
         $total = (int) ($teacher->matching_offer_total_count ?? 0);
@@ -1052,16 +1072,6 @@ class TeacherMatchingService
             return;
         }
 
-        if ($result['streak'] >= 2) {
-            $this->pointService->change(
-                $offer->teacher_id,
-                -5,
-                'Tidak merespons permintaan berulang',
-                actor: null,
-                notes: "Pembatasan menerima murid selama {$result['hours']} jam."
-            );
-        }
-
         if ($result['hours'] === 0) {
             return;
         }
@@ -1086,7 +1096,6 @@ class TeacherMatchingService
             ->whereHas('teacherProfile', function ($query) {
                 $query->whereNotNull('verified_at')
                     ->where('is_accepting_requests', true)
-                    ->where('points', '>', 0)
                     ->where(fn ($cooldown) => $cooldown->whereNull('suspended_until')->orWhere('suspended_until', '<=', now()));
             })
             ->whereHas('teacherProfile.subjects', function ($query) use ($bookingRequest, $modeColumn, $classTypeColumn) {
@@ -1220,7 +1229,8 @@ class TeacherMatchingService
 
     public function offerWaveSize(): int
     {
-        return min(5, max(1, (int) (Setting::where('key', 'teacher_offer_wave_size')->value('value') ?? 3)));
+        // Satu tutor per penawaran agar tidak terjadi lomba respons antartutor.
+        return 1;
     }
 
     private function offerRetryCooldownMinutes(): int

@@ -14,7 +14,7 @@ add("setup creates a confirmed real cheap class", command.includes("'status' => 
 add("setup creates a real session currently in progress", command.includes("CheapClassSession::create") && command.includes("'status' => 'scheduled'"));
 add("setup creates minimum two confirmed participants", command.includes("SECOND_STUDENT_EMAIL") && command.includes("CheapClassEnrollment::create"));
 add("setup creates paid orders so student progress access is production-like", command.includes("Order::create") && command.includes("'status' => 'paid'"));
-add("demo tutor satisfies production verification rules", command.includes("'verified_at' => now()") && command.includes("'points' => 100"));
+add("demo tutor satisfies production verification rules", command.includes("'verified_at' => now()") && command.includes("'is_accepting_requests' => true"));
 add("existing primary admin password is never overwritten", command.includes("gunakan password admin utama yang sudah ada") && command.includes("if ($admin)"));
 add("session-ended only advances the local fixture and requires report", command.includes("session-ended") && command.includes("report_required"));
 add("status command explains every important report state", ["scheduled", "report_required", "awaiting_admin_verification", "revision_requested", "completed"].every((needle) => command.includes(needle)));

@@ -24,6 +24,9 @@ class User extends Authenticatable
     protected $fillable = [
         'name',
         'email',
+        'google_id',
+        'google_avatar_url',
+        'google_onboarding_required_at',
         'email_verified_at',
         'email_verification_required_at',
         'phone',
@@ -66,6 +69,7 @@ class User extends Authenticatable
         'password',
         'payment_pin_hash',
         'remember_token',
+        'google_id',
         'phone',
         'address',
         'maps_link',
@@ -93,6 +97,7 @@ class User extends Authenticatable
     protected $casts = [
         'email_verified_at' => 'datetime',
         'email_verification_required_at' => 'datetime',
+        'google_onboarding_required_at' => 'datetime',
         'password' => 'hashed',
         'password_updated_at' => 'datetime',
         'terms_accepted_at' => 'datetime',
@@ -213,6 +218,11 @@ class User extends Authenticatable
     public function teacherBookings()
     {
         return $this->hasMany(Booking::class, 'teacher_id');
+    }
+
+    public function teacherCheapClasses()
+    {
+        return $this->hasMany(CheapClass::class, 'teacher_id');
     }
 
     public function studentBookings()

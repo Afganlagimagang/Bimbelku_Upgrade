@@ -112,10 +112,11 @@ expect(
   "bab wajib berasal dari katalog dan pilihan tutor manual harus dihapus",
 );
 expect(
-  cheapClassService.includes("pickRandomEligibleTeacher")
+  cheapClassService.includes("pickBestEligibleTeacher")
+    && cheapClassService.includes("matching_active_group_class_count")
     && cheapClassService.includes("classSlots")
     && cheapClassService.includes("waiting_teacher"),
-  "tutor wajib diacak setelah seluruh jadwal sesi dinyatakan tersedia",
+  "tutor wajib dipilih dengan antrean beban adil setelah seluruh jadwal sesi dinyatakan tersedia",
 );
 expect(
   cheapClassUpgrade.includes("cheap_class_sessions")

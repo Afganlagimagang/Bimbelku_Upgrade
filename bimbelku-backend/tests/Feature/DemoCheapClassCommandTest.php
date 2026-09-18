@@ -43,7 +43,7 @@ class DemoCheapClassCommandTest extends TestCase
         $this->assertSame(2, $class->enrollments()->where('status', 'confirmed')->count());
         $this->assertSame(2, $class->enrollments()->whereHas('order', fn ($query) => $query->where('status', 'paid'))->count());
         $this->assertNotNull($teacher->teacherProfile?->verified_at);
-        $this->assertGreaterThan(0, (int) $teacher->teacherProfile?->points);
+        $this->assertNotNull($teacher->teacherProfile?->verified_at);
         $this->assertTrue($admin->isPrimaryAdmin());
         $this->assertSame('student', $secondStudent->role);
 

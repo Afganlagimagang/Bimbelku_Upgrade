@@ -13,7 +13,7 @@ class TeacherOfferReleaseService
 {
     /**
      * Membatalkan penawaran tanpa memberi sanksi ketika kelayakan tutor
-     * berubah karena profil, jadwal, verifikasi, poin, atau keputusan admin.
+     * berubah karena profil, jadwal, verifikasi, pembatasan sementara, atau keputusan admin.
      *
      * @return Collection<int, BookingRequest>
      */

@@ -744,7 +744,6 @@ class DemoCheapClass extends Command
                 'teaching_method' => 'Online',
                 'bio' => 'Tutor demo lokal untuk pengujian Paket Belajar dan Kelas Kelompok.',
                 'verified_at' => now(),
-                'points' => 100,
                 'is_accepting_requests' => true,
             ]
         );

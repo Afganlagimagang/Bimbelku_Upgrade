@@ -168,7 +168,6 @@ class AppServiceProvider extends ServiceProvider
         $registerIsolatedLimiter('teacher-offer-action', 10, 'Respons tawaran dilakukan terlalu sering. Tunggu :seconds detik lalu coba lagi.', ['teacherOffer']);
         $registerIsolatedLimiter('teacher-bank-change', 5, 'Perubahan rekening dilakukan terlalu sering. Tunggu :seconds detik lalu coba lagi.');
         $registerIsolatedLimiter('teacher-payout-request', 5, 'Permintaan pencairan dilakukan terlalu sering. Tunggu :seconds detik lalu coba lagi.');
-        $registerIsolatedLimiter('teacher-point-appeal', 3, 'Pengajuan banding dilakukan terlalu sering. Tunggu :seconds detik lalu coba lagi.', ['teacherPointLedger']);
         $registerIsolatedLimiter('teacher-session-ready', 10, 'Konfirmasi kesiapan mengajar dilakukan terlalu sering. Tunggu :seconds detik lalu coba lagi.', ['booking']);
         $registerIsolatedLimiter('teacher-session-checkout', 10, 'Penyelesaian sesi dilakukan terlalu sering. Tunggu :seconds detik lalu coba lagi.', ['booking']);
 

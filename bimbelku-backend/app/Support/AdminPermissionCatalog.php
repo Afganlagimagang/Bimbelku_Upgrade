@@ -113,11 +113,11 @@ class AdminPermissionCatalog
             '#^(?:finance|payout|commission-setting)(?:/|$)#' => self::FINANCE_PAYOUTS,
             '#^(?:pending-teachers|history-teachers|verify-teacher)(?:/|$)#' => self::TEACHERS_MANAGE,
             '#^users(?:/|$)#' => self::USERS_MANAGE,
-            '#^(?:cases|teacher-replacements|teacher-appeals|disputes|session-reports|bookings/.+/completion-review)(?:/|$)#' => self::CASES_MANAGE,
+            '#^(?:cases|teacher-replacements|disputes|session-reports|bookings/.+/completion-review)(?:/|$)#' => self::CASES_MANAGE,
             '#^(?:classes|ratings)(?:/|$)#' => self::CLASSES_MANAGE,
             '#^(?:notifications/(?:recipients|send)|tickets)(?:/|$)#' => self::SUPPORT_MANAGE,
             '#^(?:hourly-rates|subjects|chapters|stage-five|cheap-class-templates|cheap-classes)(?:/|$)#' => self::CONTENT_MANAGE,
-            '#^(?:settings/footer|admin-socials|socials|settings/teacher-cover|notes)(?:/|$)#' => self::SETTINGS_MANAGE,
+            '#^(?:website-settings|settings/footer|admin-socials|socials|settings/teacher-cover|notes)(?:/|$)#' => self::SETTINGS_MANAGE,
             '#^audit-log(?:/|$)#' => self::AUDIT_VIEW,
         ];
 

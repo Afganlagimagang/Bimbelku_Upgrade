@@ -16,8 +16,9 @@ const requirements = [
   [guard, 'return "/admin"', "dashboard admin belum diarahkan dengan benar"],
   [guard, 'return "/guru"', "dashboard tutor belum diarahkan dengan benar"],
   [guard, 'return "/student/dashboard"', "dashboard siswa belum diarahkan dengan benar"],
-  [cta, '<StudentPackageLink to="/student/packages/new"', "CTA utama belum memakai penjaga alur paket untuk pengunjung/login"],
-  [footer, '<FooterLink to="/register" protectRegistration>', "link daftar footer belum memakai penjaga login"],
+  [cta, 'StudentPackageLink to={primaryUrl}', "CTA utama dinamis belum memakai penjaga alur paket untuk pengunjung/login"],
+  [footer, 'StudentPackageLink to="/student/packages/new?subject_name=', "link program footer belum memakai penjaga alur paket"],
+  [footer, 'mengikuti tes/screening', "link daftar tutor footer belum diarahkan ke screening WhatsApp"],
 ];
 
 const failures = requirements

@@ -150,11 +150,13 @@ class LearningCatalogController extends Controller
                 return ($leftPriority <=> $rightPriority)
                     ?: strnatcasecmp($leftName, $rightName);
             })
-            ->take(8)
+            ->take(24)
             ->values()
             ->map(fn ($subject) => [
                 'id' => (int) data_get($subject, 'id'),
                 'name' => (string) data_get($subject, 'name'),
+                'group_name' => (string) data_get($subject, 'group_name', ''),
+                'education_levels' => array_values((array) data_get($subject, 'education_levels', [])),
             ]);
     }
 }

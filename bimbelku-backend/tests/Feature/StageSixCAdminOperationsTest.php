@@ -351,7 +351,6 @@ class StageSixCAdminOperationsTest extends TestCase
             'latitude' => -7.250445,
             'longitude' => 112.768845,
             'max_travel_km' => 12,
-            'points' => 150,
             'is_accepting_requests' => true,
             'verified_at' => now(),
         ]);

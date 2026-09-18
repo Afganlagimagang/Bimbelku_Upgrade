@@ -51,7 +51,7 @@ export default function AdminRatings() {
   const handleDelete = async (id: number) => {
     const approved = await confirmDialog({
       title: "Hapus ulasan?",
-      description: "Ulasan akan dihapus permanen. Perubahan poin yang sudah tercatat tidak ikut dibatalkan.",
+      description: "Ulasan akan dihapus permanen dan tidak lagi dihitung dalam rating tutor.",
       confirmText: "Hapus ulasan",
       tone: "danger",
     });

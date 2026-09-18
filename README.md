@@ -4,25 +4,25 @@ BimbelKu adalah aplikasi pencocokan murid dan tutor berbasis jadwal, materi, mod
 
 Versi ini memuat Fondasi Tahap 1, Tampilan Mobile Tahap 2, Keamanan Keuangan
 Tahap 3, Pencocokan dan Sesi Tahap 4, serta Paket, Promo, Konten, dan Dashboard
-Tahap 5, alur murid Tahap 6A, operasional tutor Tahap 6B, serta admin operasional dan regresi akhir Tahap 6C per 1 Agustus 2026. Tidak ada katalog tutor publik, payment gateway, cashback, referral, atau pencairan otomatis.
+Tahap 5, alur murid Tahap 6A, operasional tutor Tahap 6B, admin operasional Tahap 6C, serta finalisasi alur dan cleanup Tahap 6D per 15 September 2026. Tidak ada marketplace tutor bebas, payment gateway, cashback, referral, atau pencairan otomatis.
 
 ## Fitur utama
 
 - Tiga peran terpisah: murid, tutor, dan admin.
 - Persetujuan orang tua atau wali dicatat untuk pendaftaran murid di bawah 18 tahun.
 - Verifikasi tutor dengan identitas, foto wajah langsung, ijazah/kualifikasi, serta sertifikat opsional.
-- Verifikasi tutor tidak memakai tes materi, wawancara, microteaching, atau masa percobaan.
+- Calon tutor mengirim data pendaftaran, memverifikasi email, lalu mengikuti seleksi dan tes melalui WhatsApp sebelum admin dapat mengaktifkan akun.
 - Kategori pembelajaran dibatasi menjadi SD, SMP, SMA, dan Umum.
 - Satu mata pelajaran utama dan beberapa jenjang per tutor.
 - Rentang jam tersedia per hari; sistem menolak benturan sesi.
-- Pencarian otomatis berdasarkan kompetensi, seluruh jadwal paket, reliabilitas respons, poin, pemerataan, serta jarak.
+- Pencarian otomatis berdasarkan kompetensi, seluruh jadwal paket, jarak untuk kelas offline, kontinuitas, beban kelas, dan riwayat kesempatan penawaran; rating hanya menjadi pemecah seri terakhir.
 - Permintaan lanjutan memprioritaskan tutor sebelumnya apabila seluruh syarat masih terpenuhi.
 - Paket 1, 4, 8, atau 12 sesi dengan masa penggunaan 7 atau 30 hari.
 - Paket dapat dibagi kepada maksimal tiga mapel dengan tutor berbeda.
 - Satu sesi paket berlangsung 60 menit pada slot tepat di pergantian jam.
 - Admin mengatur pilihan slot; murid tidak memasukkan jam paket secara bebas.
 - Satu tagihan paket dibuka sebelum pencarian tutor; pencarian baru dimulai setelah pembayaran diverifikasi.
-- Mesin matching menjaga maksimal tiga penawaran aktif dan langsung mengisi slot yang ditolak atau kedaluwarsa.
+- Mesin matching mengirim satu penawaran pada satu waktu secara berurutan dan melanjutkan antrean saat penawaran ditolak atau kedaluwarsa.
 - Rekomendasi jadwal mempertahankan pola hari dan membandingkan jam berdasarkan guru yang dapat memenuhi seluruh sesi.
 - Perpanjangan per mapel memprioritaskan tutor lama tujuh hari sebelum paket berakhir.
 - Voucher klaim dan kode promo memakai satu mesin diskon backend.
@@ -40,7 +40,7 @@ Tahap 5, alur murid Tahap 6A, operasional tutor Tahap 6B, serta admin operasiona
 - Tabel riwayat tutor diubah menjadi kartu pada layar kecil.
 - Kelas privat; fondasi kelompok lama tetap tersimpan tetapi tidak dipromosikan pada Tahap 5.
 - Materi bertingkat: jenjang, kelas, mata pelajaran, bab, submateri, tujuan, catatan, dan lampiran.
-- Profil tutor baru ditampilkan setelah tutor menerima dan sebelum murid membayar.
+- Pembayaran diverifikasi sebelum matching dimulai; profil tutor ditampilkan setelah tutor menerima penawaran dan penetapan berhasil.
 - Transfer manual ke admin, verifikasi bukti, penolakan, serta unggah ulang bukti.
 - Komisi tersimpan sebagai snapshot transaksi; nilai awal 20%.
 - Jurnal dana berpasangan dan tidak dapat diedit langsung.
@@ -54,7 +54,7 @@ Tahap 5, alur murid Tahap 6A, operasional tutor Tahap 6B, serta admin operasiona
 - PIN murid, check-in tutor, lokasi offline, check-out, dan durasi aktual.
 - Asesmen awal, target yang disetujui murid, laporan sesi, dan progres belajar.
 - Laporan ketidakhadiran murid/tutor, keadaan darurat, refund penuh, dan pencairan manual.
-- Sistem poin tutor 0–200 dengan riwayat perubahan.
+- Kualitas tutor memakai rating dari sesi nyata dan pemeriksaan admin, tanpa sistem poin atau prioritas otomatis untuk rating tertinggi.
 - Dialog konfirmasi dan toast buatan aplikasi; tidak memakai `alert()` atau `confirm()` bawaan browser.
 - Dokumen dan bukti sensitif disimpan privat serta hanya dibuka melalui API terautentikasi.
 - Email, nomor pribadi, dan data wali tidak diberikan kepada pengguna lain.

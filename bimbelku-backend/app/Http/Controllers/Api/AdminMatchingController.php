@@ -119,7 +119,7 @@ class AdminMatchingController extends Controller
             'student:id,name,email',
             'matchedTeacher:id,name,email',
             'offers' => fn ($offers) => $offers
-                ->with(['teacher:id,name,email', 'teacher.teacherProfile:user_id,points,max_travel_km'])
+                ->with(['teacher:id,name,email', 'teacher.teacherProfile:user_id,max_travel_km', 'teacher.ratings:id,teacher_id,rating'])
                 ->latest('offered_at'),
             'packageSubject.package:id,student_id,status,total_sessions,used_sessions',
             'matchingOperationLogs' => fn ($logs) => $logs
@@ -172,7 +172,8 @@ class AdminMatchingController extends Controller
                                 'id' => $offer->teacher?->id,
                                 'name' => $offer->teacher?->name ?? 'Tutor tidak tersedia',
                                 'email' => $offer->teacher?->email,
-                                'points' => (int) ($offer->teacher?->teacherProfile?->points ?? 0),
+                                'rating_average' => round((float) ($offer->teacher?->ratings?->avg('rating') ?? 0), 1),
+                                'rating_count' => (int) ($offer->teacher?->ratings?->count() ?? 0),
                                 'max_travel_km' => $offer->teacher?->teacherProfile?->max_travel_km,
                             ],
                             'status' => $offer->status,

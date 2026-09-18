@@ -68,13 +68,11 @@ class TeacherReplacementController extends Controller
         Gate::authorize('review', $teacherReplacement);
         $validated = $request->validate([
             'notes' => ['required', 'string', 'min:20', 'max:2000'],
-            'penalty_points' => ['nullable', Rule::in([5, 10, 15, 20, 30])],
         ]);
         $result = $service->approve(
             $teacherReplacement,
             $request->user(),
             $validated['notes'],
-            (int) ($validated['penalty_points'] ?? 0),
         );
         $dispatch = ['offer' => null, 'deferred' => false];
         if (! $result['needs_reschedule']) {

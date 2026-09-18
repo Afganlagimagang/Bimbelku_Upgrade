@@ -223,8 +223,7 @@ class PackageCheckoutService
             abort_unless(
                 $teacher->status === 'active'
                     && $profile?->verified_at
-                    && $profile?->is_accepting_requests
-                    && $profile->points > 0,
+                    && $profile?->is_accepting_requests,
                 422,
                 'Profil tutor sedang tidak dapat menerima permintaan.'
             );
@@ -712,7 +711,7 @@ class PackageCheckoutService
             return false;
         }
         $profile = $teacher->teacherProfile;
-        if (! $profile?->verified_at || ! $profile->is_accepting_requests || $profile->points <= 0) {
+        if (! $profile?->verified_at || ! $profile->is_accepting_requests) {
             return false;
         }
         $profile->setRelation('user', $teacher);

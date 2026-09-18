@@ -70,7 +70,6 @@ class StudentPackageController extends Controller
             'maximum_search_hours',
             'matching_cutoff_hours',
             'teacher_response_minutes',
-            'teacher_offer_wave_size',
         ];
 
         $values = Cache::remember('package_booking_rules.v1', now()->addMinute(), fn () => Setting::query()->whereIn('key', $keys)->pluck('value', 'key'));
@@ -81,7 +80,6 @@ class StudentPackageController extends Controller
             'maximum_search_hours' => (int) ($values['maximum_search_hours'] ?? 24),
             'matching_cutoff_hours' => (int) ($values['matching_cutoff_hours'] ?? 2),
             'teacher_response_minutes' => (int) ($values['teacher_response_minutes'] ?? 30),
-            'teacher_offer_wave_size' => (int) ($values['teacher_offer_wave_size'] ?? 3),
         ]);
     }
 

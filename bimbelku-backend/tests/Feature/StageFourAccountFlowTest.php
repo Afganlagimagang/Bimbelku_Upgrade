@@ -212,7 +212,6 @@ class StageFourAccountFlowTest extends TestCase
         TeacherProfile::create([
             'user_id' => $teacher->id,
             'identity_document' => $path,
-            'points' => 150,
             'is_accepting_requests' => false,
         ]);
         Sanctum::actingAs($student);
@@ -241,7 +240,6 @@ class StageFourAccountFlowTest extends TestCase
             $teacher = User::factory()->create(['role' => 'teacher', 'status' => 'active']);
             $profile = TeacherProfile::create([
                 'user_id' => $teacher->id,
-                'points' => 150,
                 'is_accepting_requests' => true,
             ]);
             TeacherSubject::create([
@@ -403,7 +401,6 @@ class StageFourAccountFlowTest extends TestCase
         TeacherProfile::create([
             'user_id' => $teacher->id,
             'whatsapp_number' => '081234567890',
-            'points' => 150,
             'is_accepting_requests' => true,
             'verified_at' => $verifiedAt,
         ]);

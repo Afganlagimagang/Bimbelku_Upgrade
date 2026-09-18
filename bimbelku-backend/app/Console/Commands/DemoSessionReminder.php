@@ -419,7 +419,6 @@ class DemoSessionReminder extends Command
                 'teaching_method' => 'Online',
                 'bio' => 'Tutor demo lokal untuk pengujian alur sesi BimbelKu.',
                 'verified_at' => now(),
-                'points' => 100,
                 'is_accepting_requests' => true,
             ]
         );

@@ -71,7 +71,6 @@ interface ProfileState {
   photoFile: File | null;
   profileCover: string;
   profileCoverFile: File | null;
-  points: number;
   userStatus: string;
   documentUrls: Record<string, string>;
   documentFiles: Record<string, File | null>;
@@ -94,7 +93,6 @@ const initialState: ProfileState = {
   photoFile: null,
   profileCover: "",
   profileCoverFile: null,
-  points: 150,
   userStatus: "",
   documentUrls: {},
   documentFiles: {},
@@ -160,7 +158,6 @@ export default function TeacherProfile() {
         photoFile: null,
         profileCover: teacherProfile.profile_cover_url || coverResponse?.data?.url || "",
         profileCoverFile: null,
-        points: Number(teacherProfile.points || 150),
         userStatus: user.status || "",
         documentUrls: {
           identity_document: teacherProfile.identity_document_url || "",
@@ -464,7 +461,7 @@ export default function TeacherProfile() {
               <p className="mt-2 max-w-2xl text-sm leading-6 text-indigo-100/80">Data ini dipakai sistem untuk menilai kecocokan mata pelajaran, jenjang, mode, dan jarak kelas offline.</p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/10 px-5 py-4 backdrop-blur">
-              <div className="flex items-center gap-3"><ShieldCheck size={22} className="text-emerald-300" /><div><p className="text-sm font-black">{profile.points} / 200 poin</p><p className="text-[10px] uppercase tracking-widest text-indigo-100">{profile.userStatus === "active" ? "Tutor terverifikasi" : "Menunggu pemeriksaan"}</p></div></div>
+              <div className="flex items-center gap-3"><ShieldCheck size={22} className="text-emerald-300" /><div><p className="text-sm font-black">Profil diverifikasi admin</p><p className="text-[10px] uppercase tracking-widest text-indigo-100">{profile.userStatus === "active" ? "Tutor terverifikasi" : "Menunggu pemeriksaan"}</p></div></div>
             </div>
           </div>
         </section>

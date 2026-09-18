@@ -31,7 +31,6 @@ class TeacherProfile extends Model
         'latitude' => 'float',
         'longitude' => 'float',
         'max_travel_km' => 'integer',
-        'points' => 'integer',
         'assignment_count' => 'integer',
         'last_assigned_at' => 'datetime',
         'is_accepting_requests' => 'boolean',
@@ -55,8 +54,4 @@ class TeacherProfile extends Model
         return $this->hasMany(TeacherSubject::class, 'teacher_profile_id');
     }
 
-    public function pointLedger()
-    {
-        return $this->hasMany(TeacherPointLedger::class, 'teacher_id', 'user_id');
-    }
 }

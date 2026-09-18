@@ -60,7 +60,7 @@ class CheckpointFiveFinalRegressionTest extends TestCase
             'email' => $teacher->email,
             'password' => 'Password123!',
         ])->assertForbidden()
-            ->assertJsonPath('message', 'Akun tutor Anda sedang menunggu verifikasi admin.');
+            ->assertJsonPath('message', 'Akun tutor sedang menunggu pemeriksaan dokumen serta hasil seleksi dan tes melalui WhatsApp.');
 
         $this->assertDatabaseCount('personal_access_tokens', 0);
     }

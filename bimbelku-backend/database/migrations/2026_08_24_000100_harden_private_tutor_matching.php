@@ -24,7 +24,6 @@ return new class extends Migration
                 'matching_cutoff_hours' => '2',
                 'teacher_response_online_minutes' => '60',
                 'teacher_response_offline_minutes' => '60',
-                'teacher_offer_wave_size' => '3',
                 'teacher_offer_retry_cooldown_minutes' => '120',
                 'matching_wait_retry_minutes' => '30',
             ] as $key => $value) {

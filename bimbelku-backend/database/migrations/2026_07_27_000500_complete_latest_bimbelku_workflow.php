@@ -19,7 +19,6 @@ return new class extends Migration
         $this->extendBookings();
         $this->extendOrders();
         $this->createBookingParticipants();
-        $this->createPointLedger();
         $this->createOperationalCases();
         $this->extendPayoutsAndRatings();
         $this->seedWorkflowSettings();
@@ -300,26 +299,6 @@ return new class extends Migration
         });
     }
 
-    private function createPointLedger(): void
-    {
-        if (Schema::hasTable('teacher_point_ledgers')) {
-            return;
-        }
-
-        Schema::create('teacher_point_ledgers', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('teacher_id')->constrained('users')->cascadeOnDelete();
-            $table->foreignId('booking_id')->nullable()->constrained()->nullOnDelete();
-            $table->foreignId('actor_id')->nullable()->constrained('users')->nullOnDelete();
-            $table->smallInteger('change');
-            $table->unsignedSmallInteger('balance_after');
-            $table->string('reason', 160);
-            $table->text('notes')->nullable();
-            $table->timestamps();
-            $table->index(['teacher_id', 'created_at']);
-        });
-    }
-
     private function createOperationalCases(): void
     {
         if (!Schema::hasTable('session_reports')) {
@@ -441,7 +420,6 @@ return new class extends Migration
         Schema::dropIfExists('refunds');
         Schema::dropIfExists('booking_disputes');
         Schema::dropIfExists('session_reports');
-        Schema::dropIfExists('teacher_point_ledgers');
         Schema::dropIfExists('booking_participants');
         Schema::dropIfExists('group_members');
         Schema::dropIfExists('group_pools');

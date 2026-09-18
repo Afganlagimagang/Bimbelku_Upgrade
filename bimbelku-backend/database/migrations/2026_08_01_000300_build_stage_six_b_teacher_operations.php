@@ -110,27 +110,6 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasTable('teacher_appeals')) {
-            Schema::create('teacher_appeals', function (Blueprint $table) {
-                $table->id();
-                $table->foreignId('teacher_id')->constrained('users')->cascadeOnDelete();
-                $table->foreignId('teacher_point_ledger_id')
-                    ->constrained('teacher_point_ledgers')
-                    ->cascadeOnDelete();
-                $table->text('reason');
-                $table->string('evidence_path')->nullable();
-                $table->string('evidence_name', 255)->nullable();
-                $table->string('status', 30)->default('pending');
-                $table->foreignId('reviewed_by')->nullable()->constrained('users')->nullOnDelete();
-                $table->text('review_notes')->nullable();
-                $table->timestamp('reviewed_at')->nullable();
-                $table->timestamps();
-                $table->unique('teacher_point_ledger_id');
-                $table->index(['teacher_id', 'status']);
-                $table->index(['status', 'created_at']);
-            });
-        }
-
         if (!Schema::hasTable('teacher_payout_requests')) {
             Schema::create('teacher_payout_requests', function (Blueprint $table) {
                 $table->id();
@@ -170,7 +149,6 @@ return new class extends Migration
         });
 
         foreach ([
-            'teacher_appeal_window_days' => '7',
             'schedule_change_min_notice_hours' => '6',
             'schedule_change_response_hours' => '24',
             'chat_attachment_max_mb' => '5',
@@ -198,7 +176,6 @@ return new class extends Migration
         });
 
         Schema::dropIfExists('teacher_payout_requests');
-        Schema::dropIfExists('teacher_appeals');
         Schema::dropIfExists('schedule_change_responses');
         Schema::dropIfExists('schedule_change_requests');
         Schema::dropIfExists('participant_attendances');

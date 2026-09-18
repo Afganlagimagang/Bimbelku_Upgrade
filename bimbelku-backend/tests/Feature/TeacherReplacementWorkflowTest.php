@@ -499,7 +499,7 @@ class TeacherReplacementWorkflowTest extends TestCase
         $this->assertSame('ready', $fixture['completed_booking']->fresh()->payout_status);
     }
 
-    public function test_admin_replacement_violation_uses_teacher_point_ledger(): void
+    public function test_admin_can_approve_conduct_replacement_without_legacy_penalty_system(): void
     {
         $fixture = $this->fixture();
         $replacement = app(TeacherReplacementService::class)->submit(
@@ -509,20 +509,15 @@ class TeacherReplacementWorkflowTest extends TestCase
             ['reason_code' => 'conduct', 'reason_detail' => 'Perilaku tutor pada proses belajar perlu diperiksa dan sesi berikutnya harus dialihkan.']
         );
 
-        app(TeacherReplacementService::class)->approve(
+        $result = app(TeacherReplacementService::class)->approve(
             $replacement,
             $fixture['admin'],
             'Pemeriksaan admin membuktikan pelanggaran tutor dan penggantian disetujui untuk sesi tersisa.',
-            10,
         );
 
-        $this->assertSame(140, $fixture['old_teacher']->teacherProfile->fresh()->points);
-        $this->assertDatabaseHas('teacher_point_ledgers', [
-            'teacher_id' => $fixture['old_teacher']->id,
-            'actor_id' => $fixture['admin']->id,
-            'change' => -10,
-            'reason' => 'Pelanggaran pada penggantian guru',
-        ]);
+        $this->assertSame('matching', $result['replacement']->fresh()->status);
+        $this->assertSame('matching', $result['booking_request']->fresh()->status);
+        $this->assertSame('active', $fixture['old_teacher']->fresh()->status);
     }
 
     private function fixture(): array
@@ -570,7 +565,7 @@ class TeacherReplacementWorkflowTest extends TestCase
     private function teacher(CurriculumSubject $catalog, string $suffix): User
     {
         $teacher = User::factory()->create(['role' => 'teacher', 'status' => 'active', 'email' => "{$suffix}@replacement.test"]);
-        $profile = TeacherProfile::create(['user_id' => $teacher->id, 'points' => 150, 'is_accepting_requests' => true, 'verified_at' => now()->subDay()]);
+        $profile = TeacherProfile::create(['user_id' => $teacher->id, 'is_accepting_requests' => true, 'verified_at' => now()->subDay()]);
         $profile->subjects()->create([
             'name' => 'Matematika', 'curriculum_subject_id' => $catalog->id, 'levels' => ['SMP'], 'is_active' => true,
             'is_online' => true, 'is_offline' => false, 'is_private_active' => true,

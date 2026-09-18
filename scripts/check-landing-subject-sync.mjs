@@ -12,12 +12,17 @@ const privateRoute = read("src/components/PrivateRoute.tsx");
 const login = read("src/pages/Login.tsx");
 const register = read("src/pages/Register.tsx");
 const footer = read("src/components/Footer.tsx");
+const app = read("src/App.tsx");
+const navbar = read("src/components/Navbar.tsx");
+const programCatalog = read("src/pages/ProgramCatalog.tsx");
+const programDetail = read("src/pages/ProgramDetail.tsx");
 
 const requirements = [
   [controller, "'landing_subjects' => $this->landingSubjects($catalogSubjects)", "API belum mengirim landing_subjects"],
   [controller, "->where('is_active', true)", "API belum membatasi mapel aktif"],
-  [controller, "->take(8)", "API belum membatasi delapan kartu"],
+  [controller, "->take(24)", "API belum membatasi dua puluh empat opsi landing"],
   [section, "response.data.landing_subjects", "landing page belum memakai kontrak landing_subjects"],
+  [section, "Lihat lebih banyak", "landing page belum menyediakan aksi lihat lebih banyak"],
   [section, "/student/packages/new?subject_name=", "kartu mapel belum membuka pembuat paket"],
   [packageBuilder, 'searchParams.get("subject_name")', "pembuat paket belum membaca mapel dari landing"],
   [packageBuilder, "requestedSubjectName", "mapel landing belum dipilih pada pembuat paket"],
@@ -26,6 +31,12 @@ const requirements = [
   [login, "registerHref", "tujuan mapel belum diteruskan ke pendaftaran"],
   [register, "loginHref", "tujuan mapel belum dikembalikan ke login setelah pendaftaran"],
   [footer, "/student/packages/new?subject_name=Matematika", "link mapel footer belum membuka Paket Baru"],
+  [app, 'path="/program"', "rute katalog program publik belum tersedia"],
+  [app, 'path="/program/:slug"', "rute detail program publik belum tersedia"],
+  [navbar, '["SD", "SMP", "SMA"]', "dropdown jenjang Program belum tersedia"],
+  [section, "programPath(subject, level)", "kartu landing belum membuka detail program"],
+  [programCatalog, "response.data.subject_options", "katalog publik belum memakai mapel aktif sistem"],
+  [programDetail, "packagePath(program, selectedLevel)", "detail program belum membawa prefill ke Paket Builder"],
 ];
 
 const failures = requirements

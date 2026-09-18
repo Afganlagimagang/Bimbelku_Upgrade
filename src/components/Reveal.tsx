@@ -31,8 +31,7 @@ export default function Reveal({
       ([entry]) => {
         if (entry.isIntersecting) {
           setIsVisible(true);
-        } else {
-          setIsVisible(false); // Reset biar bisa main ulang (Replayable)
+          observer.disconnect();
         }
       },
       { threshold }
@@ -64,7 +63,7 @@ export default function Reveal({
   return (
     <div ref={ref} style={{ width }} className={className}>
       <div
-        className="h-full" // <--- INI KUNCINYA (Supaya konten di dalam stretch)
+        className="h-full"
         style={{
           transform: getTransform(),
           opacity: isVisible ? 1 : 0,

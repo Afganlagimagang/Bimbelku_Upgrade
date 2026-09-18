@@ -109,7 +109,6 @@ class StageSixBTeacherOperationsTest extends TestCase
         ]);
         TeacherProfile::create([
             'user_id' => $teacher->id,
-            'points' => 150,
             'bank_name' => 'Bank Contoh',
             'account_number' => '1234567890',
             'account_name' => $teacher->name,

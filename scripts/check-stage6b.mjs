@@ -36,10 +36,10 @@ expect(layout.includes("notif.target_url") && layout.includes("navigate(notif.ta
 expect(layout.includes("calc(100vw-1.5rem)") && layout.includes("left-3 right-3"), "dropdown notifikasi tetap berada dalam viewport HP");
 
 expect(dashboard.includes("/teacher/dashboard-v2") && dashboard.includes("Perlu dikerjakan"), "dashboard tutor disusun berdasarkan prioritas kerja");
-for (const item of ["pending_offers", "unread_messages", "schedule_responses", "unread_notifications", "pending_appeals"]) {
+for (const item of ["pending_offers", "unread_messages", "schedule_responses", "unread_notifications"]) {
   expect(dashboard.includes(item), `dashboard memuat prioritas ${item}`);
 }
-for (const item of ["Profil tutor", "Jadwal tersedia", "Pendapatan & pencairan", "Performa & banding", "Notifikasi"]) {
+for (const item of ["Profil tutor", "Jadwal tersedia", "Pendapatan & pencairan", "Rating & ulasan", "Notifikasi"]) {
   expect(account.includes(item), `halaman Saya memuat ${item}`);
 }
 
@@ -58,18 +58,16 @@ for (const balance of ["held", "available", "requested", "paid"]) {
   expect(salary.includes(`balances.${balance}`), `dompet memisahkan saldo ${balance}`);
 }
 expect(salary.includes("/teacher/payout-requests") && salary.includes("commission_amount"), "tutor mengajukan pencairan dengan rincian komisi");
-expect(performance.includes("point_history") && performance.includes("can_appeal") && performance.includes("/appeals"), "halaman performa memuat penalti dan pengajuan banding");
+expect(performance.includes("rating.distribution") && performance.includes("ratings"), "halaman performa memuat rating dan ulasan terverifikasi");
 
-for (const table of ["classroom_message_reads", "participant_attendances", "schedule_change_requests", "schedule_change_responses", "teacher_appeals", "teacher_payout_requests"]) {
+for (const table of ["classroom_message_reads", "participant_attendances", "schedule_change_requests", "schedule_change_responses", "teacher_payout_requests"]) {
   expect(migration.includes(`'${table}'`), `migrasi membuat ${table}`);
 }
 expect(routes.includes("LearningSessionController::class, 'conversations'") && routes.includes("TeacherOperationsController::class, 'dashboard'"), "API percakapan dan dashboard tutor tersedia");
 expect(routes.includes("studentConfirmPresence") && routes.includes("ScheduleChangeController::class, 'respond'"), "API konfirmasi kehadiran V2 dan persetujuan jadwal tersedia");
-expect(routes.includes("TeacherOperationsController::class, 'resolveAppeal'"), "admin dapat memutus banding tutor");
 expect(learning.includes("whereDoesntHave('reads'") && learning.includes("client_token"), "backend menghitung pesan belum dibaca dan idempotensi kirim");
 expect(schedule.includes("teacherHasConflict") && schedule.includes("Jadwal baru bertabrakan"), "backend memeriksa bentrok tutor dan peserta");
 expect(operations.includes("requestPayout") && operations.includes("payout_status' => 'requested'"), "pengajuan pencairan mengunci sesi agar tidak diajukan dua kali");
-expect(operations.includes("resolveAppeal") && operations.includes("Banding penalti disetujui"), "keputusan banding dapat memulihkan poin");
 for (const scenario of ["test_paid_chat_attachment_is_idempotent_and_gets_a_read_receipt", "test_schedule_changes_only_after_the_other_party_approves", "test_teacher_payout_request_moves_ready_sessions_to_requested_once"]) {
   expect(featureTest.includes(scenario), `pengujian backend memuat ${scenario}`);
 }

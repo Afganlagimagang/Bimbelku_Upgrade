@@ -428,7 +428,7 @@ class DemoTeacherReplacement extends Command
         ]);
         $profile = TeacherProfile::query()->updateOrCreate(['user_id' => $teacher->id], [
             'expertise' => self::SUBJECT_NAME, 'teaching_method' => 'Online', 'bio' => 'Tutor lokal demo penggantian guru.',
-            'verified_at' => now(), 'points' => 150, 'is_accepting_requests' => true,
+            'verified_at' => now(), 'is_accepting_requests' => true,
         ]);
         TeacherSubject::query()->updateOrCreate(
             ['teacher_profile_id' => $profile->id, 'curriculum_subject_id' => $catalog->id],

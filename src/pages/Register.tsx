@@ -14,6 +14,7 @@ import {
   GraduationCap,
   Loader2,
   Lock,
+  MessageCircle,
   Mail,
   MapPin,
   ShieldCheck,
@@ -28,6 +29,9 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import DateOfBirthInput from "@/components/DateOfBirthInput";
+import { useWebsiteContent } from "@/components/WebsiteContentProvider";
+import { whatsappHref } from "@/lib/websiteContent";
+
 
 const CameraCapture = lazy(() => import("@/components/CameraCapture"));
 const SubjectCombobox = lazy(() => import("@/components/SubjectCombobox"));
@@ -80,7 +84,14 @@ export default function Register() {
   const loginHref = safeRedirect
     ? `/login?redirect=${encodeURIComponent(safeRedirect)}`
     : "/login";
-  const [role, setRole] = useState<Role>("student");
+  const { settings } = useWebsiteContent();
+  const [role, setRole] = useState<Role>(() => searchParams.get("role") === "teacher" ? "teacher" : "student");
+  const teacherWhatsappUrl = settings.whatsapp_enabled
+    ? whatsappHref(
+        settings.whatsapp_number,
+        "Halo " + (settings.brand_name || "BimbelKu") + ", saya ingin mendaftar sebagai tutor dan mengikuti seleksi serta tes melalui WhatsApp. Mohon informasi tahap berikutnya.",
+      )
+    : null;
   const [form, setForm] = useState(initialForm);
   const [levels, setLevels] = useState<string[]>([]);
   const [files, setFiles] = useState<Partial<Record<FileKey, File>>>({});
@@ -247,6 +258,7 @@ export default function Register() {
               </FormField>
             </div>
 
+
             {role === "student" ? (
               <div className="space-y-5 rounded-2xl border border-orange-100 bg-orange-50/40 p-5">
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -295,7 +307,7 @@ export default function Register() {
               </div>
             ) : (
               <div className="w-full min-w-0 max-w-full space-y-5 overflow-hidden rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4 sm:p-5">
-                <div className="flex min-w-0 gap-3 rounded-xl border border-indigo-100 bg-white p-4 text-sm leading-6 text-indigo-800"><ShieldCheck className="shrink-0" size={20} /><p className="min-w-0 break-words">Semua tutor memakai standar yang sama. Admin memeriksa identitas, foto langsung, dan bukti kualifikasi sebelum akun aktif.</p></div>
+                <div className="rounded-xl border border-indigo-100 bg-white p-4 text-sm leading-6 text-indigo-900"><div className="flex min-w-0 gap-3"><ShieldCheck className="mt-0.5 shrink-0" size={20} /><div className="min-w-0"><p className="font-black">Pendaftaran belum berarti langsung siap mengajar.</p><p className="mt-1 break-words text-indigo-800">Setelah email terverifikasi, admin memeriksa identitas dan kualifikasi lalu menghubungi nomor WhatsApp aktif untuk seleksi dan tes. Akun tutor hanya diaktifkan setelah dinyatakan lolos.</p></div></div>{teacherWhatsappUrl && <a href={teacherWhatsappUrl} target="_blank" rel="noreferrer" className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#15803D] px-4 py-2.5 font-black text-white transition hover:bg-green-800"><MessageCircle size={18} />Tanya proses seleksi via WhatsApp</a>}</div>
                 <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">
                   <FormField label="Satu mata pelajaran" icon={BookOpen}>
                     <Suspense fallback={<div className="h-12 rounded-xl bg-white" aria-hidden="true" />}>
@@ -327,7 +339,7 @@ export default function Register() {
             </div>
 
             <Button disabled={submitting || !terms || !privacy || (isMinorStudent && !guardianConsent)} className="h-13 w-full rounded-2xl bg-orange-600 py-6 font-black hover:bg-orange-700">
-              {submitting ? <Loader2 className="mr-2 animate-spin" size={19} /> : <ArrowRight className="mr-2" size={19} />} {role === "teacher" ? "Kirim untuk verifikasi" : "Buat akun murid"}
+              {submitting ? <Loader2 className="mr-2 animate-spin" size={19} /> : <ArrowRight className="mr-2" size={19} />} {role === "teacher" ? "Kirim data pendaftaran tutor" : "Buat akun murid"}
             </Button>
           </form>
         </section>

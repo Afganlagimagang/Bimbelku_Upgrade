@@ -52,7 +52,7 @@ class EmailVerificationController extends Controller
 
         return response()->json([
             'message' => $user->role === 'teacher'
-                ? 'Email berhasil diverifikasi. Selanjutnya tunggu persetujuan admin untuk akun tutor.'
+                ? 'Email berhasil diverifikasi. Admin akan menghubungi WhatsApp Anda untuk seleksi dan tes sebelum akun tutor diaktifkan.'
                 : 'Email berhasil diverifikasi. Silakan masuk ke akun Anda.',
             'role' => $user->role,
         ]);

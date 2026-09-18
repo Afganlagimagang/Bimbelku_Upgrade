@@ -51,7 +51,8 @@ class TeacherAssignmentService
                     'id' => $teacher->id,
                     'name' => $teacher->name,
                     'email' => $teacher->email,
-                    'points' => (int) ($profile?->points ?? 0),
+                    'rating_average' => round((float) ($teacher->matching_rating_average ?? 0), 1),
+                    'rating_count' => (int) ($teacher->matching_rating_count ?? 0),
                     'distance_km' => isset($teacher->match_distance_km)
                         ? round((float) $teacher->match_distance_km, 2)
                         : null,
@@ -79,9 +80,6 @@ class TeacherAssignmentService
         }
         if (! $profile->is_accepting_requests) {
             return 'Tutor sedang tidak menerima permintaan.';
-        }
-        if ((int) $profile->points <= 0) {
-            return 'Poin tutor tidak memenuhi syarat untuk menerima murid.';
         }
         if ($profile->suspended_until?->isFuture()) {
             return 'Tutor sedang dibatasi sampai '.$profile->suspended_until->translatedFormat('d M Y, H:i').' WIB.';

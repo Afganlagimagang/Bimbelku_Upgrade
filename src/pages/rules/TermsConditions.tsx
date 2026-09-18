@@ -7,7 +7,7 @@ const sections = [
     content: (
       <>
         <p>Murid wajib memberikan data yang benar dan menjaga keamanan akun. Pendaftaran murid di bawah 18 tahun wajib disetujui orang tua atau wali. Nama, hubungan, nomor kontak, dan waktu persetujuan wali akan dicatat.</p>
-        <p>Tutor bertindak sebagai pengajar independen. Tutor wajib memberikan identitas, foto wajah langsung, ijazah atau bukti kualifikasi, satu mata pelajaran utama, jenjang yang dikuasai, serta jadwal kosong yang sebenarnya. Verifikasi tidak memakai tes materi, wawancara, microteaching, atau masa percobaan. Akun tutor baru dapat menerima murid setelah dokumennya disetujui admin.</p>
+        <p>Tutor bertindak sebagai pengajar independen. Tutor wajib memberikan identitas, foto wajah langsung, ijazah atau bukti kualifikasi, satu mata pelajaran utama, jenjang yang dikuasai, serta jadwal kosong yang sebenarnya. Setelah verifikasi email dan dokumen, calon tutor mengikuti seleksi dan tes yang dikoordinasikan melalui WhatsApp. Akun tutor hanya dapat menerima penawaran mengajar setelah hasil seleksi dicatat dan disetujui admin.</p>
       </>
     ),
   },
@@ -47,7 +47,7 @@ const sections = [
     content: (
       <>
         <p>Tutor wajib hadir sesuai jadwal dan mencatat hasil belajar. Pada Session Flow terbaru, tutor menandai kesiapan lalu murid mengonfirmasi kehadiran satu kali; sistem menyimpan waktu mulai, waktu selesai, durasi, dan jejak sesi secara otomatis. Sesi historis dapat tetap memakai mekanisme verifikasi lama untuk menjaga kompatibilitas.</p>
-        <p>Ketidakhadiran tutor yang terbukti menghasilkan refund penuh dan sanksi poin. Keadaan darurat tutor wajib disertai jenis kejadian, kronologi, waktu, lokasi, dampak, dan bukti yang dapat dipercaya. Refund murid langsung masuk antrean; admin kemudian menentukan validitas laporan dan sanksi tutor.</p>
+        <p>Ketidakhadiran tutor yang terbukti menghasilkan refund penuh dan dapat berujung pada peringatan, pembatasan menerima kelas, atau penonaktifan akun. Keadaan darurat tutor wajib disertai jenis kejadian, kronologi, waktu, lokasi, dampak, dan bukti yang dapat dipercaya. Refund murid langsung masuk antrean; admin kemudian menentukan validitas laporan dan sanksi tutor.</p>
       </>
     ),
   },
@@ -64,7 +64,7 @@ const sections = [
     title: "Performa, larangan, dan penegakan",
     content: (
       <>
-        <p>Tutor memulai dengan 150 poin dan maksimum 200 poin. Rating 4 menambah 1 poin dan rating 5 menambah 2 poin. Pelanggaran dapat mengurangi 5, 10, 15, 20, atau 30 poin berdasarkan tingkat dan pengulangan. Akun dengan 0 poin dinonaktifkan.</p>
+        <p>Rating hanya berasal dari murid yang menyelesaikan sesi dan menjadi rekam mutu tutor, bukan sistem poin atau jaminan memperoleh kelas. Penawaran kelas mempertimbangkan kelayakan, kecocokan jadwal dan lokasi, kesinambungan belajar, pemerataan beban, serta riwayat penawaran; rating dipakai sebagai pembeda akhir ketika kandidat lain setara.</p>
         <p>Dilarang memalsukan identitas atau bukti, mengganggu sistem, melakukan penipuan, menyebarkan materi melanggar hukum, melecehkan pengguna lain, atau menyalahgunakan laporan dan refund. Admin dapat memberi peringatan, pembatasan, penolakan verifikasi, atau penonaktifan akun.</p>
       </>
     ),

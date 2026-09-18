@@ -3,6 +3,7 @@ import { API_BASE_URL } from "@/lib/apiBase";
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Mail, Lock, Eye, EyeOff, ArrowLeft, ArrowRight, AlertCircle, Loader2 } from "lucide-react";
+import GoogleAuthButton from "@/components/GoogleAuthButton";
 export default function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -12,6 +13,7 @@ export default function Login() {
     : "/register";
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const googleError = searchParams.get("google_error");
 
   // State untuk menampung input user
   const [formData, setFormData] = useState({
@@ -135,6 +137,13 @@ export default function Login() {
           </p>
         </div>
 
+        {googleError && (
+          <div role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {googleError}
+          </div>
+        )}
+
+
         <form onSubmit={handleLogin} className="space-y-6">
           <div className="space-y-4">
             {/* Email Input */}
@@ -176,6 +185,7 @@ export default function Login() {
             </div>
           </div>
 
+
           <div className="flex justify-end text-sm">
             <Link to="/forgot-password" className="font-medium text-orange-600 hover:text-orange-500 hover:underline">
               Lupa password?
@@ -198,6 +208,15 @@ export default function Login() {
               </div>
             )}
           </button>
+
+          <div>
+            <div className="mb-5 flex items-center gap-3 text-xs font-bold uppercase tracking-widest text-slate-400">
+              <span className="h-px flex-1 bg-slate-200" />
+              <span>atau</span>
+              <span className="h-px flex-1 bg-slate-200" />
+            </div>
+            <GoogleAuthButton redirect={requestedRedirect} />
+          </div>
         </form>
 
         <div className="mt-8 text-center">

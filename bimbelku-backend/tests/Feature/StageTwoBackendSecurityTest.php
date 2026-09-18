@@ -82,7 +82,6 @@ class StageTwoBackendSecurityTest extends TestCase
         $profile = TeacherProfile::create([
             'user_id' => $teacher->id,
             ...$paths,
-            'points' => 150,
             'is_accepting_requests' => false,
         ]);
         TeacherSubject::create([
@@ -100,7 +99,11 @@ class StageTwoBackendSecurityTest extends TestCase
             'user_id' => $teacher->id,
             'status' => 'active',
             'notes' => 'Dokumen lengkap dan dapat diverifikasi.',
+            'screening_passed' => true,
         ];
+        $this->postJson('/api/admin/verify-teacher', [...$payload, 'screening_passed' => false])
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Kelulusan seleksi dan ringkasan hasil tes WhatsApp wajib dicatat sebelum tutor diaktifkan.');
         $this->postJson('/api/admin/verify-teacher', $payload)->assertOk();
         $this->postJson('/api/admin/verify-teacher', $payload)->assertUnprocessable();
 
@@ -127,7 +130,6 @@ class StageTwoBackendSecurityTest extends TestCase
         TeacherProfile::create([
             'user_id' => $teacher->id,
             'live_selfie' => $path,
-            'points' => 150,
             'is_accepting_requests' => false,
         ]);
         Sanctum::actingAs($admin);

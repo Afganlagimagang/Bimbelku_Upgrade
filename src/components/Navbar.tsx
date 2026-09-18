@@ -1,15 +1,41 @@
-import { Link, useLocation } from "react-router-dom";
-import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { BookOpenCheck, LayoutDashboard, Menu, User, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import {
+  ArrowRight,
+  BookOpenCheck,
+  BriefcaseBusiness,
+  CalendarCheck,
+  ChevronDown,
+  CircleHelp,
+  GraduationCap,
+  LayoutDashboard,
+  MapPin,
+  Menu,
+  MessageCircle,
+  MonitorPlay,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  User,
+  Users,
+  WalletCards,
+  X,
+} from "lucide-react";
+
 import StudentPackageLink from "@/components/StudentPackageLink";
+import { useWebsiteContent } from "@/components/WebsiteContentProvider";
+import { getCached } from "@/lib/http";
+import { programPath, type CatalogSubject, supportedLevels } from "@/lib/publicPrograms";
+import { whatsappHref } from "@/lib/websiteContent";
 
-const readStoredUser = () => {
-  const storedUser = localStorage.getItem("user");
-  if (!storedUser) return null;
+type StoredUser = { name?: string; role?: string };
+type MenuKey = "program" | "services" | "guides" | "about";
 
+const favoriteNames = ["Matematika", "Bahasa Inggris", "Bahasa Indonesia", "Fisika", "Kimia", "Biologi"];
+
+const readStoredUser = (): StoredUser | null => {
   try {
-    return JSON.parse(storedUser);
+    return JSON.parse(localStorage.getItem("user") || "null");
   } catch {
     localStorage.removeItem("user");
     localStorage.removeItem("token");
@@ -17,180 +43,218 @@ const readStoredUser = () => {
   }
 };
 
-const Navbar = () => {
-  const [isOpen, setIsOpen] = useState(false);
+export default function Navbar() {
+  const { settings } = useWebsiteContent();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [activeMenu, setActiveMenu] = useState<MenuKey | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [scrolled, setScrolled] = useState(false);
-  const [user] = useState<any>(() => readStoredUser());
+  const [subjects, setSubjects] = useState<CatalogSubject[]>([]);
+  const [user] = useState<StoredUser | null>(() => readStoredUser());
+  const headerRef = useRef<HTMLElement>(null);
   const location = useLocation();
-
-  const isNavActive = (href: string) =>
-    location.pathname === href || location.pathname.startsWith(`${href}/`);
-
-  const navLinks = [
-    { href: "/student/packages/new", label: "Cari Bimbingan", studentOnly: true },
-    { href: "/why-us", label: "Kenapa BimbelKu?" },
-  ];
+  const navigate = useNavigate();
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 16);
+    const onScroll = () => setScrolled(window.scrollY > 12);
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
   useEffect(() => {
-    setIsOpen(false);
-  }, [location.pathname, location.search]);
+    let active = true;
+    void getCached<{ subject_options?: CatalogSubject[] }>("/learning-catalog", { params: { compact: 1 }, maxAgeMs: 5 * 60_000 })
+      .then(({ data }) => {
+        if (!active) return;
+        setSubjects((data.subject_options || []).filter((item) => Number.isInteger(item.id) && item.id > 0 && item.name?.trim()));
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, []);
 
-  const getDashboardLink = () => {
-    if (!user) return "/login";
-    if (user.role === "admin") return "/admin";
-    if (user.role === "teacher") return "/guru";
-    return "/student/dashboard";
+  useEffect(() => {
+    setMobileOpen(false);
+    setActiveMenu(null);
+    setSearchOpen(false);
+  }, [location.pathname, location.search, location.hash]);
+
+  useEffect(() => {
+    const closeOnOutside = (event: PointerEvent) => {
+      if (headerRef.current && !headerRef.current.contains(event.target as Node)) setActiveMenu(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setActiveMenu(null);
+        setSearchOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", closeOnOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, []);
+
+  const levelCounts = useMemo(() => Object.fromEntries(["SD", "SMP", "SMA"].map((level) => [
+    level,
+    subjects.filter((subject) => supportedLevels(subject).includes(level)).length,
+  ])), [subjects]);
+  const popular = useMemo(() => {
+    const selected = favoriteNames.map((name) => subjects.find((subject) => subject.name === name)).filter(Boolean) as CatalogSubject[];
+    return (selected.length ? selected : subjects).slice(0, 6);
+  }, [subjects]);
+  const catalogPreview = useMemo(() => [...subjects].sort((left, right) => left.name.localeCompare(right.name, "id-ID")).slice(0, 8), [subjects]);
+
+  const dashboardLink = user?.role === "admin" ? "/admin" : user?.role === "teacher" ? "/guru" : "/student/dashboard";
+  const primaryUrl = settings.primary_cta_url || "/student/packages/new";
+  const logo = settings.logo_dark_url || settings.logo_url;
+  const consultationUrl = settings.whatsapp_enabled ? whatsappHref(settings.whatsapp_number, settings.whatsapp_default_message) : null;
+  const showInformation = settings.information_bar_enabled && settings.information_bar_text;
+
+  const closeMenus = () => {
+    setActiveMenu(null);
+    setMobileOpen(false);
+    setSearchOpen(false);
+  };
+
+  const submitSearch = (event: FormEvent) => {
+    event.preventDefault();
+    const query = searchQuery.trim();
+    navigate(query ? `/program?q=${encodeURIComponent(query)}` : "/program");
+    closeMenus();
+  };
+
+  const whatsappCta = (compact = false) => consultationUrl ? (
+    <a href={consultationUrl} target="_blank" rel="noreferrer" aria-label={settings.whatsapp_label} className={compact
+      ? "grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#15803D] text-white transition hover:bg-green-800"
+      : "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-green-200 bg-green-50 px-4 text-sm font-extrabold text-green-800 transition hover:bg-green-100"}>
+      <MessageCircle size={compact ? 19 : 17} aria-hidden="true" />
+      {!compact && <span>WhatsApp</span>}
+    </a>
+  ) : null;
+
+  const primaryCta = (className: string) => primaryUrl.startsWith("/student/packages/new") ? (
+    <StudentPackageLink to={primaryUrl} className={className} onNavigate={closeMenus}><Search size={17} aria-hidden="true" />{settings.primary_cta_label}</StudentPackageLink>
+  ) : (
+    <Link to={primaryUrl} className={className} onClick={closeMenus}><Search size={17} aria-hidden="true" />{settings.primary_cta_label}</Link>
+  );
+
+  const toggleMenu = (menu: MenuKey) => {
+    setSearchOpen(false);
+    setActiveMenu((current) => current === menu ? null : menu);
   };
 
   return (
-    <nav
-      className={`sticky top-0 z-50 w-full border-b transition-[background-color,box-shadow,border-color] duration-300 ${
-        scrolled
-          ? "border-slate-200/80 bg-white/95 shadow-sm backdrop-blur-xl"
-          : "border-slate-200/60 bg-white/90 backdrop-blur-lg"
-      }`}
-    >
-      <div className="container mx-auto max-w-7xl px-4 sm:px-6">
-        <div className="flex h-[4.25rem] items-center justify-between gap-4">
-          <Link
-            to="/"
-            className="group inline-flex shrink-0 items-center gap-2.5 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-            aria-label="BimbelKu - halaman utama"
-          >
-            <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 text-white shadow-sm transition-transform duration-300 group-hover:-rotate-2 group-hover:scale-105">
-              <BookOpenCheck className="h-5 w-5" aria-hidden="true" />
-            </span>
-            <span className="text-lg font-black tracking-tight text-slate-900 sm:text-xl">
-              Bimbel<span className="text-primary">Ku</span>
-            </span>
+    <header ref={headerRef} className="sticky top-0 z-50 bg-white" onMouseLeave={() => setActiveMenu(null)}>
+      {showInformation && <div className="border-b border-orange-100 bg-[#FFF1E6]"><div className="mx-auto flex min-h-9 max-w-[1200px] items-center justify-center px-5 py-2 text-center text-xs font-bold text-orange-950 sm:justify-between sm:px-8"><span>{settings.information_bar_text}</span>{settings.whatsapp_hours && <span className="hidden text-orange-800 sm:inline">WhatsApp · {settings.whatsapp_hours}</span>}</div></div>}
+
+      <nav aria-label="Navigasi utama" className={`border-b bg-white transition ${scrolled || activeMenu || searchOpen ? "border-stone-200 shadow-sm" : "border-stone-100"}`}>
+        <div className="mx-auto flex min-h-[4.75rem] max-w-[1200px] items-center justify-between gap-4 px-5 sm:px-8">
+          <Link to="/" onClick={closeMenus} className="inline-flex shrink-0 items-center gap-2.5 rounded-lg" aria-label={`${settings.brand_name}, halaman utama`}>
+            {logo ? <img src={logo} alt="" loading="eager" decoding="async" className="h-10 w-auto max-w-[10rem] object-contain" /> : <span className="grid h-10 w-10 place-items-center rounded-xl bg-orange-100 text-orange-700"><BookOpenCheck size={22} aria-hidden="true" /></span>}
+            {!logo && <span className="text-xl font-extrabold tracking-tight text-[#14213D]">{settings.brand_name}</span>}
           </Link>
 
-          <div className="hidden items-center gap-1 rounded-2xl border border-slate-200/80 bg-slate-50/70 p-1 md:flex">
-            {navLinks.map((link) => {
-              const className = `rounded-xl px-4 py-2 text-sm font-bold transition-colors ${
-                isNavActive(link.href)
-                  ? "bg-white text-primary shadow-sm"
-                  : "text-slate-600 hover:bg-white/80 hover:text-slate-950"
-              }`;
-              return link.studentOnly ? (
-                <StudentPackageLink key={link.href} to={link.href} className={className}>
-                  {link.label}
-                </StudentPackageLink>
-              ) : (
-                <Link key={link.href} to={link.href} className={className}>
-                  {link.label}
-                </Link>
-              );
-            })}
+          <div className="hidden items-center xl:flex">
+            <NavButton label="Program" menu="program" active={activeMenu === "program"} onToggle={toggleMenu} />
+            <NavButton label="Cara Belajar" menu="services" active={activeMenu === "services"} onToggle={toggleMenu} />
+            <NavButton label="Panduan" menu="guides" active={activeMenu === "guides"} onToggle={toggleMenu} />
+            <NavButton label="Tentang" menu="about" active={activeMenu === "about"} onToggle={toggleMenu} />
           </div>
 
-          <div className="hidden items-center gap-2 md:flex">
-            {user ? (
-              <>
-                <div className="mr-1 flex items-center gap-2 rounded-xl px-2 py-1.5">
-                  <div className="grid h-8 w-8 place-items-center rounded-full border border-orange-200 bg-orange-50 text-xs font-black text-orange-700">
-                    {(user.name || "U").charAt(0).toUpperCase()}
-                  </div>
-                  <div className="max-w-28 leading-none">
-                    <span className="block truncate text-xs font-black text-slate-900">{(user.name || "Pengguna").split(" ")[0]}</span>
-                    <span className="mt-1 block text-[10px] font-semibold capitalize text-slate-500">{user.role}</span>
-                  </div>
-                </div>
-                <Link to={getDashboardLink()}>
-                  <Button size="sm" className="rounded-xl font-bold">
-                    <LayoutDashboard className="mr-2 h-4 w-4" /> Dashboard
-                  </Button>
-                </Link>
-
-              </>
-            ) : (
-              <>
-                <Link to="/login">
-                  <Button variant="ghost" size="sm" className="rounded-xl font-bold">Masuk</Button>
-                </Link>
-                <Link to="/register">
-                  <Button size="sm" className="rounded-xl px-4 font-black shadow-sm">Daftar Gratis</Button>
-                </Link>
-              </>
-            )}
+          <div className="hidden items-center gap-2 xl:flex">
+            <button type="button" onClick={() => { setActiveMenu(null); setSearchOpen((value) => !value); }} aria-expanded={searchOpen} aria-label="Cari program" className="grid h-11 w-11 place-items-center rounded-xl border border-stone-200 text-[#14213D] transition hover:border-orange-300 hover:bg-orange-50"><Search size={19} /></button>
+            {whatsappCta()}
+            {user ? <Link to={dashboardLink} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-stone-200 px-4 text-sm font-extrabold text-[#14213D] hover:bg-stone-50"><LayoutDashboard size={17} />Dashboard</Link> : <Link to="/login" className="inline-flex min-h-11 items-center px-3 text-sm font-extrabold text-slate-700 hover:text-orange-700">Masuk</Link>}
+            {primaryCta("inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#C2410C] px-4 py-2.5 text-sm font-extrabold text-white transition hover:bg-[#9A3412]")}
           </div>
 
-          <button
-            type="button"
-            className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:bg-slate-50 md:hidden"
-            onClick={() => setIsOpen((value) => !value)}
-            aria-label={isOpen ? "Tutup menu" : "Buka menu"}
-            aria-expanded={isOpen}
-          >
-            {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
-        </div>
-      </div>
-
-      {isOpen && (
-        <div className="border-t border-slate-100 bg-white/98 shadow-xl backdrop-blur-xl md:hidden">
-          <div className="container mx-auto max-w-7xl px-4 py-4 sm:px-6">
-            <div className="flex flex-col gap-1">
-              {navLinks.map((link) => {
-                const className = `rounded-xl px-3 py-3 text-sm font-bold ${
-                  isNavActive(link.href) ? "bg-orange-50 text-primary" : "text-slate-700 hover:bg-slate-50"
-                }`;
-                return link.studentOnly ? (
-                  <StudentPackageLink key={link.href} to={link.href} className={className} onNavigate={() => setIsOpen(false)}>
-                    {link.label}
-                  </StudentPackageLink>
-                ) : (
-                  <Link key={link.href} to={link.href} className={className} onClick={() => setIsOpen(false)}>
-                    {link.label}
-                  </Link>
-                );
-              })}
-
-              <div className="mt-2 border-t border-slate-100 pt-3">
-                {user ? (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-3 rounded-2xl bg-slate-50 p-3">
-                      <div className="grid h-9 w-9 place-items-center rounded-full bg-orange-100 text-sm font-black text-orange-700">
-                        {(user.name || "U").charAt(0).toUpperCase()}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-black text-slate-900">{user.name || "Pengguna"}</p>
-                        <p className="mt-0.5 text-xs font-semibold capitalize text-slate-500">{user.role}</p>
-                      </div>
-                    </div>
-                    <Link to={getDashboardLink()} onClick={() => setIsOpen(false)}>
-                      <Button className="w-full justify-start rounded-xl font-bold">
-                        <LayoutDashboard className="mr-2 h-4 w-4" /> Dashboard Saya
-                      </Button>
-                    </Link>
-
-                  </div>
-                ) : (
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    <Link to="/login" onClick={() => setIsOpen(false)}>
-                      <Button variant="outline" className="w-full justify-center rounded-xl font-bold">
-                        <User className="mr-2 h-4 w-4" /> Masuk
-                      </Button>
-                    </Link>
-                    <Link to="/register" onClick={() => setIsOpen(false)}>
-                      <Button className="w-full rounded-xl font-black">Daftar Gratis</Button>
-                    </Link>
-                  </div>
-                )}
-              </div>
-            </div>
+          <div className="flex shrink-0 items-center gap-2 xl:hidden">
+            {whatsappCta(true)}
+            {primaryCta("hidden min-h-10 items-center justify-center gap-1.5 rounded-xl bg-[#C2410C] px-3 text-xs font-extrabold text-white sm:inline-flex")}
+            <button type="button" onClick={() => setMobileOpen((value) => !value)} aria-expanded={mobileOpen} aria-controls="mobile-navigation" aria-label={mobileOpen ? "Tutup menu" : "Buka menu"} className="grid h-10 w-10 place-items-center rounded-xl border border-stone-200 bg-white text-[#14213D]">{mobileOpen ? <X size={20} /> : <Menu size={20} />}</button>
           </div>
         </div>
-      )}
-    </nav>
+      </nav>
+
+      {searchOpen && <div className="absolute inset-x-0 top-full border-b border-stone-200 bg-white shadow-xl"><form onSubmit={submitSearch} className="mx-auto flex max-w-[900px] items-center gap-3 px-5 py-5 sm:px-8"><Search className="shrink-0 text-orange-600" /><label className="sr-only" htmlFor="header-program-search">Cari program</label><input id="header-program-search" autoFocus value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Cari Matematika, Bahasa Inggris, Fisika..." className="h-12 min-w-0 flex-1 rounded-xl border border-stone-300 px-4 text-sm font-semibold outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100" /><button type="submit" className="min-h-12 rounded-xl bg-[#14213D] px-5 text-sm font-extrabold text-white">Cari</button><button type="button" onClick={() => setSearchOpen(false)} aria-label="Tutup pencarian" className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-stone-100 text-slate-600"><X size={18} /></button></form></div>}
+
+      {activeMenu === "program" && <ProgramMenu subjects={subjects} preview={catalogPreview} popular={popular} levelCounts={levelCounts} close={closeMenus} />}
+      {activeMenu === "services" && <ServicesMenu close={closeMenus} />}
+      {activeMenu === "guides" && <GuidesMenu close={closeMenus} />}
+      {activeMenu === "about" && <AboutMenu consultationUrl={consultationUrl} close={closeMenus} />}
+
+      {mobileOpen && <MobileNavigation user={user} dashboardLink={dashboardLink} consultationUrl={consultationUrl} close={closeMenus} />}
+    </header>
   );
-};
+}
 
-export default Navbar;
+function NavButton({ label, menu, active, onToggle }: { label: string; menu: MenuKey; active: boolean; onToggle: (menu: MenuKey) => void }) {
+  return <button type="button" onMouseEnter={() => onToggle(menu)} onClick={() => onToggle(menu)} aria-expanded={active} className={`inline-flex min-h-11 items-center gap-1 rounded-xl px-3.5 text-sm font-extrabold transition ${active ? "bg-[#14213D] text-white" : "text-slate-600 hover:bg-stone-50 hover:text-[#14213D]"}`}>{label}<ChevronDown size={14} className={`transition-transform ${active ? "rotate-180" : ""}`} /></button>;
+}
+
+function ProgramMenu({ preview, popular, levelCounts, close }: { subjects: CatalogSubject[]; preview: CatalogSubject[]; popular: CatalogSubject[]; levelCounts: Record<string, number>; close: () => void }) {
+  return <div className="absolute inset-x-0 top-full border-b border-stone-200 bg-white shadow-[0_28px_70px_-32px_rgba(20,33,61,.4)]"><div className="mx-auto grid max-w-[1200px] grid-cols-[220px_1fr_250px] gap-0 px-8 py-6">
+    <aside className="rounded-3xl bg-[#14213D] p-5 text-white"><p className="text-[11px] font-extrabold uppercase tracking-[.16em] text-orange-300">Pilih jenjang</p><div className="mt-4 space-y-2">{["SD", "SMP", "SMA"].map((level) => <Link key={level} to={`/program?level=${level}`} onClick={close} className="flex items-center justify-between rounded-xl px-3 py-3 font-extrabold transition hover:bg-white/10"><span>{level}</span><span className="rounded-full bg-white/10 px-2 py-1 text-[10px] text-indigo-100">{levelCounts[level] || 0} program</span></Link>)}</div><Link to="/program" onClick={close} className="mt-5 inline-flex items-center gap-2 text-sm font-extrabold text-orange-300">Semua jenjang <ArrowRight size={15} /></Link></aside>
+    <section className="px-7"><div className="flex items-end justify-between"><div><p className="text-[11px] font-extrabold uppercase tracking-[.16em] text-orange-700">Katalog aktif</p><h2 className="mt-2 text-xl font-extrabold text-[#14213D]">Temukan program dari kebutuhanmu</h2></div><span className="text-xs font-bold text-slate-400">{preview.length ? "Data sistem" : "Memuat..."}</span></div><div className="mt-5 grid grid-cols-2 gap-2">{preview.map((subject) => <Link key={subject.id} to={programPath(subject, supportedLevels(subject)[0])} onClick={close} className="group flex min-h-14 items-center gap-3 rounded-2xl border border-stone-100 px-3 py-2.5 transition hover:border-orange-200 hover:bg-orange-50"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-stone-100 text-[#147D7E] group-hover:bg-white"><BookOpenCheck size={17} /></span><span className="min-w-0"><span className="block truncate text-sm font-extrabold text-[#14213D]">{subject.name}</span><span className="mt-0.5 block truncate text-[11px] font-semibold text-slate-400">{supportedLevels(subject).join(" · ")}</span></span></Link>)}</div></section>
+    <aside className="border-l border-stone-200 pl-6"><p className="text-[11px] font-extrabold uppercase tracking-[.16em] text-teal-700">Paling dicari</p><div className="mt-4 space-y-1">{popular.map((subject) => <Link key={subject.id} to={programPath(subject, supportedLevels(subject)[0])} onClick={close} className="flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-bold text-slate-600 transition hover:bg-teal-50 hover:text-teal-900"><span className="truncate">{subject.name}</span><ArrowRight size={14} /></Link>)}</div><Link to="/program?category=favorite" onClick={close} className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-teal-200 bg-teal-50 text-sm font-extrabold text-teal-900">Lihat program populer</Link></aside>
+    <div className="col-span-3 mt-6 flex items-center justify-between gap-4 border-t border-stone-200 pt-4"><p className="text-xs font-semibold text-slate-500">Semua program berasal dari katalog yang aktif di sistem BimbelKu.</p><div className="flex gap-2"><Link to="/program" onClick={close} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-[#14213D] px-5 text-sm font-extrabold text-white">Lihat semua program <ArrowRight size={16} /></Link><Link to="/program?q=" onClick={close} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-stone-200 px-5 text-sm font-extrabold text-[#14213D]"><Search size={16} />Cari program</Link></div></div>
+  </div></div>;
+}
+
+function ServicesMenu({ close }: { close: () => void }) {
+  const cards = [
+    { icon: Users, title: "Privat tatap muka", text: "Belajar langsung dengan jadwal dan lokasi yang dipilih.", to: "/#paket" },
+    { icon: MonitorPlay, title: "Privat online", text: "Sesi satu tutor dan satu siswa dari lokasi masing-masing.", to: "/#paket" },
+    { icon: Sparkles, title: "Susun paket", text: "Pilih mapel, jumlah sesi, durasi, serta jadwal belajar.", to: "/student/packages/new", package: true },
+    { icon: CalendarCheck, title: "Cara kerja", text: "Lihat proses dari kebutuhan sampai kelas pertama.", to: "/#cara-kerja" },
+  ];
+  return <CompactPanel width="max-w-[980px]"><div className="grid grid-cols-[1fr_240px] gap-7"><section><p className="text-[11px] font-extrabold uppercase tracking-[.16em] text-orange-700">Cara belajar</p><div className="mt-4 grid grid-cols-2 gap-3">{cards.map((item) => { const Icon = item.icon; const className = "group rounded-2xl border border-stone-200 p-4 transition hover:border-orange-300 hover:bg-orange-50"; const body = <><span className="grid h-10 w-10 place-items-center rounded-xl bg-[#14213D] text-white"><Icon size={18} /></span><span className="mt-4 block font-extrabold text-[#14213D]">{item.title}</span><span className="mt-1 block text-xs leading-5 text-slate-500">{item.text}</span></>; return item.package ? <StudentPackageLink key={item.title} to={item.to} onNavigate={close} className={className}>{body}</StudentPackageLink> : <Link key={item.title} to={item.to} onClick={close} className={className}>{body}</Link>; })}</div></section><aside className="rounded-3xl bg-orange-50 p-5"><p className="text-sm font-extrabold text-orange-900">Alur yang transparan</p><ol className="mt-4 space-y-3 text-xs font-bold leading-5 text-slate-600">{["Tentukan kebutuhan", "Pilih paket dan jadwal", "Selesaikan pembayaran", "Sistem mencari tutor"].map((item, index) => <li key={item} className="flex gap-3"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-orange-600 text-[10px] text-white">{index + 1}</span>{item}</li>)}</ol><Link to="/#cara-kerja" onClick={close} className="mt-5 inline-flex items-center gap-2 text-sm font-extrabold text-orange-800">Pelajari prosesnya <ArrowRight size={15} /></Link></aside></div></CompactPanel>;
+}
+
+function GuidesMenu({ close }: { close: () => void }) {
+  const links = [
+    { icon: CircleHelp, title: "Pertanyaan sebelum memesan", text: "Pembayaran, matching, jadwal, dan pilihan jika tutor belum ditemukan.", to: "/#faq" },
+    { icon: ShieldCheck, title: "Bukti sistem", text: "Lihat bagaimana verifikasi, kelas, dan progress bekerja.", to: "/#bukti-sistem" },
+    { icon: WalletCards, title: "Paket dan harga", text: "Bandingkan pilihan sesi sebelum menyusun paket.", to: "/#paket" },
+    { icon: BookOpenCheck, title: "Katalog program", text: "Cari mata pelajaran berdasarkan jenjang dan kebutuhan.", to: "/program" },
+  ];
+  return <CompactPanel width="max-w-[900px]"><div className="flex items-end justify-between"><div><p className="text-[11px] font-extrabold uppercase tracking-[.16em] text-teal-700">Panduan pengunjung</p><h2 className="mt-2 text-xl font-extrabold text-[#14213D]">Temukan jawaban sebelum membuat keputusan</h2></div><Link to="/#faq" onClick={close} className="text-sm font-extrabold text-orange-700">Buka FAQ</Link></div><div className="mt-5 grid grid-cols-2 gap-x-6 gap-y-2">{links.map((item) => { const Icon = item.icon; return <Link key={item.title} to={item.to} onClick={close} className="flex gap-3 rounded-2xl p-3 transition hover:bg-stone-50"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-teal-50 text-teal-800"><Icon size={18} /></span><span><span className="block text-sm font-extrabold text-[#14213D]">{item.title}</span><span className="mt-1 block text-xs leading-5 text-slate-500">{item.text}</span></span></Link>; })}</div><div className="mt-5 flex gap-5 border-t border-stone-200 pt-4 text-xs font-bold text-slate-500"><Link to="/privacy" onClick={close} className="hover:text-orange-700">Kebijakan privasi</Link><Link to="/terms" onClick={close} className="hover:text-orange-700">Syarat dan ketentuan</Link></div></CompactPanel>;
+}
+
+function AboutMenu({ consultationUrl, close }: { consultationUrl: string | null; close: () => void }) {
+  const links = [
+    { icon: ShieldCheck, title: "Tentang BimbelKu", text: "Cara kerja, komitmen, dan alasan sistem ini dibangun.", to: "/why-us" },
+    { icon: GraduationCap, title: "Tutor BimbelKu", text: "Profil tutor yang telah diverifikasi dan berizin tampil.", to: "/#tutor" },
+    { icon: Users, title: "Cerita siswa", text: "Testimoni publik yang telah memperoleh persetujuan.", to: "/testimonials" },
+    { icon: MapPin, title: "Area layanan", text: "Cakupan online dan ketentuan belajar tatap muka.", to: "/#area" },
+  ];
+  return <CompactPanel width="max-w-[920px]"><div className="grid grid-cols-[1fr_250px] gap-7"><section><p className="text-[11px] font-extrabold uppercase tracking-[.16em] text-orange-700">Mengenal BimbelKu</p><div className="mt-4 grid grid-cols-2 gap-2">{links.map((item) => { const Icon = item.icon; return <Link key={item.title} to={item.to} onClick={close} className="flex gap-3 rounded-2xl p-3 transition hover:bg-orange-50"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-orange-100 text-orange-800"><Icon size={18} /></span><span><span className="block text-sm font-extrabold text-[#14213D]">{item.title}</span><span className="mt-1 block text-xs leading-5 text-slate-500">{item.text}</span></span></Link>; })}</div></section><aside className="rounded-3xl bg-[#14213D] p-5 text-white"><p className="text-sm font-extrabold">Hubungi dan bergabung</p><p className="mt-2 text-xs leading-5 text-indigo-100">Konsultasikan kebutuhan belajar atau pelajari proses seleksi tutor.</p>{consultationUrl && <a href={consultationUrl} target="_blank" rel="noreferrer" className="mt-5 flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#15803D] px-4 text-sm font-extrabold"><MessageCircle size={16} />Konsultasi WhatsApp</a>}<Link to="/register?role=teacher" onClick={close} className="mt-2 flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/20 px-4 text-sm font-extrabold"><BriefcaseBusiness size={16} />Daftar tutor</Link><Link to="/#footer" onClick={close} className="mt-4 inline-flex items-center gap-2 text-xs font-extrabold text-orange-300">Kontak dan alamat <ArrowRight size={14} /></Link></aside></div></CompactPanel>;
+}
+
+function CompactPanel({ width, children }: { width: string; children: ReactNode }) {
+  return <div className="absolute inset-x-0 top-full border-b border-stone-200 bg-white/95 shadow-[0_28px_70px_-32px_rgba(20,33,61,.4)] backdrop-blur-xl"><div className={`mx-auto ${width} px-8 py-6`}>{children}</div></div>;
+}
+
+function MobileNavigation({ user, dashboardLink, consultationUrl, close }: { user: StoredUser | null; dashboardLink: string; consultationUrl: string | null; close: () => void }) {
+  return <div id="mobile-navigation" className="max-h-[calc(100dvh-7rem)] overflow-y-auto border-b border-stone-200 bg-white px-5 py-4 shadow-xl xl:hidden"><div className="mx-auto max-w-[1200px] space-y-2">
+    <MobileGroup label="Program"><MobileLink to="/program?level=SD" close={close}>Program SD</MobileLink><MobileLink to="/program?level=SMP" close={close}>Program SMP</MobileLink><MobileLink to="/program?level=SMA" close={close}>Program SMA</MobileLink><MobileLink to="/program" close={close}>Semua program</MobileLink></MobileGroup>
+    <MobileGroup label="Cara Belajar"><MobileLink to="/#cara-kerja" close={close}>Cara kerja</MobileLink><MobileLink to="/#paket" close={close}>Paket dan harga</MobileLink><MobileLink to="/#progress" close={close}>Progress belajar</MobileLink></MobileGroup>
+    <MobileGroup label="Panduan"><MobileLink to="/#faq" close={close}>FAQ sebelum memesan</MobileLink><MobileLink to="/#bukti-sistem" close={close}>Bukti sistem</MobileLink><MobileLink to="/privacy" close={close}>Privasi</MobileLink><MobileLink to="/terms" close={close}>Syarat layanan</MobileLink></MobileGroup>
+    <MobileGroup label="Tentang"><MobileLink to="/why-us" close={close}>Tentang BimbelKu</MobileLink><MobileLink to="/#tutor" close={close}>Tutor</MobileLink><MobileLink to="/testimonials" close={close}>Cerita siswa</MobileLink><MobileLink to="/#area" close={close}>Area layanan</MobileLink><MobileLink to="/register?role=teacher" close={close}>Daftar tutor</MobileLink></MobileGroup>
+    <form onSubmit={(event) => { event.preventDefault(); const input = new FormData(event.currentTarget).get("q")?.toString().trim(); window.location.assign(input ? `/program?q=${encodeURIComponent(input)}` : "/program"); }} className="flex gap-2 border-t border-stone-100 pt-4"><input name="q" placeholder="Cari program" className="h-11 min-w-0 flex-1 rounded-xl border border-stone-300 px-3 text-sm font-semibold" /><button className="grid h-11 w-11 place-items-center rounded-xl bg-[#14213D] text-white" aria-label="Cari"><Search size={17} /></button></form>
+    {consultationUrl && <a href={consultationUrl} target="_blank" rel="noreferrer" className="flex min-h-11 items-center justify-center gap-2 rounded-xl bg-green-50 text-sm font-extrabold text-green-800"><MessageCircle size={17} />WhatsApp</a>}
+    <div className="border-t border-stone-100 pt-3">{user ? <Link to={dashboardLink} onClick={close} className="flex items-center gap-2 rounded-xl px-3 py-3 text-sm font-extrabold text-[#14213D]"><LayoutDashboard size={18} />Dashboard {user.name ? `· ${user.name.split(" ")[0]}` : ""}</Link> : <Link to="/login" onClick={close} className="flex items-center gap-2 rounded-xl px-3 py-3 text-sm font-extrabold text-[#14213D]"><User size={18} />Masuk ke akun</Link>}</div>
+  </div></div>;
+}
+
+function MobileGroup({ label, children }: { label: string; children: ReactNode }) {
+  return <details className="rounded-2xl border border-stone-200"><summary className="flex min-h-12 cursor-pointer list-none items-center justify-between px-4 text-sm font-extrabold text-[#14213D]">{label}<ChevronDown size={16} /></summary><div className="border-t border-stone-100 p-2">{children}</div></details>;
+}
+
+function MobileLink({ to, close, children }: { to: string; close: () => void; children: ReactNode }) {
+  return <Link to={to} onClick={close} className="block rounded-xl px-3 py-2.5 text-sm font-bold text-slate-600 hover:bg-orange-50">{children}</Link>;
+}

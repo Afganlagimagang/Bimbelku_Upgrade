@@ -8,18 +8,12 @@ use App\Models\ClassroomMessage;
 use App\Models\Notification;
 use App\Models\Rating;
 use App\Models\ScheduleChangeResponse;
-use App\Models\Setting;
-use App\Models\TeacherAppeal;
 use App\Models\TeacherOffer;
 use App\Models\TeacherPayoutRequest;
-use App\Models\TeacherPointLedger;
 use App\Models\TeacherProfile;
 use App\Models\User;
-use App\Services\TeacherPointService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Validation\ValidationException;
 
 class TeacherOperationsController extends Controller
 {
@@ -79,7 +73,6 @@ class TeacherOperationsController extends Controller
         return response()->json([
             'teacher' => [
                 'name' => $request->user()->name,
-                'points' => (int) ($profile?->points ?? 0),
                 'is_accepting_requests' => (bool) ($profile?->is_accepting_requests ?? false),
                 'suspended_until' => $profile?->suspended_until,
             ],
@@ -91,10 +84,6 @@ class TeacherOperationsController extends Controller
                     ->where('is_read', false)
                     ->count(),
                 'schedule_responses' => $scheduleAnswers,
-                'pending_appeals' => TeacherAppeal::query()
-                    ->where('teacher_id', $teacherId)
-                    ->where('status', 'pending')
-                    ->count(),
             ],
             'classes' => [
                 'active' => $classes->whereIn('status', $activeStatuses)->count(),
@@ -127,49 +116,11 @@ class TeacherOperationsController extends Controller
     {
         $teacherId = (int) $request->user()->id;
         $profile = TeacherProfile::query()->where('user_id', $teacherId)->firstOrFail();
-        $appealDays = max(
-            1,
-            min(30, (int) (Setting::where('key', 'teacher_appeal_window_days')->value('value') ?? 7))
-        );
-        $entries = TeacherPointLedger::query()
-            ->where('teacher_id', $teacherId)
-            ->with(['appeal', 'booking.bookingRequest:id,subject_name'])
-            ->latest()
-            ->limit(100)
-            ->get()
-            ->map(function (TeacherPointLedger $entry) use ($appealDays) {
-                return [
-                    'id' => $entry->id,
-                    'booking_id' => $entry->booking_id,
-                    'subject' => $entry->booking?->bookingRequest?->subject_name,
-                    'change' => (int) $entry->change,
-                    'balance_after' => (int) $entry->balance_after,
-                    'reason' => $entry->reason,
-                    'notes' => $entry->notes,
-                    'created_at' => $entry->created_at,
-                    'can_appeal' => $entry->change < 0
-                        && !$entry->appeal
-                        && $entry->created_at->gte(now()->subDays($appealDays)),
-                    'appeal_deadline' => $entry->change < 0
-                        ? $entry->created_at->copy()->addDays($appealDays)
-                        : null,
-                    'appeal' => $entry->appeal ? [
-                        'id' => $entry->appeal->id,
-                        'status' => $entry->appeal->status,
-                        'reason' => $entry->appeal->reason,
-                        'review_notes' => $entry->appeal->review_notes,
-                        'created_at' => $entry->appeal->created_at,
-                        'evidence_url' => $entry->appeal->evidence_path
-                            ? "teacher-appeals/{$entry->appeal->id}/evidence"
-                            : null,
-                    ] : null,
-                ];
-            });
         $ratings = Rating::query()
             ->where('teacher_id', $teacherId)
             ->with(['student:id,name', 'booking.bookingRequest:id,subject_name'])
             ->latest()
-            ->limit(50)
+            ->limit(100)
             ->get()
             ->map(fn (Rating $rating) => [
                 'id' => $rating->id,
@@ -182,8 +133,6 @@ class TeacherOperationsController extends Controller
             ]);
 
         return response()->json([
-            'points' => (int) $profile->points,
-            'recommendation_status' => $this->recommendationStatus((int) $profile->points),
             'suspended_until' => $profile->suspended_until,
             'rating' => [
                 'average' => round((float) $ratings->avg('rating'), 1),
@@ -193,76 +142,8 @@ class TeacherOperationsController extends Controller
                 ),
             ],
             'ratings' => $ratings,
-            'point_history' => $entries,
-            'appeal_window_days' => $appealDays,
         ]);
     }
-
-    public function storeAppeal(Request $request, TeacherPointLedger $teacherPointLedger)
-    {
-        abort_unless((int) $teacherPointLedger->teacher_id === (int) $request->user()->id, 403);
-        $appealDays = max(
-            1,
-            min(30, (int) (Setting::where('key', 'teacher_appeal_window_days')->value('value') ?? 7))
-        );
-        abort_unless($teacherPointLedger->change < 0, 422, 'Riwayat ini bukan penalti yang dapat dibanding.');
-        abort_unless(
-            $teacherPointLedger->created_at->gte(now()->subDays($appealDays)),
-            422,
-            'Batas waktu pengajuan banding telah berakhir.'
-        );
-
-        $validated = $request->validate([
-            'reason' => ['required', 'string', 'min:30', 'max:3000'],
-            'evidence' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
-        ]);
-        $path = $request->hasFile('evidence')
-            ? $request->file('evidence')->store('teacher_appeals', 'local')
-            : null;
-
-        try {
-            $appeal = DB::transaction(function () use ($request, $teacherPointLedger, $validated, $path) {
-                $entry = TeacherPointLedger::query()->lockForUpdate()->findOrFail($teacherPointLedger->id);
-                if ($entry->appeal()->exists()) {
-                    throw ValidationException::withMessages(['appeal' => 'Banding untuk penalti ini sudah diajukan.']);
-                }
-                $record = TeacherAppeal::create([
-                    'teacher_id' => $request->user()->id,
-                    'teacher_point_ledger_id' => $entry->id,
-                    'reason' => trim($validated['reason']),
-                    'evidence_path' => $path,
-                    'evidence_name' => $request->file('evidence')?->getClientOriginalName(),
-                    'status' => 'pending',
-                ]);
-                User::query()
-                    ->where('role', 'admin')
-                    ->where('status', 'active')
-                    ->pluck('id')
-                    ->each(fn ($adminId) => Notification::updateOrCreate(
-                        ['unique_key' => "teacher-appeal:{$record->id}:{$adminId}"],
-                        [
-                            'user_id' => $adminId,
-                            'title' => 'Banding penalti tutor',
-                            'message' => "{$request->user()->name} mengajukan banding atas penalti {$entry->change} poin.",
-                            'type' => 'warning',
-                            'target_url' => '/admin/cases',
-                            'is_read' => false,
-                        ]
-                    ));
-
-                return $record;
-            }, 3);
-        } catch (\Throwable $exception) {
-            if ($path) Storage::disk('local')->delete($path);
-            throw $exception;
-        }
-
-        return response()->json([
-            'message' => 'Banding berhasil dikirim. Penalti tetap berlaku sampai admin memutuskan.',
-            'data' => $appeal,
-        ], 201);
-    }
-
     public function payoutRequests(Request $request)
     {
         return response()->json(TeacherPayoutRequest::query()
@@ -376,79 +257,6 @@ class TeacherOperationsController extends Controller
             'message' => 'Pencairan berhasil diajukan. Saldo dipindahkan ke status menunggu admin.',
             'data' => $record,
         ], 201);
-    }
-
-    public function resolveAppeal(
-        Request $request,
-        TeacherAppeal $teacherAppeal,
-        TeacherPointService $pointService
-    ) {
-        $validated = $request->validate([
-            'decision' => ['required', 'in:approved,rejected'],
-            'notes' => ['required', 'string', 'min:20', 'max:3000'],
-        ]);
-
-        DB::transaction(function () use ($request, $teacherAppeal, $validated, $pointService) {
-            $appeal = TeacherAppeal::query()
-                ->with('pointEntry.booking')
-                ->lockForUpdate()
-                ->findOrFail($teacherAppeal->id);
-            abort_unless($appeal->status === 'pending', 422, 'Banding ini sudah diputuskan.');
-            $entry = $appeal->pointEntry;
-            abort_unless($entry && $entry->change < 0, 422, 'Riwayat penalti tidak dapat ditemukan.');
-
-            $appeal->update([
-                'status' => $validated['decision'],
-                'reviewed_by' => $request->user()->id,
-                'review_notes' => $validated['notes'],
-                'reviewed_at' => now(),
-            ]);
-
-            if ($validated['decision'] === 'approved') {
-                $pointService->change(
-                    (int) $appeal->teacher_id,
-                    abs((int) $entry->change),
-                    'Banding penalti disetujui',
-                    $entry->booking,
-                    $request->user(),
-                    $validated['notes']
-                );
-                $teacher = User::query()->with('teacherProfile')->findOrFail($appeal->teacher_id);
-                if ($teacher->status === 'banned' && (int) $teacher->teacherProfile?->points > 0) {
-                    $teacher->update(['status' => $teacher->teacherProfile?->verified_at ? 'active' : 'pending']);
-                }
-            }
-
-            Notification::updateOrCreate(
-                ['unique_key' => "teacher-appeal-result:{$appeal->id}"],
-                [
-                    'user_id' => $appeal->teacher_id,
-                    'title' => $validated['decision'] === 'approved'
-                        ? 'Banding penalti disetujui'
-                        : 'Banding penalti ditolak',
-                    'message' => $validated['decision'] === 'approved'
-                        ? 'Poin dari penalti telah dipulihkan. Buka halaman performa untuk rinciannya.'
-                        : 'Admin mempertahankan penalti. Catatan keputusan tersedia pada halaman performa.',
-                    'type' => $validated['decision'] === 'approved' ? 'success' : 'warning',
-                    'target_url' => '/guru/performa',
-                    'is_read' => false,
-                ]
-            );
-        }, 3);
-
-        return response()->json(['message' => 'Keputusan banding tutor berhasil disimpan.']);
-    }
-
-    private function recommendationStatus(int $points): string
-    {
-        return match (true) {
-            $points >= 151 => 'Prioritas tinggi',
-            $points >= 121 => 'Normal',
-            $points >= 81 => 'Prioritas berkurang',
-            $points >= 41 => 'Terbatas',
-            $points >= 1 => 'Prioritas terendah',
-            default => 'Dinonaktifkan',
-        };
     }
 
     private function maskAccount(?string $value): string

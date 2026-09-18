@@ -8,8 +8,8 @@ import { Button } from "@/components/ui/button";
 import { getApiError, getCached } from "@/lib/http";
 
 type DashboardData = {
-  teacher: { name: string; points: number; is_accepting_requests: boolean; suspended_until?: string | null };
-  priorities: { pending_offers: number; unread_messages: number; unread_notifications: number; schedule_responses: number; pending_appeals: number };
+  teacher: { name: string; is_accepting_requests: boolean; suspended_until?: string | null };
+  priorities: { pending_offers: number; unread_messages: number; unread_notifications: number; schedule_responses: number };
   classes: { active: number; in_progress: number; awaiting_student: number; student_count: number; next?: { id: number; subject: string; chapter?: string | null; start_at: string; end_at: string; learning_mode: string; status: string } | null };
   earnings: { held: number; available: number; requested: number };
   rating: { average: number; count: number };
@@ -18,7 +18,6 @@ type DashboardData = {
 const normalizeDashboard = (raw: Partial<DashboardData> | null | undefined): DashboardData => ({
   teacher: {
     name: typeof raw?.teacher?.name === "string" && raw.teacher.name.trim() ? raw.teacher.name : "Tutor",
-    points: Number(raw?.teacher?.points) || 0,
     is_accepting_requests: Boolean(raw?.teacher?.is_accepting_requests),
     suspended_until: raw?.teacher?.suspended_until || null,
   },
@@ -27,7 +26,6 @@ const normalizeDashboard = (raw: Partial<DashboardData> | null | undefined): Das
     unread_messages: Number(raw?.priorities?.unread_messages) || 0,
     unread_notifications: Number(raw?.priorities?.unread_notifications) || 0,
     schedule_responses: Number(raw?.priorities?.schedule_responses) || 0,
-    pending_appeals: Number(raw?.priorities?.pending_appeals) || 0,
   },
   classes: {
     active: Number(raw?.classes?.active) || 0,
@@ -70,13 +68,12 @@ export default function TeacherDashboard() {
     { label: "Pesan belum dibaca", count: data.priorities.unread_messages, to: "/guru/pesan", icon: MessageSquare, color: "bg-indigo-50 text-indigo-700" },
     { label: "Persetujuan jadwal", count: data.priorities.schedule_responses, to: "/guru/kelas", icon: CalendarClock, color: "bg-violet-50 text-violet-700" },
     { label: "Notifikasi baru", count: data.priorities.unread_notifications, to: "/guru/notifikasi", icon: Bell, color: "bg-rose-50 text-rose-700" },
-    { label: "Banding diproses", count: data.priorities.pending_appeals, to: "/guru/performa", icon: ShieldCheck, color: "bg-emerald-50 text-emerald-700" },
   ].filter((item) => item.count > 0) : [];
 
   return <TeacherLayout title="Beranda Tutor"><div className="space-y-5 pb-10 sm:space-y-7">
     <section className="relative overflow-hidden rounded-[1.7rem] bg-gradient-to-br from-slate-950 via-indigo-950 to-violet-900 p-5 text-white shadow-xl sm:rounded-[2rem] sm:p-8">
       <div className="absolute -right-16 -top-16 h-56 w-56 rounded-full bg-indigo-400/20 blur-3xl" />
-      <div className="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between"><div><span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-indigo-100"><ShieldCheck size={13} />{data?.teacher.points || 0} poin · {data?.teacher.is_accepting_requests ? "menerima permintaan" : "permintaan dijeda"}</span><h1 className="mt-4 text-2xl font-black sm:text-4xl">Halo, {data?.teacher.name?.split(" ")[0] || "Tutor"}</h1><p className="mt-2 max-w-xl text-sm leading-6 text-indigo-100/75">Selesaikan pekerjaan mendesak lebih dahulu, lalu lanjutkan sesi mengajar dan pencairan.</p></div><Button onClick={() => void load(true)} variant="outline" className="h-11 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"><RefreshCw size={16} className="mr-2" />Muat ulang</Button></div>
+      <div className="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between"><div><span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-indigo-100"><ShieldCheck size={13} />{data?.rating.count ? data.rating.average.toFixed(1) + " ★ · " + data.rating.count + " ulasan" : "Belum ada rating"} · {data?.teacher.is_accepting_requests ? "menerima permintaan" : "permintaan dijeda"}</span><h1 className="mt-4 text-2xl font-black sm:text-4xl">Halo, {data?.teacher.name?.split(" ")[0] || "Tutor"}</h1><p className="mt-2 max-w-xl text-sm leading-6 text-indigo-100/75">Selesaikan pekerjaan mendesak lebih dahulu, lalu lanjutkan sesi mengajar dan pencairan.</p></div><Button onClick={() => void load(true)} variant="outline" className="h-11 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"><RefreshCw size={16} className="mr-2" />Muat ulang</Button></div>
     </section>
 
     <DynamicBannerCarousel audience="teacher" />

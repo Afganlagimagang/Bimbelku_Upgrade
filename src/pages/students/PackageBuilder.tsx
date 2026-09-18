@@ -42,7 +42,6 @@ type BookingRules = {
   maximum_search_hours: number;
   matching_cutoff_hours: number;
   teacher_response_minutes: number;
-  teacher_offer_wave_size: number;
 };
 type ScheduleRecommendation = {
   time: string;
@@ -287,6 +286,7 @@ export default function PackageBuilder() {
   const renewalId = Number(searchParams.get("renew") || 0) || undefined;
   const renewalSubjectId = Number(searchParams.get("subject") || 0) || undefined;
   const requestedSubjectName = (searchParams.get("subject_name") || "").trim();
+  const requestedEducationLevel = (searchParams.get("education_level") || "").trim();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [catalog, setCatalog] = useState<SubjectOption[]>([]);
   const [materialCatalogs, setMaterialCatalogs] = useState<Record<number, MaterialCatalog>>({});
@@ -299,7 +299,6 @@ export default function PackageBuilder() {
     maximum_search_hours: 24,
     matching_cutoff_hours: 2,
     teacher_response_minutes: 60,
-    teacher_offer_wave_size: 3,
   });
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
   const [planId, setPlanId] = useState<number | "">("");
@@ -525,6 +524,9 @@ export default function PackageBuilder() {
             setRenewalBaselines(nextBaselines);
           }
         } else {
+          if (["SD", "SMP", "SMA"].includes(requestedEducationLevel)) {
+            setLevel(requestedEducationLevel);
+          }
           const requestedSubject = activeCatalog.find(
             (item) => item.name.trim().toLocaleLowerCase("id-ID") === requestedSubjectName.toLocaleLowerCase("id-ID"),
           );
@@ -565,7 +567,7 @@ export default function PackageBuilder() {
     return () => {
       active = false;
     };
-  }, [draftStorageKey, renewalId, renewalSubjectId, requestedSubjectName, retryKey]);
+  }, [draftStorageKey, renewalId, renewalSubjectId, requestedEducationLevel, requestedSubjectName, retryKey]);
 
   const handleRetry = () => { setLoadError(null); setLoading(true); setRetryKey((k) => k + 1); };
   const openLocationSetup = () => {

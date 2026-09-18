@@ -27,7 +27,6 @@ class TeacherReplacementService
 
     public function __construct(
         private readonly TeacherMatchingService $matchingService,
-        private readonly TeacherPointService $teacherPoints,
     ) {}
 
     public function submit(User $student, LearningPackage $package, PackageSubject $subject, array $data): TeacherReplacementRequest
@@ -86,9 +85,9 @@ class TeacherReplacementService
         }, 3);
     }
 
-    public function approve(TeacherReplacementRequest $replacement, User $admin, string $notes, int $penaltyPoints = 0): array
+    public function approve(TeacherReplacementRequest $replacement, User $admin, string $notes): array
     {
-        return DB::transaction(function () use ($replacement, $admin, $notes, $penaltyPoints) {
+        return DB::transaction(function () use ($replacement, $admin, $notes) {
             $locked = TeacherReplacementRequest::query()->with(['package.student', 'subject'])
                 ->lockForUpdate()->findOrFail($replacement->id);
             abort_unless($locked->status === 'pending_review', 422, 'Pengajuan ini sudah diproses.');
@@ -109,16 +108,6 @@ class TeacherReplacementService
                 $row->update(['status' => 'matching']);
             }
 
-            if ($penaltyPoints > 0) {
-                $this->teacherPoints->change(
-                    (int) $locked->old_teacher_id,
-                    -$penaltyPoints,
-                    'Pelanggaran pada penggantian guru',
-                    $rows->first()->oldBooking,
-                    $admin,
-                    $notes,
-                );
-            }
 
             $first = $rows->sortBy(fn ($row) => $row->packageSession->scheduled_start_at)->first();
             $oldRequest = $first->oldBooking->bookingRequest;
@@ -335,7 +324,7 @@ class TeacherReplacementService
             $replacementRows->load(['oldBooking', 'packageSession']);
             $replacement->setRelation('sessions', $replacementRows);
             $profile = TeacherProfile::query()->where('user_id', $teacher->id)->lockForUpdate()->first();
-            abort_unless($teacher->status === 'active' && $profile?->verified_at && $profile?->is_accepting_requests && $profile->points > 0, 422, 'Profil tutor sedang tidak dapat menerima permintaan.');
+            abort_unless($teacher->status === 'active' && $profile?->verified_at && $profile?->is_accepting_requests, 422, 'Profil tutor sedang tidak dapat menerima permintaan.');
             $profile->setRelation('user', $teacher);
             abort_if($error = $this->matchingService->compatibilityError($profile, $request), 422, $error);
 

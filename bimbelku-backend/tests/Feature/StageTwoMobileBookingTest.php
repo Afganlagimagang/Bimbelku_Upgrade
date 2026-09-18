@@ -34,7 +34,6 @@ class StageTwoMobileBookingTest extends TestCase
         ]);
         $profile = TeacherProfile::create([
             'user_id' => $teacher->id,
-            'points' => 150,
             'is_accepting_requests' => true,
             'verified_at' => now()->subDay(),
         ]);
@@ -131,7 +130,6 @@ class StageTwoMobileBookingTest extends TestCase
         $teacher = User::factory()->create(['role' => 'teacher', 'status' => 'active']);
         $profile = TeacherProfile::create([
             'user_id' => $teacher->id,
-            'points' => 150,
             'is_accepting_requests' => true,
             'verified_at' => now()->subDay(),
         ]);

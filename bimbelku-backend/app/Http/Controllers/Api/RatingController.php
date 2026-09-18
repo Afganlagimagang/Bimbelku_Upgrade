@@ -6,15 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\Booking;
 use App\Models\BookingParticipant;
 use App\Models\Rating;
-use App\Services\TeacherPointService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class RatingController extends Controller
 {
-    public function __construct(private readonly TeacherPointService $pointService)
-    {
-    }
 
     public function store(Request $request)
     {
@@ -80,24 +76,6 @@ class RatingController extends Controller
                 'review' => $validated['review'] ?? null,
             ]);
 
-            $pointChange = match ($validated['rating']) {
-                5 => 2,
-                4 => 1,
-                2 => -5,
-                1 => -10,
-                default => 0,
-            };
-
-            if ($pointChange !== 0) {
-                $this->pointService->change(
-                    teacherId: $lockedBooking->teacher_id,
-                    change: $pointChange,
-                    reason: 'rating_'.$validated['rating'],
-                    booking: $lockedBooking,
-                    actor: $student,
-                    notes: 'Perubahan poin dari penilaian sesi #'.$record->id.'.',
-                );
-            }
 
             return $record;
         });

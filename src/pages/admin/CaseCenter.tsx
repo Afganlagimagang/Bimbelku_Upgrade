@@ -30,14 +30,13 @@ interface CaseData {
   session_reports: any[];
   disputes: any[];
   completion_reviews: any[];
-  teacher_appeals: any[];
   teacher_replacements: any[];
   features?: { teacher_replacement: boolean };
 }
 
-type CaseType = "report" | "dispute" | "completion" | "appeal" | "replacement";
+type CaseType = "report" | "dispute" | "completion" | "replacement";
 
-const emptyCases: CaseData = { session_reports: [], disputes: [], completion_reviews: [], teacher_appeals: [], teacher_replacements: [], features: { teacher_replacement: false } };
+const emptyCases: CaseData = { session_reports: [], disputes: [], completion_reviews: [], teacher_replacements: [], features: { teacher_replacement: false } };
 
 export default function CaseCenter() {
   const confirm = useConfirmDialog();
@@ -47,7 +46,6 @@ export default function CaseCenter() {
   const [selected, setSelected] = useState<{ type: CaseType; item: any } | null>(null);
   const [decision, setDecision] = useState("");
   const [notes, setNotes] = useState("");
-  const [penalty, setPenalty] = useState("10");
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
 
@@ -69,22 +67,19 @@ export default function CaseCenter() {
     report: data.session_reports.length,
     dispute: data.disputes.length,
     completion: data.completion_reviews.length,
-    appeal: data.teacher_appeals.length,
     replacement: data.teacher_replacements.length,
   };
   const items = useMemo(() => {
     if (tab === "report") return data.session_reports;
     if (tab === "dispute") return data.disputes;
     if (tab === "completion") return data.completion_reviews;
-    if (tab === "appeal") return data.teacher_appeals;
     return data.teacher_replacements;
   }, [data, tab]);
 
   const openCase = (type: CaseType, item: any) => {
     setSelected({ type, item });
-    setDecision(type === "report" ? "accepted" : type === "dispute" ? "teacher_paid" : type === "completion" ? "approve" : type === "replacement" ? "approve" : "approved");
+    setDecision(type === "report" ? "accepted" : type === "dispute" ? "teacher_paid" : type === "completion" ? "approve" : "approve");
     setNotes("");
-    setPenalty(type === "replacement" ? "0" : type === "report" && item.type === "teacher_emergency" ? "20" : "10");
   };
 
   const submit = async (event: FormEvent) => {
@@ -94,7 +89,7 @@ export default function CaseCenter() {
     const { type, item } = selected;
     const approved = await confirm({
       title: "Simpan keputusan kasus?",
-      description: "Keputusan ini dapat mengubah status sesi, membuat antrean refund, atau mengubah poin tutor.",
+      description: "Keputusan ini dapat mengubah status sesi, hak pembayaran tutor, atau membuat antrean refund.",
       confirmText: "Simpan keputusan",
       tone: "warning",
     });
@@ -104,17 +99,14 @@ export default function CaseCenter() {
     try {
       let response;
       if (type === "report") {
-        response = await http.post(`/admin/session-reports/${item.id}/resolve`, { decision, notes, penalty_points: Number(penalty) });
+        response = await http.post(`/admin/session-reports/${item.id}/resolve`, { decision, notes });
       } else if (type === "dispute") {
-        response = await http.post(`/admin/disputes/${item.id}/resolve`, { resolution: decision, notes, penalty_points: decision === "student_refund" ? Number(penalty) : undefined });
+        response = await http.post(`/admin/disputes/${item.id}/resolve`, { resolution: decision, notes });
       } else if (type === "completion") {
         response = await http.post(`/admin/bookings/${item.id}/completion-review`, { action: decision, notes });
-      } else if (type === "appeal") {
-        response = await http.post(`/admin/teacher-appeals/${item.id}/resolve`, { decision, notes });
       } else {
         response = await http.post("/admin/teacher-replacements/" + item.id + "/" + decision, {
           notes,
-          penalty_points: decision === "approve" && Number(penalty) > 0 ? Number(penalty) : undefined,
         });
       }
       notify.success(response.data.message);
@@ -144,7 +136,6 @@ export default function CaseCenter() {
           <TabCard active={tab === "report"} attention={scope === "active"} tone="urgent" onClick={() => setTab("report")} icon={AlertTriangle} label="Laporan sesi" count={counts.report} />
           <TabCard active={tab === "dispute"} attention={scope === "active"} tone="urgent" onClick={() => setTab("dispute")} icon={Gavel} label="Keberatan murid" count={counts.dispute} />
           <TabCard active={tab === "completion"} attention={scope === "active"} tone="warning" onClick={() => setTab("completion")} icon={FileSearch} label="Menunggu keputusan" count={counts.completion} />
-          <TabCard active={tab === "appeal"} attention={scope === "active"} tone="warning" onClick={() => setTab("appeal")} icon={Gavel} label="Banding tutor" count={counts.appeal} />
           {data.features?.teacher_replacement && <TabCard active={tab === "replacement"} attention={scope === "active"} tone="warning" onClick={() => setTab("replacement")} icon={RefreshCw} label="Penggantian Guru" count={counts.replacement} />}
         </div>
 
@@ -168,12 +159,7 @@ export default function CaseCenter() {
             <CaseDetail type={selected.type} item={selected.item} />
             {scope === "history" && <HistoryDecision item={selected.item} />}
             <fieldset disabled={scope === "history"} className={scope === "history" ? "hidden" : "space-y-5"}>
-            <div><Label>Keputusan</Label><Select value={decision} onValueChange={setDecision}><SelectTrigger className="mt-2 h-12 rounded-xl"><SelectValue /></SelectTrigger><SelectContent>{selected.type === "report" ? <><SelectItem value="accepted">Laporan valid</SelectItem><SelectItem value="rejected">Laporan ditolak</SelectItem></> : selected.type === "dispute" ? <><SelectItem value="teacher_paid">Sesi valid · hak tutor diproses</SelectItem><SelectItem value="student_refund">Refund penuh murid</SelectItem></> : selected.type === "appeal" ? <><SelectItem value="approved">Terima banding dan pulihkan poin</SelectItem><SelectItem value="rejected">Tolak banding</SelectItem></> : selected.type === "replacement" ? <><SelectItem value="approve">Setujui dan mulai pencarian</SelectItem><SelectItem value="reject">Tolak pengajuan</SelectItem></> : <><SelectItem value="approve">Sahkan sesi</SelectItem><SelectItem value="refund">Refund penuh</SelectItem></>}</SelectContent></Select></div>
-            {((selected.type === "report" && (
-              (selected.item.type === "teacher_absence" && decision === "accepted")
-              || (selected.item.type !== "teacher_absence" && decision === "rejected")
-            )) || (selected.type === "dispute" && decision === "student_refund")) && <div><Label>Pengurangan poin tutor</Label><Select value={penalty} onValueChange={setPenalty}><SelectTrigger className="mt-2 h-12 rounded-xl"><SelectValue /></SelectTrigger><SelectContent>{[5, 10, 15, 20, 30].map((value) => <SelectItem key={value} value={String(value)}>-{value} poin</SelectItem>)}</SelectContent></Select></div>}
-            {selected.type === "replacement" && decision === "approve" && <div><Label>Pelanggaran tutor</Label><Select value={penalty} onValueChange={setPenalty}><SelectTrigger className="mt-2 h-12 rounded-xl"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="0">Tidak ada pengurangan poin</SelectItem>{[5, 10, 15, 20, 30].map((value) => <SelectItem key={value} value={String(value)}>-{value} poin</SelectItem>)}</SelectContent></Select><p className="mt-2 text-xs leading-5 text-slate-500">Pilih pengurangan hanya jika pemeriksaan admin membuktikan pelanggaran tutor.</p></div>}
+            <div><Label>Keputusan</Label><Select value={decision} onValueChange={setDecision}><SelectTrigger className="mt-2 h-12 rounded-xl"><SelectValue /></SelectTrigger><SelectContent>{selected.type === "report" ? <><SelectItem value="accepted">Laporan valid</SelectItem><SelectItem value="rejected">Laporan ditolak</SelectItem></> : selected.type === "dispute" ? <><SelectItem value="teacher_paid">Sesi valid · hak tutor diproses</SelectItem><SelectItem value="student_refund">Refund penuh murid</SelectItem></> : selected.type === "replacement" ? <><SelectItem value="approve">Setujui dan mulai pencarian</SelectItem><SelectItem value="reject">Tolak pengajuan</SelectItem></> : <><SelectItem value="approve">Sahkan sesi</SelectItem><SelectItem value="refund">Refund penuh</SelectItem></>}</SelectContent></Select></div>
             <div><Label>Catatan keputusan</Label><Textarea required minLength={20} className="mt-2 min-h-32 rounded-xl" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Dasar pemeriksaan dan keputusan admin" /></div>
             <Button disabled={processing} className="h-12 w-full rounded-xl bg-indigo-600 font-black hover:bg-indigo-700">{processing && <Loader2 size={17} className="mr-2 animate-spin" />}Simpan keputusan</Button>
             </fieldset>
@@ -202,7 +188,7 @@ function CaseRow({ type, item, history, onOpen }: { type: CaseType; item: any; h
     const detail = `${item.subject?.subject_name || "Mapel"} · ${item.sessions?.length || 0} sesi tersisa · ${String(item.reason_code || "lainnya").replaceAll("_", " ")}`;
     return <div className="flex flex-col justify-between gap-4 p-5 hover:bg-slate-50 sm:flex-row sm:items-center"><div className="flex min-w-0 gap-4"><div className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl ${history ? "bg-slate-100 text-slate-500" : "bg-rose-50 text-rose-600"}`}><Icon /></div><div className="min-w-0"><p className="break-words font-black text-slate-900">{name || "Pengguna"} · Kasus #{item.id}</p><p className="mt-1 line-clamp-2 break-words text-sm leading-6 text-slate-500">{detail}</p></div></div><Button variant="outline" className="rounded-xl" onClick={onOpen}>{history ? "Lihat riwayat" : "Periksa"}</Button></div>;
   }
-  const detail = type === "report" ? (item.incident_type || (item.type === "student_absence" ? "Murid tidak hadir" : item.type === "teacher_absence" ? "Tutor tidak hadir" : "Keadaan darurat")) : type === "dispute" ? item.reason : type === "completion" ? "Masa keputusan murid berakhir" : `${item.point_entry?.change || 0} poin · ${item.reason}`;
+  const detail = type === "report" ? (item.incident_type || (item.type === "student_absence" ? "Murid tidak hadir" : item.type === "teacher_absence" ? "Tutor tidak hadir" : "Keadaan darurat")) : type === "dispute" ? item.reason : "Masa keputusan murid berakhir";
   return <div className="flex flex-col justify-between gap-4 p-5 hover:bg-slate-50 sm:flex-row sm:items-center"><div className="flex min-w-0 gap-4"><div className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl ${history ? "bg-slate-100 text-slate-500" : "bg-rose-50 text-rose-600"}`}><Icon /></div><div className="min-w-0"><p className="break-words font-black text-slate-900">{name || "Pengguna"} · Kasus #{item.id}</p><p className="mt-1 line-clamp-2 break-words text-sm leading-6 text-slate-500">{detail}</p></div></div><Button variant="outline" className="rounded-xl" onClick={onOpen}>{history ? "Lihat riwayat" : "Periksa"}</Button></div>;
 }
 
@@ -232,7 +218,6 @@ function CaseDetail({ type, item }: { type: CaseType; item: any }) {
     {type === "report" && <><p><strong>Kronologi:</strong> {item.chronology}</p>{item.incident_at && <p><strong>Waktu:</strong> {new Date(item.incident_at).toLocaleString("id-ID")}</p>}{item.incident_location && <p><strong>Lokasi:</strong> {item.incident_location}</p>}{item.impact && <p><strong>Dampak:</strong> {item.impact}</p>}</>}
     {type === "dispute" && <p><strong>Masalah yang dilaporkan murid:</strong> {item.reason}</p>}
     {type === "completion" && <p><strong>Catatan tutor:</strong> {item.completion_notes || "-"}</p>}
-    {type === "appeal" && <><p><strong>Penalti:</strong> {item.point_entry?.change || 0} poin · {item.point_entry?.reason || "-"}</p><p><strong>Catatan penalti:</strong> {item.point_entry?.notes || "-"}</p><p><strong>Alasan banding:</strong> {item.reason}</p></>}
     {type === "replacement" && <>
       <div className="grid gap-2 sm:grid-cols-2">
         <p><strong>Paket:</strong> {item.package?.package_code || "-"}</p>
@@ -266,7 +251,7 @@ function caseTitle(type: CaseType, item: any) {
   if (type === "dispute") return "Keberatan murid";
   if (type === "completion") return "Tinjau sesi";
   if (type === "replacement") return "Pengajuan ganti guru";
-  return "Banding penalti tutor";
+  return "Kasus operasional";
 }
 
 function caseSubtitle(item: any) {

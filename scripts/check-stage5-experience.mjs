@@ -153,8 +153,8 @@ expect(navigation.includes("Cari Les") && navigation.includes("Pesan") && naviga
 expect(adminPage.includes("Paket") && adminPage.includes("Promo") && adminPage.includes("Banner") && adminPage.includes("Tutorial"), "halaman admin wajib mengelola empat modul Tahap 5");
 expect(landing.includes("PackagePreviewSection"), "landing page wajib menampilkan pratinjau paket");
 expect(packagePreview.includes('getCached<PackagePlan[]>("/package-plans"'), "paket landing wajib memakai sumber paket aktif yang sama dengan pemesanan");
-expect(packagePreview.includes("Bulanan Intensif") && packagePreview.includes("session_count: 12"), "fallback landing wajib memuat empat paket pembelajaran");
-expect(packagePreview.includes("xl:grid-cols-4") && !packagePreview.includes("md:grid-cols-3"), "landing wajib menyediakan tata letak empat paket");
+expect(packagePreview.includes("Bulanan Intensif") && packagePreview.includes("session_count: 12"), "fallback landing wajib memuat paket pembelajaran lengkap");
+expect(packagePreview.includes('role="tablist"') && packagePreview.includes("lg:grid-cols-[.44fr_.56fr]"), "landing wajib menyediakan pemilih paket interaktif dan panel detail");
 expect(landing.includes("DashboardPreviewSection"), "landing page wajib menampilkan pratinjau dashboard");
 expect(!landing.includes("Kelas Grup"), "landing page tidak boleh mempromosikan kelas grup yang ditunda");
 

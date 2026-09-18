@@ -14,11 +14,9 @@ use App\Models\PackageSessionChapterLog;
 use App\Models\PromotionClaim;
 use App\Models\Refund;
 use App\Models\SessionReport;
-use App\Models\TeacherAppeal;
 use App\Models\TeacherReplacementRequest;
 use App\Services\CustomerWalletService;
 use App\Services\PartialPackageRefundService;
-use App\Services\TeacherPointService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -473,26 +471,6 @@ class SessionWorkflowController extends Controller
                 ->latest()
                 ->limit(200)
                 ->get(),
-            'teacher_appeals' => TeacherAppeal::query()
-                ->when($active, fn ($query) => $query->where('status', 'pending'))
-                ->when(! $active, fn ($query) => $query->where('status', '!=', 'pending'))
-                ->with(['teacher:id,name,email', 'pointEntry.booking.bookingRequest:id,subject_name'])
-                ->latest()
-                ->limit(200)
-                ->get()
-                ->map(fn (TeacherAppeal $appeal) => [
-                    'id' => $appeal->id,
-                    'teacher' => $appeal->teacher,
-                    'point_entry' => $appeal->pointEntry,
-                    'reason' => $appeal->reason,
-                    'evidence_url' => $appeal->evidence_path
-                        ? "teacher-appeals/{$appeal->id}/evidence"
-                        : null,
-                    'status' => $appeal->status,
-                    'review_notes' => $appeal->review_notes,
-                    'reviewed_at' => $appeal->reviewed_at,
-                    'created_at' => $appeal->created_at,
-                ]),
             'teacher_replacements' => config('features.teacher_replacement')
                 ? TeacherReplacementRequest::query()
                     ->when($active, fn ($query) => $query->whereIn('status', TeacherReplacementRequest::OPEN_STATUSES))
@@ -521,20 +499,18 @@ class SessionWorkflowController extends Controller
 
     public function resolveDispute(
         Request $request,
-        BookingDispute $bookingDispute,
-        TeacherPointService $pointService
+        BookingDispute $bookingDispute
     ) {
         $validated = $request->validate([
             'resolution' => ['required', Rule::in(['student_refund', 'teacher_paid'])],
             'notes' => ['required', 'string', 'min:20', 'max:2000'],
-            'penalty_points' => ['nullable', Rule::in([5, 10, 15, 20, 30])],
         ]);
 
         if ($bookingDispute->status !== 'pending') {
             return response()->json(['message' => 'Keberatan ini sudah diputuskan.'], 422);
         }
 
-        DB::transaction(function () use ($request, $bookingDispute, $validated, $pointService) {
+        DB::transaction(function () use ($request, $bookingDispute, $validated) {
             $lockedDispute = BookingDispute::query()
                 ->lockForUpdate()
                 ->findOrFail($bookingDispute->id);
@@ -562,14 +538,6 @@ class SessionWorkflowController extends Controller
                     'status' => 'refund_pending',
                     'payout_status' => 'locked',
                 ]);
-                $pointService->change(
-                    $booking->teacher_id,
-                    -((int) ($validated['penalty_points'] ?? 10)),
-                    'Keberatan murid disetujui',
-                    $booking,
-                    $request->user(),
-                    $validated['notes']
-                );
             } else {
                 if ($this->isPresenceFlow($booking)) {
                     $this->applyPendingPackageProgress($booking);
@@ -597,20 +565,18 @@ class SessionWorkflowController extends Controller
 
     public function resolveReport(
         Request $request,
-        SessionReport $sessionReport,
-        TeacherPointService $pointService
+        SessionReport $sessionReport
     ) {
         $validated = $request->validate([
             'decision' => ['required', Rule::in(['accepted', 'rejected'])],
             'notes' => ['required', 'string', 'min:20', 'max:2000'],
-            'penalty_points' => ['nullable', Rule::in([5, 10, 15, 20, 30])],
         ]);
 
         if ($sessionReport->status !== 'pending') {
             return response()->json(['message' => 'Laporan ini sudah diperiksa.'], 422);
         }
 
-        DB::transaction(function () use ($request, $sessionReport, $validated, $pointService) {
+        DB::transaction(function () use ($request, $sessionReport, $validated) {
             $lockedReport = SessionReport::query()
                 ->lockForUpdate()
                 ->findOrFail($sessionReport->id);
@@ -628,22 +594,12 @@ class SessionWorkflowController extends Controller
             ]);
 
             if ($lockedReport->type === 'teacher_emergency') {
-                if (! $accepted) {
-                    $pointService->change(
-                        $booking->teacher_id,
-                        -((int) ($validated['penalty_points'] ?? 20)),
-                        'Laporan keadaan darurat ditolak',
-                        $booking,
-                        $request->user(),
-                        $validated['notes']
-                    );
-                }
                 Notification::create([
                     'user_id' => $booking->teacher_id,
                     'title' => 'Laporan keadaan darurat diperiksa',
                     'message' => $accepted
                         ? 'Laporan keadaan darurat diterima. Refund peserta tetap diproses.'
-                        : 'Laporan keadaan darurat ditolak. Refund peserta tetap diproses dan sanksi poin diterapkan.',
+                        : 'Laporan keadaan darurat ditolak. Refund peserta tetap diproses.',
                     'type' => $accepted ? 'info' : 'warning',
                     'target_url' => '/guru/performa',
                 ]);
@@ -693,14 +649,6 @@ class SessionWorkflowController extends Controller
                         'status' => 'refund_pending',
                         'payout_status' => 'cancelled',
                     ]);
-                    $pointService->change(
-                        $booking->teacher_id,
-                        -((int) ($validated['penalty_points'] ?? 20)),
-                        'Tutor tidak hadir',
-                        $booking,
-                        $request->user(),
-                        $validated['notes']
-                    );
                 } else {
                     $restoredStatus = $this->restoredStatusAfterReport($booking);
                     $otherPendingReports = SessionReport::query()
@@ -761,14 +709,6 @@ class SessionWorkflowController extends Controller
                         ? now()
                         : null,
                 ]);
-                $pointService->change(
-                    $booking->teacher_id,
-                    -((int) ($validated['penalty_points'] ?? 5)),
-                    'Laporan ketidakhadiran tidak terbukti',
-                    $booking,
-                    $request->user(),
-                    $validated['notes']
-                );
             }
 
             Notification::create([
@@ -785,7 +725,7 @@ class SessionWorkflowController extends Controller
                 'title' => 'Laporan ketidakhadiran murid diputuskan',
                 'message' => $accepted
                     ? 'Laporan diterima dan pembayaran murid dihitung sebagai pendapatan sesi.'
-                    : 'Laporan ditolak dan sanksi poin diterapkan.',
+                    : 'Laporan ditolak.',
                 'type' => $accepted ? 'success' : 'warning',
                 'target_url' => '/guru/performa',
             ]);

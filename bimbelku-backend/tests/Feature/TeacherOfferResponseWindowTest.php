@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\BookingRequest;
+use App\Models\Classroom;
+use App\Models\Rating;
 use App\Models\Notification;
 use App\Models\Setting;
 use App\Models\TeacherAvailability;
@@ -31,10 +33,6 @@ class TeacherOfferResponseWindowTest extends TestCase
             ['key' => 'teacher_response_offline_minutes'],
             ['value' => '60']
         );
-        Setting::query()->updateOrCreate(
-            ['key' => 'teacher_offer_wave_size'],
-            ['value' => '3']
-        );
     }
 
     protected function tearDown(): void
@@ -59,7 +57,7 @@ class TeacherOfferResponseWindowTest extends TestCase
         );
     }
 
-    public function test_expired_wave_is_immediately_forwarded_to_the_next_teacher(): void
+    public function test_expired_offer_is_immediately_forwarded_to_the_next_ranked_teacher(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-08-10 08:00:00', 'Asia/Jakarta'));
         $student = User::factory()->create(['role' => 'student', 'status' => 'active']);
@@ -70,19 +68,19 @@ class TeacherOfferResponseWindowTest extends TestCase
         $matchingService = app(TeacherMatchingService::class);
 
         $matchingService->dispatchNextOffer($bookingRequest);
-        $this->assertCount(3, TeacherOffer::query()->where('status', 'pending')->get());
+        $this->assertCount(1, TeacherOffer::query()->where('status', 'pending')->get());
 
         Carbon::setTestNow(now()->addMinutes(61));
         $matchingService->dispatchNextOffer($bookingRequest);
 
         $offers = TeacherOffer::query()->orderBy('id')->get();
-        $this->assertCount(4, $offers);
-        $this->assertCount(3, $offers->where('status', 'expired'));
+        $this->assertCount(2, $offers);
+        $this->assertCount(1, $offers->where('status', 'expired'));
         $this->assertCount(1, $offers->where('status', 'pending'));
         $this->assertTrue($offers->last()->expires_at->equalTo(now()->addMinutes(60)));
     }
 
-    public function test_rejected_offer_is_immediately_replaced_while_other_offers_remain_active(): void
+    public function test_rejected_offer_is_immediately_replaced_by_next_ranked_teacher(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-08-10 08:00:00', 'Asia/Jakarta'));
         $student = User::factory()->create(['role' => 'student', 'status' => 'active']);
@@ -98,9 +96,51 @@ class TeacherOfferResponseWindowTest extends TestCase
 
         $matchingService->dispatchNextOffer($bookingRequest->fresh());
 
-        $this->assertSame(4, TeacherOffer::query()->count());
-        $this->assertSame(3, TeacherOffer::query()->where('status', 'pending')->count());
+        $this->assertSame(2, TeacherOffer::query()->count());
+        $this->assertSame(1, TeacherOffer::query()->where('status', 'pending')->count());
         $this->assertSame(1, TeacherOffer::query()->where('status', 'rejected')->count());
+    }
+
+    public function test_teacher_waiting_longer_is_prioritized_before_a_higher_rating(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-08-10 08:00:00', 'Asia/Jakarta'));
+        $student = User::factory()->create(['role' => 'student', 'status' => 'active']);
+        $lowerRated = $this->makeEligibleTeacher(online: true, offline: false);
+        $higherRated = $this->makeEligibleTeacher(online: true, offline: false);
+
+        foreach ([[$lowerRated, 2], [$higherRated, 5]] as [$teacher, $stars]) {
+            $reviewer = User::factory()->create(['role' => 'student', 'status' => 'active']);
+            $classroom = Classroom::create([
+                'user_id' => $teacher->id,
+                'title' => 'Kelas rating '.$teacher->id,
+                'subject' => 'Matematika',
+                'type' => 'private',
+            ]);
+            Rating::create([
+                'classroom_id' => $classroom->id,
+                'student_id' => $reviewer->id,
+                'teacher_id' => $teacher->id,
+                'rating' => $stars,
+            ]);
+        }
+
+        $previousRequest = $this->makeRequest($student, 'online');
+        TeacherOffer::create([
+            'booking_request_id' => $previousRequest->id,
+            'teacher_id' => $higherRated->id,
+            'status' => 'rejected',
+            'offered_at' => now()->subDay(),
+            'expires_at' => now()->subDay()->addHour(),
+            'responded_at' => now()->subDay()->addMinutes(10),
+        ]);
+
+        $offer = app(TeacherMatchingService::class)->dispatchNextOffer(
+            $this->makeRequest($student, 'online')
+        );
+
+        $this->assertNotNull($offer);
+        $this->assertSame($lowerRated->id, $offer->teacher_id);
+        $this->assertSame(1, TeacherOffer::query()->where('status', 'pending')->count());
     }
 
     public function test_first_no_response_does_not_suspend_teacher(): void
@@ -209,7 +249,6 @@ class TeacherOfferResponseWindowTest extends TestCase
             'latitude' => -7.795580,
             'longitude' => 110.369490,
             'max_travel_km' => 12,
-            'points' => 150,
             'is_accepting_requests' => true,
             'verified_at' => now()->subDay(),
         ]);

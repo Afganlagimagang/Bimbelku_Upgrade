@@ -1172,7 +1172,7 @@ class CheapClassService
                 return $class->teacher;
             }
 
-            $candidate = $this->pickRandomEligibleTeacher($class, $class->teacher_id);
+            $candidate = $this->pickBestEligibleTeacher($class, $class->teacher_id);
             if ($candidate) {
                 $status = $class->status === 'waiting_teacher'
                     ? ($class->registration_deadline->isPast() ? 'registration_closed' : 'open')
@@ -1248,6 +1248,12 @@ class CheapClassService
                 ->where('is_active', true))
             ->with(['availabilities' => fn ($query) => $query->where('is_active', true)])
             ->with('teacherProfile')
+            ->withAvg('ratings as matching_rating_average', 'rating')
+            ->withCount('ratings as matching_rating_count')
+            ->withCount([
+                'teacherCheapClasses as matching_active_group_class_count' => fn ($classes) => $classes
+                    ->whereIn('status', ['open', 'registration_closed', 'awaiting_verification', 'confirmed']),
+            ])
             ->orderBy('id')
             ->get()
             ->filter(function (User $teacher) use ($class, $slots) {
@@ -1274,20 +1280,38 @@ class CheapClassService
                 }
                 return true;
             })
+            ->sort(function (User $a, User $b) {
+                $score = static function (User $teacher): int {
+                    $count = (int) ($teacher->matching_rating_count ?? 0);
+                    $average = (float) ($teacher->matching_rating_average ?? 0);
+
+                    return (int) round((($average * $count) + (4.0 * 5)) / ($count + 5) * 1000);
+                };
+                $activeA = (int) ($a->matching_active_group_class_count ?? 0);
+                $activeB = (int) ($b->matching_active_group_class_count ?? 0);
+                if ($activeA !== $activeB) {
+                    return $activeA <=> $activeB;
+                }
+
+                $assignmentA = (int) ($a->teacherProfile?->assignment_count ?? 0);
+                $assignmentB = (int) ($b->teacherProfile?->assignment_count ?? 0);
+                if ($assignmentA !== $assignmentB) {
+                    return $assignmentA <=> $assignmentB;
+                }
+
+                $ratingDifference = $score($b) <=> $score($a);
+
+                return $ratingDifference !== 0
+                    ? $ratingDifference
+                    : $a->id <=> $b->id;
+            })
             ->values();
     }
 
-    private function pickRandomEligibleTeacher(CheapClass $class, ?int $excludeTeacherId = null): ?User
+    private function pickBestEligibleTeacher(CheapClass $class, ?int $excludeTeacherId = null): ?User
     {
         $candidates = $this->eligibleTeachers($class, $excludeTeacherId);
-        if ($candidates->isEmpty()) {
-            return null;
-        }
-
-        // Setiap occurrence melakukan undian baru dari seluruh tutor yang valid.
-        // Tutor paket minggu sebelumnya dan jumlah paket yang pernah diterima
-        // tidak menjadi nilai warisan atau prioritas pada paket minggu berikutnya.
-        return $candidates->random();
+        return $candidates->first();
     }
 
     public function teacherCanTeach(?int $teacherId, CheapClass $class): bool

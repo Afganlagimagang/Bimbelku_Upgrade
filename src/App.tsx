@@ -5,6 +5,7 @@ import { BrowserRouter, Navigate, Routes, Route, useLocation } from "react-route
 import { ConfirmDialogProvider } from "./components/ConfirmDialogProvider";
 import SessionLifecycle from "./components/SessionLifecycle";
 import DeferredToaster from "./components/DeferredToaster";
+import { WebsiteContentProvider } from "./components/WebsiteContentProvider";
 import { scheduleNonCriticalTask } from "./lib/schedule";
 
 // =================================================================
@@ -37,6 +38,9 @@ const StudentPackageRoute = lazy(() => import("./components/StudentPackageRoute"
 // 1. Halaman Umum
 const NotFound = lazy(() => import("./pages/NotFound"));
 const WhyUs = routeLazy(exactPath("/why-us"), () => import("./pages/WhyUs"));
+const ProgramCatalog = routeLazy(exactPath("/program"), () => import("./pages/ProgramCatalog"));
+const Testimonials = routeLazy(exactPath("/testimonials"), () => import("./pages/Testimonials"));
+const ProgramDetail = routeLazy(pathPattern(/^\/program\/[^/]+$/), () => import("./pages/ProgramDetail"));
 const AccessDenied = routeLazy(exactPath("/access-denied"), () => import("./pages/AccessDenied"));
 
 // 2. Halaman Rules
@@ -48,6 +52,8 @@ const Register = routeLazy(exactPath("/register"), () => import("./pages/Registe
 const Login = routeLazy(exactPath("/login"), () => import("./pages/Login"));
 const ForgotPassword = routeLazy(exactPath("/forgot-password"), () => import("./pages/ForgotPassword"));
 const ResetPassword = routeLazy(exactPath("/reset-password"), () => import("./pages/ResetPassword"));
+const GoogleAuthCallback = routeLazy(exactPath("/oauth/google/callback"), () => import("./pages/GoogleAuthCallback"));
+const CompleteGoogleProfile = routeLazy(exactPath("/complete-profile"), () => import("./pages/CompleteGoogleProfile"));
 
 const VerifyEmail = routeLazy(exactPath('/verify-email'), () => import('./pages/VerifyEmail'));
 
@@ -62,6 +68,7 @@ const UserManagement = routeLazy(exactPath("/admin/users"), () => import("./page
 const PaymentSettings = routeLazy(exactPath("/admin/settings-payment"), () => import("./pages/admin/PaymentSettings"));
 const FinanceReport = routeLazy(exactPath("/admin/finance"), () => import("./pages/admin/FinanceReport"));
 const EditFooter = routeLazy(exactPath("/admin/settings-footer"), () => import("./pages/admin/EditFooter"));
+const PublicWebsiteSettings = routeLazy(exactPath("/admin/website"), () => import("./pages/admin/PublicWebsiteSettings"));
 const AdminMessages = routeLazy(exactPath("/admin/pesan"), () => import("./pages/admin/AdminMessages"));
 const SendMessage = routeLazy(exactPath("/admin/notifikasi"), () => import("./pages/admin/SendMessage"));
 const ClassMonitoring = routeLazy(exactPath("/admin/classes"), () => import("./pages/admin/ClassMonitoring"));
@@ -249,11 +256,16 @@ const App = () => (
             {/* =========================================
                 1. RUTE PUBLIK 
                ========================================= */}
-            <Route path="/" element={<Index />} />
-            <Route path="/register" element={<Register />} />
+            <Route path="/" element={<WebsiteContentProvider><Index /></WebsiteContentProvider>} />
+            <Route path="/program" element={<WebsiteContentProvider><ProgramCatalog /></WebsiteContentProvider>} />
+            <Route path="/testimonials" element={<WebsiteContentProvider><Testimonials /></WebsiteContentProvider>} />
+            <Route path="/program/:slug" element={<WebsiteContentProvider><ProgramDetail /></WebsiteContentProvider>} />
+            <Route path="/register" element={<WebsiteContentProvider><Register /></WebsiteContentProvider>} />
             <Route path="/login" element={<Login />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/oauth/google/callback" element={<GoogleAuthCallback />} />
+            <Route path="/complete-profile" element={<CompleteGoogleProfile />} />
             
 
             <Route path="/privacy" element={<PrivacyPolicy />} />
@@ -275,6 +287,7 @@ const App = () => (
               <Route path="/admin/users" element={<UserManagement />} />
               <Route path="/admin/settings-payment" element={<PaymentSettings />} />
               <Route path="/admin/settings-footer" element={<EditFooter />} />
+              <Route path="/admin/website" element={<PublicWebsiteSettings />} />
               <Route path="/admin/finance" element={<FinanceReport />} />
               <Route path="/admin/refunds" element={<RefundManagement />} />
               <Route path="/admin/finance-security" element={<Navigate to="/admin/pembayaran" replace />} />

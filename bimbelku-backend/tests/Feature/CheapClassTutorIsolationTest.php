@@ -29,7 +29,7 @@ class CheapClassTutorIsolationTest extends TestCase
         parent::tearDown();
     }
 
-    public function test_weekly_occurrence_draws_its_own_teacher_and_does_not_inherit_operational_data(): void
+    public function test_weekly_occurrence_selects_its_own_teacher_and_does_not_inherit_operational_data(): void
     {
         [$service, $template, $firstPackage, $teachers] = $this->recurringScenario(2);
         $firstTeacherId = (int) $firstPackage->teacher_id;
@@ -121,7 +121,7 @@ class CheapClassTutorIsolationTest extends TestCase
         Carbon::setTestNow(Carbon::parse('2026-08-13 08:00:00', 'Asia/Jakarta'));
         [$subject, $chapter] = $this->catalog();
         $teachers = collect(range(1, $teacherCount))
-            ->map(fn (int $number) => $this->eligibleTeacher($subject, "Tutor Acak {$number}"));
+            ->map(fn (int $number) => $this->eligibleTeacher($subject, "Tutor Antrean {$number}"));
         $service = app(CheapClassService::class);
         $result = $service->createPackage($this->packageData($subject, $chapter));
 

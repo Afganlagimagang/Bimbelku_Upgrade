@@ -257,7 +257,6 @@ class StageFiveWorkflowTest extends TestCase
         $profile = TeacherProfile::create([
             'user_id' => $teacher->id,
             'whatsapp_number' => '081200000001',
-            'points' => 150,
             'is_accepting_requests' => true,
             'verified_at' => now()->subDay(),
         ]);

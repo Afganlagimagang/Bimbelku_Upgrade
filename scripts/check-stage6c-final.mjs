@@ -28,7 +28,7 @@ expect(!adminController.includes("harus disetujui admin kedua"), "pencairan tida
 expect(adminController.includes("lockForUpdate()") && adminController.includes("proof_file"), "pencairan tetap memakai lock dan bukti");
 expect(userModel.includes("return $this->isPrimaryAdmin();"), "kompatibilitas superadmin menunjuk admin utama");
 expect(authController.includes("Project ini hanya menggunakan satu akun admin utama."), "login admin kedua ditolak");
-expect(caseCenter.includes("</SelectContent></Select></div>}"), "perbaikan syntax pusat kasus tetap terpasang");
+expect(caseCenter.includes("teacher_replacements: any[]") && !caseCenter.includes("teacher_appeals"), "pusat kasus memakai kategori final tanpa banding poin lama");
 
 for (const scenario of [
   "test_single_admin_finance_has_no_authenticator_route",

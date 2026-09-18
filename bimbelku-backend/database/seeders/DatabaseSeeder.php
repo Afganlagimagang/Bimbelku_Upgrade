@@ -50,7 +50,6 @@ class DatabaseSeeder extends Seeder
                 'latitude' => -7.2575,
                 'longitude' => 112.7521,
                 'max_travel_km' => 12,
-                'points' => 150,
                 'is_accepting_requests' => true,
                 'verified_at' => now(),
             ]

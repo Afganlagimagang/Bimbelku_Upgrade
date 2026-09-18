@@ -96,7 +96,8 @@ interface SearchItem {
 interface OfferHistory {
   id: number;
   teacher: PersonSummary & {
-    points: number;
+    rating_average: number;
+    rating_count: number;
     max_travel_km?: number | null;
   };
   status: string;
@@ -125,7 +126,8 @@ interface ManualCandidate {
   id: number;
   name: string;
   email?: string | null;
-  points: number;
+  rating_average: number;
+    rating_count: number;
   distance_km?: number | null;
   max_travel_km?: number | null;
   previous_offer?: {
@@ -749,7 +751,7 @@ export default function TutorSearchMonitoring() {
                                 <p className="truncate font-black text-slate-900">{offer.teacher.name}</p>
                                 <p className="mt-0.5 truncate text-xs text-slate-500">{offer.teacher.email || "Email tidak tersedia"}</p>
                                 <p className="mt-2 text-xs font-bold text-slate-500">
-                                  {offer.distance_km != null ? `${offer.distance_km} km · ` : ""}{offer.teacher.points} poin
+                                  {offer.distance_km != null ? `${offer.distance_km} km · ` : ""}{offer.teacher.rating_count ? offer.teacher.rating_average.toFixed(1) + " ★ · " + offer.teacher.rating_count + " ulasan" : "Belum ada rating"}
                                 </p>
                               </div>
                             </div>
@@ -882,7 +884,7 @@ export default function TutorSearchMonitoring() {
               <UserCheck className="text-emerald-700" size={22} /> Tetapkan tutor secara manual
             </DialogTitle>
             <DialogDescription>
-              Hanya tutor yang masih memenuhi kompetensi, jadwal, status akun, poin, mode, dan radius yang dapat dipilih.
+              Hanya tutor yang masih memenuhi kompetensi, jadwal, status akun, rating, mode, dan radius yang dapat dipilih.
             </DialogDescription>
           </DialogHeader>
           <div className="max-h-[calc(100dvh-9rem)] space-y-5 overflow-y-auto p-5 sm:p-7">
@@ -940,7 +942,7 @@ export default function TutorSearchMonitoring() {
                               {selected && <span className="rounded-full bg-emerald-700 px-2.5 py-1 text-[10px] font-black uppercase text-white">Dipilih</span>}
                             </div>
                             <div className="mt-2 flex flex-wrap gap-2 text-xs font-bold text-slate-600">
-                              <span className="rounded-full bg-white px-2.5 py-1">{candidate.points} poin</span>
+                              <span className="rounded-full bg-white px-2.5 py-1">{candidate.rating_count ? candidate.rating_average.toFixed(1) + " ★ · " + candidate.rating_count + " ulasan" : "Belum ada rating"}</span>
                               {candidate.distance_km != null && <span className="rounded-full bg-white px-2.5 py-1">{candidate.distance_km} km</span>}
                               {candidate.max_travel_km != null && <span className="rounded-full bg-white px-2.5 py-1">Jangkauan {candidate.max_travel_km} km</span>}
                             </div>

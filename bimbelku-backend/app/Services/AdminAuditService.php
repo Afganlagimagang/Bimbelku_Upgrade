@@ -22,7 +22,6 @@ use App\Models\Refund;
 use App\Models\SessionReport;
 use App\Models\Setting;
 use App\Models\SocialMedia;
-use App\Models\TeacherAppeal;
 use App\Models\Tutorial;
 use App\Models\TutorialStep;
 use App\Models\User;
@@ -290,7 +289,6 @@ class AdminAuditService
             'payoutApproval' => PayoutApproval::class,
             'booking' => Booking::class,
             'bookingDispute' => BookingDispute::class,
-            'teacherAppeal' => TeacherAppeal::class,
             'sessionReport' => SessionReport::class,
             'curriculumSubject' => CurriculumSubject::class,
             'curriculumChapter' => CurriculumChapter::class,
