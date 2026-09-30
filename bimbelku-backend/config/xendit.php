@@ -1,0 +1,14 @@
+<?php
+
+return [
+    'enabled' => (bool) env('XENDIT_ENABLED', false),
+    'base_url' => rtrim((string) env('XENDIT_BASE_URL', 'https://api.xendit.co'), '/'),
+    'secret_key' => env('XENDIT_SECRET_KEY'),
+    'webhook_token' => env('XENDIT_WEBHOOK_TOKEN'),
+    'country' => env('XENDIT_COUNTRY', 'ID'),
+    'currency' => env('XENDIT_CURRENCY', 'IDR'),
+    'success_url' => env('XENDIT_SUCCESS_URL', rtrim((string) env('FRONTEND_URL'), '/').'/payment?gateway=success'),
+    'cancel_url' => env('XENDIT_CANCEL_URL', rtrim((string) env('FRONTEND_URL'), '/').'/payment?gateway=cancelled'),
+    'session_ttl_minutes' => (int) env('XENDIT_SESSION_TTL_MINUTES', 60),
+    'payout_api_version' => env('XENDIT_PAYOUT_API_VERSION', '2025-09-01'),
+];

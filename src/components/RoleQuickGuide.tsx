@@ -68,7 +68,7 @@ const fallback: Record<Role, Tutorial> = {
       { title: "Mulai dari ringkasan", body: "Buka ringkasan kerja untuk melihat kondisi operasional yang perlu diperiksa.", target: '[href="/admin"]' },
       { title: "Pantau pencarian tutor", body: "Buka pencarian tutor untuk melihat permintaan yang masih mencari pengajar.", target: '[href="/admin/tutor-searches"]' },
       { title: "Periksa pembayaran", body: "Buka pembayaran murid untuk memverifikasi bukti yang masuk.", target: '[href="/admin/pembayaran"]' },
-      { title: "Kelola Kelas Kelompok", body: "Buka menu Kelas Kelompok untuk membuat paket dan memantau tutor serta peserta.", target: '[href="/admin/kelas-murah"]' },
+      { title: "Kelola Kelas Bersama", body: "Buka menu Kelas Bersama untuk membuat paket dan memantau tutor serta peserta.", target: '[href="/admin/kelas-murah"]' },
     ],
   },
 };
@@ -110,12 +110,12 @@ const contextualTutorials: Record<Role, Record<string, Tutorial>> = {
   student: {
     "cheap-classes": {
       id: -4,
-      title: "Cara ikut Kelas Kelompok",
+      title: "Cara ikut Kelas Bersama",
       description: "Kelas ini belajar ramai-ramai. Lihat garis kuning, ya.",
       steps: [
-        { title: "Ini Kelas Kelompok", body: "Di sini kamu bisa belajar bersama teman lain dengan harga lebih hemat.", target: '[data-tour="cheap-class-hero"]' },
+        { title: "Ini Kelas Bersama", body: "Di sini kamu bisa belajar bersama teman lain dengan harga lebih hemat.", target: '[data-tour="cheap-class-hero"]' },
         { title: "Baca kartu kelas", body: "Lihat pelajaran, hari, jam, harga, dan jumlah teman yang sudah ikut.", target: '[data-tour="cheap-class-list"]' },
-        { title: "Mau ikut? Tekan Gabung", body: "Kalau waktunya cocok, tekan Gabung Kelas Kelompok. Kursimu ditahan sebentar supaya kamu bisa bayar.", target: '[data-tour="cheap-class-list"]' },
+        { title: "Mau ikut? Tekan Gabung", body: "Kalau waktunya cocok, tekan Gabung Kelas Bersama. Kursimu ditahan sebentar supaya kamu bisa bayar.", target: '[data-tour="cheap-class-list"]' },
       ],
     },
     classes: {
@@ -162,10 +162,10 @@ const contextualTutorials: Record<Role, Record<string, Tutorial>> = {
     },
     "teacher-cheap-classes": {
       id: -9,
-      title: "Cara mengajar Kelas Kelompok",
+      title: "Cara mengajar Kelas Bersama",
       description: "Link Zoom hanya boleh diisi setelah kelas sudah pasti jadi.",
       steps: [
-        { title: "Lihat kelas yang ditugaskan", body: "Di sini ada Kelas Kelompok yang menjadi tugasmu. Cek hari, jam, dan jumlah muridnya.", target: '[data-tour="teacher-cheap-classes"]' },
+        { title: "Lihat kelas yang ditugaskan", body: "Di sini ada Kelas Bersama yang menjadi tugasmu. Cek hari, jam, dan jumlah muridnya.", target: '[data-tour="teacher-cheap-classes"]' },
         { title: "Isi link Zoom", body: "Jika status kelas sudah dikonfirmasi, isi link Zoom lalu tekan tombol simpan di sebelahnya.", target: '[data-tour="teacher-cheap-list"]' },
       ],
     },

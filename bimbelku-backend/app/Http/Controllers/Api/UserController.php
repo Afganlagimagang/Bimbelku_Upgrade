@@ -42,7 +42,8 @@ class UserController extends Controller
             'terms_accepted_at' => $user->terms_accepted_at?->toIso8601String(),
             'privacy_accepted_at' => $user->privacy_accepted_at?->toIso8601String(),
             'role' => $user->role,
-            'admin_type' => $user->role === 'admin' ? 'single_admin' : null,
+            'admin_type' => $user->role === 'admin' ? ($user->isPrimaryAdmin() ? 'super_admin' : 'admin') : null,
+            'is_primary_admin' => $user->role === 'admin' && $user->isPrimaryAdmin(),
             'admin_permissions' => $user->role === 'admin'
                 ? \App\Support\AdminPermissionCatalog::allCodes()
                 : [],
@@ -139,6 +140,9 @@ class UserController extends Controller
             }
             if ($newCover) {
                 $user->profile_cover = $newCover;
+                if ($user->role === 'teacher') {
+                    $user->profile_cover_use_default = false;
+                }
             }
             $user->save();
         } catch (\Throwable $exception) {

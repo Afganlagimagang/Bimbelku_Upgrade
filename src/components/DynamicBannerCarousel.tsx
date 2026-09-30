@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Image as ImageIcon } from "lucide-react";
+import { ChevronLeft, ChevronRight, Image as ImageIcon, MoveHorizontal } from "lucide-react";
 import { Link } from "react-router-dom";
 import StudentPackageLink from "@/components/StudentPackageLink";
 
@@ -26,7 +26,20 @@ const fallback: DynamicBanner[] = [
     destination_kind: "internal",
     destination_url: "/student/packages/new",
   },
+  {
+    id: -2,
+    title: "Atur jadwal sesuai kebutuhan",
+    description: "Pilih mata pelajaran, hari, dan jam belajar sebelum memesan.",
+    button_text: "Lihat program",
+    destination_kind: "internal",
+    destination_url: "/program",
+  },
 ];
+
+const withFallback = (banners: DynamicBanner[], audience: string) =>
+  audience === "student" && banners.length < 2
+    ? [...banners, ...fallback.filter((item) => !banners.some((banner) => banner.id === item.id)).slice(0, 2 - banners.length)]
+    : banners;
 
 const isStudentPackageDestination = (destination: string) => {
   const path = destination.split(/[?#]/, 1)[0];
@@ -59,19 +72,21 @@ export default function DynamicBannerCarousel({ audience = "student" }: { audien
   // Banner bawaan hanya ditujukan bagi murid. Tutor dan admin hanya melihat
   // banner yang memang dibuat admin untuk perannya, sehingga pesan tidak salah sasaran.
   const [items, setItems] = useState<DynamicBanner[]>(() => (
-    readCachedBanners(audience) ?? (audience === "student" ? fallback : [])
+    withFallback(readCachedBanners(audience) ?? [], audience)
   ));
   const [active, setActive] = useState(0);
   const [paused, setPaused] = useState(false);
-  const pointerStart = useRef<{ id: number; x: number; y: number } | null>(null);
-  const didSwipe = useRef(false);
+  const [visible, setVisible] = useState(true);
+  const sectionRef = useRef<HTMLElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
   const autoplayStarted = useRef(false);
 
   useEffect(() => {
     let mounted = true;
     autoplayStarted.current = false;
-    setItems(readCachedBanners(audience) ?? (audience === "student" ? fallback : []));
+    setItems(withFallback(readCachedBanners(audience) ?? [], audience));
     setActive(0);
+    trackRef.current?.scrollTo({ left: 0 });
     void getCached<DynamicBanner[]>("/content/banners", {
       params: { audience },
       // Cache singkat mencegah request berulang saat berpindah halaman. Mutasi
@@ -81,10 +96,11 @@ export default function DynamicBannerCarousel({ audience = "student" }: { audien
       .then((response) => {
         const nextItems = Array.isArray(response.data) ? response.data : [];
         if (mounted) {
-          const resolved = nextItems.length ? nextItems : (audience === "student" ? fallback : []);
+          const resolved = withFallback(nextItems, audience);
           writeCachedBanners(audience, resolved);
           setItems(resolved);
           setActive(0);
+          trackRef.current?.scrollTo({ left: 0 });
         }
       })
       .catch(() => undefined);
@@ -95,73 +111,67 @@ export default function DynamicBannerCarousel({ audience = "student" }: { audien
   }, [audience]);
 
   useEffect(() => {
-    if (paused || items.length < 2) return;
+    const observer = new IntersectionObserver(([entry]) => setVisible(entry.isIntersecting && !document.hidden));
+    if (sectionRef.current) observer.observe(sectionRef.current);
+    const onVisibilityChange = () => {
+      const bounds = sectionRef.current?.getBoundingClientRect();
+      setVisible(!document.hidden && Boolean(bounds && bounds.bottom > 0 && bounds.top < window.innerHeight));
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (paused || !visible || document.hidden || window.matchMedia("(prefers-reduced-motion: reduce)").matches || items.length < 2) return;
 
     // Jangan mengganti kandidat gambar terbesar saat Lighthouse/browser masih
     // mengukur fase load awal. Tombol desktop dan swipe mobile tetap langsung.
     const timer = window.setTimeout(() => {
       autoplayStarted.current = true;
-      setActive((value) => (value + 1) % items.length);
+      goTo(active + 1);
     }, autoplayStarted.current ? 5_000 : 12_000);
 
     return () => window.clearTimeout(timer);
-  }, [active, items.length, paused]);
+  }, [active, items.length, paused, visible]);
 
   const move = (direction: number) => {
     autoplayStarted.current = true;
-    setActive((value) => (value + direction + items.length) % items.length);
+    goTo(active + direction);
   };
   const openBanner = (index: number) => {
     autoplayStarted.current = true;
-    setActive(index);
+    goTo(index);
   };
-  const banner = items[active];
-  if (!banner) return null;
+  const goTo = (index: number) => {
+    if (!items.length) return;
+    const next = (index + items.length) % items.length;
+    const track = trackRef.current;
+    const slide = track?.children[next] as HTMLElement | undefined;
+    if (track && slide) track.scrollTo({ left: slide.offsetLeft - track.offsetLeft, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    setActive(next);
+  };
+  const renderBanner = (banner: DynamicBanner, index: number) => {
   // Banner admin tetap bisa memakai gambar sendiri. Jika belum ada gambar,
   // gunakan ilustrasi ringan ini agar area dashboard tetap informatif.
   // Backend hanya mengirim image_url jika file benar-benar tersedia. Jangan
   // membentuk URL lagi dari image_path karena path yatim akan memicu 404 pada LCP.
   const bannerImage = banner.image_url
-    || (audience === "student" ? caraMemesanTutorBanner : null);
+    || (banner.id === -1 ? caraMemesanTutorBanner : null);
 
   const content = (
     <div
-      className="group relative min-h-[180px] w-full min-w-0 touch-pan-y select-none overflow-hidden rounded-[1.5rem] bg-gradient-to-br from-blue-700 via-indigo-700 to-violet-800 text-white shadow-xl sm:min-h-[260px] sm:rounded-[2rem]"
-      onFocus={() => setPaused(true)}
-      onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPaused(false);
-      }}
+      className="group relative min-h-[180px] w-full min-w-0 select-none overflow-hidden rounded-[1.5rem] bg-gradient-to-br from-blue-700 via-indigo-700 to-violet-800 text-white shadow-xl sm:min-h-[260px] sm:rounded-[2rem]"
       onDragStart={(event) => event.preventDefault()}
-      onPointerDown={(event) => {
-        if (!event.isPrimary || event.pointerType === "mouse") return;
-        setPaused(true);
-        didSwipe.current = false;
-        pointerStart.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
-      }}
-      onPointerUp={(event) => {
-        const start = pointerStart.current;
-        if (start?.id === event.pointerId) {
-          const deltaX = event.clientX - start.x;
-          const deltaY = event.clientY - start.y;
-          if (Math.abs(deltaX) > 45 && Math.abs(deltaX) > Math.abs(deltaY)) {
-            didSwipe.current = true;
-            move(deltaX > 0 ? -1 : 1);
-          }
-        }
-        pointerStart.current = null;
-        setPaused(false);
-      }}
-      onPointerCancel={(event) => {
-        if (pointerStart.current?.id === event.pointerId) pointerStart.current = null;
-        setPaused(false);
-      }}
     >
       {bannerImage ? (
         <img
           src={bannerImage}
           alt=""
-          loading="eager"
-          fetchPriority="high"
+          loading={index === 0 ? "eager" : "lazy"}
+          fetchPriority={index === 0 ? "high" : "auto"}
           decoding="async"
           draggable={false}
           className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-[1.025]"
@@ -199,19 +209,13 @@ export default function DynamicBannerCarousel({ audience = "student" }: { audien
   );
 
   return (
-    <section className="w-full min-w-0" aria-label="Informasi BimbelKu">
+    <div key={banner.id} className="min-w-0 basis-[88%] shrink-0 snap-start sm:basis-full">
       {banner.destination_kind === "external" ? (
         <a
           href={banner.destination_url}
           target="_blank"
           rel="noreferrer"
           className="block w-full min-w-0 cursor-pointer rounded-[1.5rem] outline-none focus-visible:ring-4 focus-visible:ring-indigo-300 sm:rounded-[2rem]"
-          onClick={(event) => {
-            if (didSwipe.current) {
-              event.preventDefault();
-              didSwipe.current = false;
-            }
-          }}
         >
           {content}
         </a>
@@ -220,12 +224,7 @@ export default function DynamicBannerCarousel({ audience = "student" }: { audien
           type="button"
           aria-label={banner.button_text || "Buka tutorial dashboard"}
           className="block w-full min-w-0 cursor-pointer rounded-[1.5rem] text-left outline-none focus-visible:ring-4 focus-visible:ring-indigo-300 sm:rounded-[2rem]"
-          onClick={(event) => {
-            if (didSwipe.current) {
-              event.preventDefault();
-              didSwipe.current = false;
-              return;
-            }
+          onClick={() => {
             window.dispatchEvent(new CustomEvent("bimbelku:open-tutorial", {
               detail: { context: "dashboard", source: "banner" },
             }));
@@ -237,12 +236,6 @@ export default function DynamicBannerCarousel({ audience = "student" }: { audien
         <StudentPackageLink
           to={banner.destination_url}
           className="block w-full min-w-0 cursor-pointer rounded-[1.5rem] outline-none focus-visible:ring-4 focus-visible:ring-indigo-300 sm:rounded-[2rem]"
-          onClick={(event) => {
-            if (didSwipe.current) {
-              event.preventDefault();
-              didSwipe.current = false;
-            }
-          }}
         >
           {content}
         </StudentPackageLink>
@@ -250,16 +243,27 @@ export default function DynamicBannerCarousel({ audience = "student" }: { audien
         <Link
           to={banner.destination_url}
           className="block w-full min-w-0 cursor-pointer rounded-[1.5rem] outline-none focus-visible:ring-4 focus-visible:ring-indigo-300 sm:rounded-[2rem]"
-          onClick={(event) => {
-            if (didSwipe.current) {
-              event.preventDefault();
-              didSwipe.current = false;
-            }
-          }}
         >
           {content}
         </Link>
       )}
+    </div>
+  );
+  };
+
+  if (!items.length) return null;
+  return <section ref={sectionRef} className="relative w-full min-w-0" aria-label="Informasi BimbelKu" onPointerDown={() => setPaused(true)} onPointerLeave={() => setPaused(false)} onFocusCapture={() => setPaused(true)} onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPaused(false); }}>
+    <div className="mb-3 flex items-center justify-between gap-3 sm:hidden">
+      <span className="inline-flex items-center gap-2 text-xs font-black text-slate-500"><MoveHorizontal size={16} />Geser untuk melihat banner lain</span>
+      <span className="rounded-full bg-slate-900 px-2.5 py-1 text-[10px] font-black text-white">{active + 1}/{items.length}</span>
+    </div>
+    <div className="relative">
+      <div ref={trackRef} tabIndex={0} className="flex snap-x gap-3 overflow-x-auto scroll-smooth pb-3 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-indigo-200" onKeyDown={(event) => { if (event.key === "ArrowLeft") move(-1); if (event.key === "ArrowRight") move(1); }} onScroll={(event) => {
+        const track = event.currentTarget;
+        const first = track.firstElementChild as HTMLElement | null;
+        if (first) setActive(Math.min(items.length - 1, Math.max(0, Math.round(track.scrollLeft / (first.offsetWidth + 12)))));
+      }}>{items.map(renderBanner)}</div>
+    </div>
 
       {items.length > 1 && (
         <div
@@ -271,7 +275,7 @@ export default function DynamicBannerCarousel({ audience = "student" }: { audien
             type="button"
             aria-label="Banner sebelumnya"
             onClick={() => move(-1)}
-            className="hidden h-9 w-9 place-items-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 sm:grid"
+            className="grid h-10 w-10 place-items-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
           >
             <ChevronLeft size={18} />
           </button>
@@ -293,12 +297,11 @@ export default function DynamicBannerCarousel({ audience = "student" }: { audien
             type="button"
             aria-label="Banner berikutnya"
             onClick={() => move(1)}
-            className="hidden h-9 w-9 place-items-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 sm:grid"
+            className="grid h-10 w-10 place-items-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
           >
             <ChevronRight size={18} />
           </button>
         </div>
       )}
-    </section>
-  );
+    </section>;
 }

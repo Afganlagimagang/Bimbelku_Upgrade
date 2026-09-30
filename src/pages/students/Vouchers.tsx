@@ -6,6 +6,7 @@ import axios from "axios";
 
 import StudentLayout from "@/components/StudentLayout";
 import http, { getApiError, getCached } from "@/lib/http";
+import WorkspacePageIntro from "@/components/WorkspacePageIntro";
 
 type ErrorType = "network" | "unauthorized" | "forbidden" | "not_found" | "generic" | null;
 
@@ -80,11 +81,7 @@ export default function Vouchers() {
   return (
     <StudentLayout title="Voucher">
       <div className="space-y-6 pb-20 sm:space-y-7">
-        <section className="rounded-[1.75rem] bg-gradient-to-br from-rose-600 via-orange-500 to-amber-400 p-5 text-white sm:rounded-[2rem] sm:p-8">
-          <Tag size={28} />
-          <h1 className="mt-4 text-2xl font-black sm:text-3xl">Voucher dan penawaran</h1>
-          <p className="mt-2 max-w-xl text-sm leading-6 text-white/80">Klaim promo dari banner atau masukkan kode saat membuat paket. Satu paket memakai satu promo.</p>
-        </section>
+        <WorkspacePageIntro eyebrow="Promo belajar" title="Voucher dan penawaran" description="Klaim promo yang tersedia atau gunakan voucher tersimpan ketika menyusun paket belajar." icon={Tag} tone="orange" metrics={[{ label: "Siap digunakan", value: availableClaims.length }]} />
 
         {loading ? (
           <div className="grid min-h-56 place-items-center"><Loader2 className="animate-spin text-orange-500" size={34} /></div>

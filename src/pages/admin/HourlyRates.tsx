@@ -2,6 +2,7 @@ import { notify } from "@/lib/notify";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { BookOpen, Coins, Loader2, Plus, Save, Trash2 } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
+import PrivateParticipantPricingEditor from "@/components/PrivateParticipantPricingEditor";
 import { useConfirmDialog } from "@/components/ConfirmDialogProvider";
 import SubjectCombobox, { SubjectOption } from "@/components/SubjectCombobox";
 import { EDUCATION_LEVELS } from "@/lib/educationCatalog";
@@ -148,6 +149,7 @@ export default function HourlyRates() {
           </div>
         </section>
 
+        <PrivateParticipantPricingEditor />
         <div className="grid grid-cols-1 xl:grid-cols-[.8fr_1.2fr] gap-7 items-start">
           <div className="space-y-6">
             <section className="rounded-[2rem] border border-slate-100 bg-white p-6 shadow-sm">

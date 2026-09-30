@@ -88,7 +88,8 @@ class NotificationController extends Controller
 
         $unreadQuery = Notification::query()
             ->where('user_id', $request->user()->id)
-            ->where('is_read', false);
+            ->where('is_read', false)
+            ->whereNull('invalidated_at');
         $role = (string) $request->user()->role;
 
         $notifications = $query->limit((int) ($validated['per_page'] ?? 20))->get();
@@ -99,17 +100,19 @@ class NotificationController extends Controller
         });
 
         $attentionNotifications = (clone $unreadQuery)
+            ->whereNotNull('target_url')
+            ->where('target_url', '!=', '')
             ->latest('id')
             ->limit(100)
-            ->get(['id', 'title', 'is_read', 'target_url'])
-            ->map(function (Notification $notification) use ($role) {
-                $targetUrl = $notification->target_url
-                    ?: $this->legacyTargetUrl($role, (string) $notification->title);
-
+            ->get(['id', 'is_read', 'target_url', 'attention_key', 'entity_type', 'entity_id'])
+            ->map(function (Notification $notification) {
                 return [
                     'id' => $notification->id,
                     'is_read' => (bool) $notification->is_read,
-                    'target_url' => $targetUrl,
+                    'target_url' => $notification->target_url,
+                    'attention_key' => $notification->attention_key,
+                    'entity_type' => $notification->entity_type,
+                    'entity_id' => $notification->entity_id,
                 ];
             })
             ->values();
@@ -129,13 +132,13 @@ class NotificationController extends Controller
         // navigasi diperkenalkan. Notifikasi baru selalu menyimpan target_url langsung.
         $targets = match ($role) {
             'student' => [
-                'Tutor belum ditemukan' => '/student/my-classes?tab=process',
-                'Tutor paket ditemukan' => '/student/my-classes?tab=process',
-                'Tutor menerima permintaan' => '/student/my-classes?tab=process',
-                'Pembayaran paket ditolak' => '/student/my-classes?tab=process',
-                'Tagihan paket tersedia' => '/student/my-classes?tab=process',
-                'Pembayaran kelompok dibuka' => '/student/my-classes?tab=process',
-                'Keputusan kelompok berakhir' => '/student/my-classes?tab=process',
+                'Tutor belum ditemukan' => '/student/packages',
+                'Tutor paket ditemukan' => '/student/packages',
+                'Tutor menerima permintaan' => '/student/packages',
+                'Pembayaran paket ditolak' => '/student/packages',
+                'Tagihan paket tersedia' => '/student/packages',
+                'Pembayaran kelompok dibuka' => '/student/packages',
+                'Keputusan kelompok berakhir' => '/student/packages',
                 'Semua tutor ditemukan' => '/student/my-classes',
                 'Bukti sesi telah dikirim' => '/student/my-classes',
                 'Ketidakhadiran dilaporkan' => '/student/my-classes',
@@ -157,8 +160,6 @@ class NotificationController extends Controller
                 'Refund masuk ke Saldo BimbelKu' => '/student/history',
                 'Refund telah ditransfer' => '/student/history',
                 'Pesan kelas baru' => '/student/messages',
-                'Balasan baru dari admin' => '/student/help',
-                'Tiket bantuan diselesaikan' => '/student/help',
             ],
             'teacher' => [
                 'Permintaan perpanjangan tutor' => '/guru/permintaan',
@@ -187,8 +188,6 @@ class NotificationController extends Controller
                 'Banding penalti ditolak' => '/guru/performa',
                 'Akun tutor disetujui' => '/guru/saya',
                 'Verifikasi tutor ditolak' => '/guru/saya',
-                'Balasan baru dari admin' => '/guru/bantuan',
-                'Tiket bantuan diselesaikan' => '/guru/bantuan',
             ],
             'admin' => [
                 'Pendaftaran tutor baru' => '/admin/guru',
@@ -198,8 +197,6 @@ class NotificationController extends Controller
                 'Pengajuan pencairan tutor' => '/admin/finance',
                 'Refund paket menunggu proses' => '/admin/refunds',
                 'Banding penalti tutor' => '/admin/cases',
-                'Tiket bantuan baru' => '/admin/pesan',
-                'Balasan tiket bantuan' => '/admin/pesan',
             ],
             default => [],
         };
@@ -213,7 +210,7 @@ class NotificationController extends Controller
             ->where('user_id', $request->user()->id)
             ->findOrFail($id);
         if (! $notification->is_read) {
-            $notification->update(['is_read' => true]);
+            $notification->update(['is_read' => true, 'read_at' => now()]);
         }
 
         return response()->json(['success' => true, 'data' => $notification->fresh()]);
@@ -230,7 +227,7 @@ class NotificationController extends Controller
             ->where('user_id', $request->user()->id)
             ->whereIn('id', $validated['ids'])
             ->where('is_read', false)
-            ->update(['is_read' => true]);
+            ->update(['is_read' => true, 'read_at' => now()]);
 
         return response()->json(['success' => true, 'updated' => $updated]);
     }
@@ -240,7 +237,7 @@ class NotificationController extends Controller
         Notification::query()
             ->where('user_id', $request->user()->id)
             ->where('is_read', false)
-            ->update(['is_read' => true]);
+            ->update(['is_read' => true, 'read_at' => now()]);
 
         return response()->json(['success' => true]);
     }

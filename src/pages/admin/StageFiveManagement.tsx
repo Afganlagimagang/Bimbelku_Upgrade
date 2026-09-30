@@ -40,8 +40,8 @@ const destinationOptions = [
   ["/student/dashboard", "Beranda Murid"],
   ["/student/dashboard#tutorial", "Buka Tutorial Dashboard"],
   ["/student/packages/new", "Cari Les / Pilih Paket"],
-  ["/student/kelas-murah", "Kelas Kelompok"],
-  ["/student/my-classes?tab=process", "Kelas Saya - Dalam Proses"],
+  ["/student/kelas-murah", "Kelas Bersama"],
+  ["/student/packages", "Proses Pesanan"],
   ["/student/my-classes", "Kelas Saya - Jadwal Aktif"],
   ["/student/my-classes?tab=history", "Kelas Saya - Riwayat"],
   ["/student/progress", "Progres Belajar"],
@@ -120,7 +120,7 @@ export default function StageFiveManagement() {
 
   return (
     <AdminLayout title="Paket, Promo & Konten">
-      <div className="space-y-6">
+      <div className="space-y-6 pb-8 sm:pb-12">
         <section className="rounded-[2rem] bg-gradient-to-br from-slate-950 via-violet-950 to-indigo-900 p-6 text-white sm:p-8">
           <p className="text-xs font-black uppercase tracking-[.2em] text-violet-200">Tahap 5</p>
           <h1 className="mt-3 text-3xl font-black">Pusat pengalaman BimbelKu</h1>
@@ -211,7 +211,7 @@ function Editor({ editor, plans, subjectOptions, close, saved }: { editor: { typ
 
   return (
     <div className="fixed inset-0 z-[var(--layer-modal)] flex items-end justify-center bg-slate-950/65 p-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] sm:items-center sm:p-4">
-      <form onSubmit={submit} className="max-h-[calc(100dvh-1.5rem)] w-full overflow-y-auto rounded-[2rem] bg-white p-5 shadow-2xl sm:max-h-[94dvh] sm:max-w-2xl sm:p-7">
+      <form onSubmit={submit} className="max-h-[calc(100dvh-1.5rem)] w-full overflow-y-auto rounded-[2rem] bg-white px-5 pb-8 pt-5 shadow-2xl sm:max-h-[94dvh] sm:max-w-2xl sm:px-7 sm:pb-10 sm:pt-7">
         <div className="flex items-center justify-between"><h2 className="text-2xl font-black text-slate-900">{item.id ? "Ubah" : "Tambah"} {editor.type === "plans" ? "Paket" : editor.type === "promotions" ? "Promo" : editor.type === "banners" ? "Banner" : "Tutorial"}</h2><button type="button" aria-label="Tutup editor" onClick={close} className="rounded-full bg-slate-100 p-2 text-slate-500"><X size={19} /></button></div>
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
           {editor.type === "plans" && <PlanFields item={item} set={set} />}

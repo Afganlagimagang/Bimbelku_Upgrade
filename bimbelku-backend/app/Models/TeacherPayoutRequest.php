@@ -12,8 +12,11 @@ class TeacherPayoutRequest extends Model
 
     protected $casts = [
         'booking_ids' => 'array',
+        'allocation_breakdown' => 'array',
         'gross_amount' => 'decimal:2',
         'commission_amount' => 'decimal:2',
+        'requested_amount' => 'decimal:2',
+        'tax_amount' => 'decimal:2',
         'net_amount' => 'decimal:2',
         'requested_at' => 'datetime',
         'processed_at' => 'datetime',

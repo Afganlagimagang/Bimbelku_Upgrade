@@ -41,12 +41,14 @@ import { Textarea } from "@/components/ui/textarea";
 import http, { getApiError, getCached } from "@/lib/http";
 import { announceNavigationAttentionChanged, unreadIdsForStudentClassTab, type AttentionNotification } from "@/lib/navigationAttention";
 import { validateUpload } from "@/lib/validation";
+import WorkspacePageIntro from "@/components/WorkspacePageIntro";
+import PrivateClassJoinEntry from "@/components/PrivateClassJoinEntry";
 
 const LearningSessionHub = lazy(() => import("@/components/LearningSessionHub"));
-const PackageProcessList = lazy(() => import("./MyPackages"));
 
 interface ClassItem {
   id: number;
+  viewer_only?: boolean;
   class_key?: string;
   class_kind?: "private" | "group";
   cheap_class_id?: number;
@@ -325,9 +327,9 @@ export default function MyClasses() {
   const [classAttention, setClassAttention] = useState<AttentionNotification[]>([]);
   const [subjectFilter, setSubjectFilter] = useState("all");
   const [scheduleSort, setScheduleSort] = useState<ScheduleSort>("nearest");
-  const [activeTab, setActiveTab] = useState<ClassTab>(() => {
+  const [activeTab, setActiveTab] = useState<Exclude<ClassTab, "process">>(() => {
     const requested = searchParams.get("tab");
-    return requested === "process" || requested === "history" ? requested : "schedule";
+    return requested === "history" ? "history" : "schedule";
   });
   const [kindFilter, setKindFilter] = useState<KindFilter>(() => {
     const requested = searchParams.get("class_kind");
@@ -347,7 +349,7 @@ export default function MyClasses() {
     setSearchParams(next, { replace: true });
   };
 
-  const changeTab = (value: ClassTab) => {
+  const changeTab = (value: Exclude<ClassTab, "process">) => {
     setActiveTab(value);
     setSubjectFilter("all");
     setKindFilter("all");
@@ -361,7 +363,7 @@ export default function MyClasses() {
     setSearchParams(next, { replace: true });
   };
 
-  const openTab = async (value: ClassTab) => {
+  const openTab = async (value: Exclude<ClassTab, "process">) => {
     changeTab(value);
     const ids = unreadIdsForStudentClassTab(value, classAttention);
     if (!ids.length) return;
@@ -378,7 +380,11 @@ export default function MyClasses() {
 
   useEffect(() => {
     const requestedTab = searchParams.get("tab");
-    const nextTab: ClassTab = requestedTab === "process" || requestedTab === "history" ? requestedTab : "schedule";
+    if (requestedTab === "process") {
+      navigate("/student/packages", { replace: true });
+      return;
+    }
+    const nextTab: Exclude<ClassTab, "process"> = requestedTab === "history" ? "history" : "schedule";
     setActiveTab((current) => current === nextTab ? current : nextTab);
 
     const requested = searchParams.get("class_kind");
@@ -386,7 +392,7 @@ export default function MyClasses() {
       ? requested
       : "all";
     setKindFilter((current) => current === nextFilter ? current : nextFilter);
-  }, [searchParams]);
+  }, [navigate, searchParams]);
 
   const subjectOptions = useMemo(() => {
     return Array.from(
@@ -400,8 +406,7 @@ export default function MyClasses() {
 
   const phaseClasses = useMemo(() => classes.filter((item) => {
     const tab = classTabFor(item);
-    if (activeTab === "process") return tab === "process" && item.class_kind === "group";
-    if (activeTab === "history") return tab === "history" && item.class_kind === "group";
+    if (activeTab === "history") return tab === "history";
     return tab === activeTab;
   }), [activeTab, classes]);
 
@@ -706,20 +711,15 @@ export default function MyClasses() {
   };
 
   return (
-    <StudentLayout title="Kelas Saya" onAttentionNotificationsChange={setClassAttention}>
+    <StudentLayout title="Jadwal Belajar" onAttentionNotificationsChange={setClassAttention}>
       <div className="mx-auto max-w-7xl space-y-5 pb-4 sm:space-y-7 sm:pb-12">
-        <section data-tour="student-classes-hero" className="flex flex-col justify-between gap-5 rounded-[1.75rem] bg-gradient-to-br from-indigo-950 to-violet-900 p-5 text-white shadow-xl sm:rounded-[2rem] sm:p-7 md:flex-row md:items-end">
-          <div><p className="text-xs font-black uppercase tracking-[.2em] text-indigo-200">Pusat belajar</p><h1 className="mt-3 text-2xl font-black sm:text-3xl">Kelas Saya</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-indigo-100/75">Pantau pesanan, buka jadwal belajar, dan lihat riwayat kelas privat maupun kelompok dalam satu halaman.</p></div>
-          <div className="grid w-full grid-cols-2 gap-2 md:flex md:w-auto">
-            <Button asChild className="min-h-11 rounded-xl bg-white font-black text-indigo-950 hover:bg-indigo-50"><Link to="/student/packages/new">Cari les privat</Link></Button>
-            <Button asChild variant="outline" className="min-h-11 rounded-xl border-white/25 bg-white/10 font-black text-white hover:bg-white/20 hover:text-white"><Link to="/student/kelas-murah">Kelas kelompok</Link></Button>
-          </div>
-        </section>
+        <div data-tour="student-classes-hero"><WorkspacePageIntro eyebrow="Kalender belajar" title="Jadwal Belajar" description="Buka kelas yang akan datang atau lihat kembali kelas yang telah selesai. Proses pesanan berada di halaman tersendiri." icon={CalendarDays} actions={<><Button asChild className="min-h-11 flex-1 rounded-xl bg-indigo-600 font-black hover:bg-indigo-700 lg:flex-none"><Link to="/student/packages/new">Cari les privat</Link></Button><Button asChild variant="outline" className="min-h-11 flex-1 rounded-xl lg:flex-none"><Link to="/student/kelas-murah">Kelas bersama</Link></Button></>} /></div>
 
-        <nav aria-label="Bagian Kelas Saya" className="rounded-[1.5rem] border border-slate-100 bg-white p-1.5 shadow-sm">
-          <div className="grid grid-cols-3 gap-1.5">
+        <PrivateClassJoinEntry />
+
+        <nav aria-label="Bagian Jadwal Belajar" className="rounded-[1.5rem] border border-slate-100 bg-white p-1.5 shadow-sm">
+          <div className="grid grid-cols-2 gap-1.5">
             {([
-              ["process", "Dalam Proses", Clock3],
               ["schedule", "Jadwal Aktif", CalendarDays],
               ["history", "Riwayat", History],
             ] as const).map(([value, label, Icon]) => (
@@ -738,9 +738,7 @@ export default function MyClasses() {
           </div>
         </nav>
 
-        {activeTab === "process" && <Suspense fallback={<InlineLoader label="Memuat proses paket…" />}><PackageProcessList scope="active" /></Suspense>}
-
-        {activeTab !== "process" && phaseClasses.length > 0 && (
+        {phaseClasses.length > 0 && (
           <section className="rounded-[1.7rem] border border-slate-100 bg-white p-4 shadow-sm sm:p-5">
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-2">
@@ -766,7 +764,7 @@ export default function MyClasses() {
                   <SelectContent className="max-w-[calc(100vw-2rem)]">
                     <SelectItem value="all">Semua kelas</SelectItem>
                     <SelectItem value="private">Kelas privat</SelectItem>
-                    <SelectItem value="group">Kelas kelompok</SelectItem>
+                    <SelectItem value="group">Kelas bersama</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -805,14 +803,7 @@ export default function MyClasses() {
           </section>
         )}
 
-        {activeTab === "process" && phaseClasses.length > 0 && (
-          <div>
-            <p className="text-xs font-black uppercase tracking-[.18em] text-indigo-600">Kelas kelompok</p>
-            <h2 className="mt-1 text-lg font-black text-slate-900">Pembayaran dan pemeriksaan</h2>
-          </div>
-        )}
-
-        {activeTab !== "process" && (activeTab !== "history" || phaseClasses.length > 0) && (error ? (
+        {(activeTab !== "history" || phaseClasses.length > 0) && (error ? (
           <ErrorState error={error} onRetry={retry} />
         ) : loading ? (
           <div role="status" aria-live="polite" className="grid min-h-56 place-items-center rounded-[2rem] border border-slate-100 bg-white shadow-sm">
@@ -823,7 +814,7 @@ export default function MyClasses() {
             {activeTab === "history" ? <History className="mx-auto h-11 w-11 text-slate-300" /> : <BookOpen className="mx-auto h-11 w-11 text-slate-300" />}
             <p className="mt-4 font-black text-slate-800">{activeTab === "history" ? "Belum ada riwayat kelas" : "Belum ada jadwal belajar"}</p>
             <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-500">{activeTab === "history" ? "Kelas yang selesai, dibatalkan, atau sudah melewati waktunya akan tersimpan di bagian ini." : "Kelas akan masuk ke Jadwal setelah pembayaran dan pencarian tutor selesai."}</p>
-            {activeTab === "schedule" && <div className="mt-5 flex flex-col justify-center gap-2 sm:flex-row"><Button asChild className="rounded-xl bg-indigo-600"><Link to="/student/packages/new">Cari les privat</Link></Button><Button asChild variant="outline" className="rounded-xl"><Link to="/student/kelas-murah">Lihat kelas kelompok</Link></Button></div>}
+            {activeTab === "schedule" && <div className="mt-5 flex flex-col justify-center gap-2 sm:flex-row"><Button asChild className="rounded-xl bg-indigo-600"><Link to="/student/packages/new">Cari les privat</Link></Button><Button asChild variant="outline" className="rounded-xl"><Link to="/student/kelas-murah">Lihat kelas bersama</Link></Button></div>}
           </div>
         ) : visibleClasses.length === 0 ? (
           <div className="rounded-[2rem] border-2 border-dashed border-slate-200 bg-white px-5 py-14 text-center">
@@ -849,7 +840,7 @@ export default function MyClasses() {
                       </div>
                       <div className="mt-3"><Info icon={Users} text={`${rupiah(item.amount)} untuk seluruh paket`} /></div>
                     </div>
-                  ) : <div className="mt-4 space-y-2 text-xs text-slate-600"><Info icon={CalendarDays} text={dateTime(item.start_at)} /><Info icon={Clock3} text={`${timeOnly(item.start_at)}–${timeOnly(item.end_at)}`} /><Info icon={Users} text={rupiah(item.amount)} /></div>}
+                  ) : <div className="mt-4 space-y-2 text-xs text-slate-600"><Info icon={CalendarDays} text={dateTime(item.start_at)} /><Info icon={Clock3} text={`${timeOnly(item.start_at)}–${timeOnly(item.end_at)}`} /><Info icon={Users} text={item.viewer_only ? "Peserta undangan · dibayar pemesan" : rupiah(item.amount)} /></div>}
                   {item.attention && (
                     <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
                       <div className="flex items-start gap-3">
@@ -878,7 +869,6 @@ export default function MyClasses() {
           </div>
         ))}
 
-        {activeTab === "history" && <Suspense fallback={<InlineLoader label="Memuat riwayat paket…" />}><PackageProcessList scope="history" /></Suspense>}
       </div>
 
       <Dialog open={Boolean(selected)} onOpenChange={(open) => { if (!open) { setSelected(null); clearSessionActionQuery(); } }}>
@@ -893,13 +883,14 @@ export default function MyClasses() {
               <ArrowLeft size={16} className="mr-2" />Kembali ke daftar kelas
             </Button>
             <DialogHeader><DialogTitle className="text-2xl">{selected.title}</DialogTitle><DialogDescription>{selected.mentor} · {dateTime(selected.start_at)}</DialogDescription></DialogHeader>
-            <div className="grid gap-3 rounded-2xl bg-slate-50 p-4 text-sm sm:grid-cols-2"><Info icon={GraduationCap} text={`${selected.education_level || ""} ${selected.grade || ""}`} /><Info icon={Users} text={`${selected.type} · ${rupiah(selected.amount)}`} /><Info icon={selected.method === "online" ? Monitor : MapPin} text={selected.method === "online" ? "Kelas online" : selected.address || "Alamat dibuka setelah pembayaran"} /><Info icon={Clock3} text={`${timeOnly(selected.start_at)}–${timeOnly(selected.end_at)}`} /></div>
+            <div className="grid gap-3 rounded-2xl bg-slate-50 p-4 text-sm sm:grid-cols-2"><Info icon={GraduationCap} text={`${selected.education_level || ""} ${selected.grade || ""}`} /><Info icon={Users} text={selected.viewer_only ? "Peserta undangan · dibayar pemesan" : `${selected.type} · ${rupiah(selected.amount)}`} /><Info icon={selected.method === "online" ? Monitor : MapPin} text={selected.method === "online" ? "Kelas online" : selected.address || "Alamat dibuka setelah pembayaran"} /><Info icon={Clock3} text={`${timeOnly(selected.start_at)}–${timeOnly(selected.end_at)}`} /></div>
             {selected.class_kind === "group" && <div className="rounded-2xl border border-slate-200 bg-white p-4"><p className="text-xs font-black uppercase tracking-wider text-slate-500">Seluruh jadwal pertemuan</p><div className="mt-3 space-y-2">{selected.group_sessions?.map((session) => <div key={session.id} className={`flex items-start justify-between gap-3 rounded-xl p-3 text-sm ${session.status === "in_progress" ? "bg-emerald-50 text-emerald-900 ring-1 ring-emerald-200" : "bg-slate-50 text-slate-700"}`}><div><p className="font-black">Sesi {session.session_number}</p><p className="mt-1 text-xs font-semibold">{labels[session.status]?.label || session.status}</p></div><p className="text-right text-xs font-semibold leading-5">{dateTime(session.starts_at)}<br />{timeOnly(session.starts_at)}–{timeOnly(session.ends_at)}</p></div>)}</div></div>}
             {["pending", "rejected"].includes(selected.order?.status || "") && <Button onClick={() => openPayment(selected)} className="rounded-xl bg-orange-500 hover:bg-orange-600"><CreditCard size={16} className="mr-2" />{selected.order?.status === "rejected" ? "Unggah ulang bukti pembayaran" : "Bayar kelas sekarang"}</Button>}
             {selected.class_kind === "group" && selected.status !== "in_progress" && <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-4 text-sm font-bold leading-6 text-indigo-800">{selected.teacher_started_at ? "Sesi ini sudah berakhir. Progress tetap dapat dilihat di bawah." : "Tautan Zoom aktif setelah tutor menekan Saya Hadir & Mulai Mengajar. Kamu akan mendapat popup saat kelas dimulai."}</div>}
             {(selected.maps_link || (selected.class_kind === "group" ? selected.status === "in_progress" && selected.meeting_link : selected.meeting_link)) && <Button asChild className={`rounded-xl ${selected.class_kind === "group" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-indigo-600"}`}><a href={selected.meeting_link || selected.maps_link} target="_blank" rel="noreferrer"><ExternalLink size={16} className="mr-2" />{selected.class_kind === "group" ? "Gabung Zoom sekarang" : selected.method === "online" ? "Buka ruang kelas" : "Buka lokasi"}</a></Button>}
             {selected.class_kind === "group" && selected.progress_url && <Button asChild variant="outline" className="rounded-xl border-violet-200 text-violet-700"><Link to={selected.progress_url}><BarChart3 size={16} className="mr-2" />Lihat progress kelas</Link></Button>}
-            {selected.class_kind !== "group" && selected.order?.status === "paid" && <Button variant="outline" className="rounded-xl border-indigo-200 text-indigo-700" onClick={() => { setHubReturnClass(selected); setHubBookingId(selected.id); setSelected(null); }}><MessageCircle size={16} className="mr-2" />Buka ruang belajar</Button>}
+            {selected.class_kind !== "group" && selected.viewer_only && <p className="rounded-xl bg-indigo-50 p-3 text-xs font-bold leading-5 text-indigo-800">Kamu dapat mengikuti jadwal ini. Absen dan konfirmasi sesi dilakukan oleh akun pemesan.</p>}
+            {selected.class_kind !== "group" && !selected.viewer_only && selected.order?.status === "paid" && <Button variant="outline" className="rounded-xl border-indigo-200 text-indigo-700" onClick={() => { setHubReturnClass(selected); setHubBookingId(selected.id); setSelected(null); }}><MessageCircle size={16} className="mr-2" />Buka ruang belajar</Button>}
             {selected.can_report_teacher_absence && <Button variant="outline" className="rounded-xl border-rose-200 text-rose-700" onClick={() => setAbsenceReport(selected)}><ShieldAlert size={16} className="mr-2" />Tutor belum hadir setelah 15 menit</Button>}
             {selected.completion_notes && <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4"><div className="flex items-center gap-2 font-black text-emerald-900"><FileCheck2 size={18} />Hasil belajar dari tutor</div><div className="mt-3 flex flex-wrap gap-2"><span className="rounded-full bg-white px-3 py-1.5 text-xs font-black text-emerald-800">Durasi aktual {selected.actual_duration_minutes ?? "-"} menit</span>{selected.scheduled_duration_minutes ? <span className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-slate-600">Jadwal {selected.scheduled_duration_minutes} menit</span> : null}</div><p className="mt-3 text-sm leading-6 text-emerald-800">{selected.completion_notes}</p>{selected.objection_deadline && <p className="mt-2 text-xs font-bold text-emerald-700">Batas keputusan: {dateTime(selected.objection_deadline)}</p>}</div>}
             {selected.dispute && <div className="flex gap-3 rounded-2xl border border-rose-100 bg-rose-50 p-4 text-sm text-rose-800"><MessageSquareWarning className="shrink-0" /><div><p className="font-black">Keberatan {selected.dispute.status}</p><p className="mt-1 leading-6">{selected.dispute.reason}</p></div></div>}
@@ -981,10 +972,6 @@ export default function MyClasses() {
 
 function Info({ icon: Icon, text }: { icon: typeof Clock3; text: string }) {
   return <div className="flex min-w-0 items-start gap-2 rounded-xl bg-white/70 px-3 py-2.5"><Icon size={15} className="mt-0.5 shrink-0 text-indigo-500" /><span className="min-w-0 break-words leading-5">{text}</span></div>;
-}
-
-function InlineLoader({ label }: { label: string }) {
-  return <div role="status" className="grid min-h-40 place-items-center rounded-[1.5rem] border border-slate-100 bg-white"><div className="text-center"><Loader2 className="mx-auto animate-spin text-indigo-600" size={28} /><p className="mt-2 text-sm font-bold text-slate-500">{label}</p></div></div>;
 }
 
 function ErrorState({ error, onRetry }: { error: string; onRetry: () => void }) {

@@ -2,31 +2,49 @@ import { useNavigate } from "react-router-dom";
 import { useConfirmDialog } from "@/components/ConfirmDialogProvider";
 import { notify } from "@/lib/notify";
 
+export type LogoutScope = "current" | "all";
+
 export function useLogout() {
   const navigate = useNavigate();
   const confirm = useConfirmDialog();
 
-  return async () => {
+  return async (scope: LogoutScope = "current") => {
+    const allDevices = scope === "all";
     const approved = await confirm({
-      title: "Keluar dari akun?",
-      description: "Sesi pada perangkat ini akan ditutup. Data yang sudah tersimpan tetap aman.",
-      confirmText: "Ya, keluar",
+      title: allDevices ? "Keluar dari semua perangkat?" : "Keluar dari akun?",
+      description: allDevices
+        ? "Semua sesi BimbelKu yang masih aktif akan diputus, termasuk pada perangkat ini. Anda perlu masuk lagi di setiap perangkat."
+        : "Sesi pada perangkat ini akan ditutup. Data yang sudah tersimpan tetap aman.",
+      confirmText: allDevices ? "Putus semua sesi" : "Ya, keluar",
       cancelText: "Tetap masuk",
       tone: "danger",
     });
 
     if (!approved) return;
 
-    try {
-      const { default: http } = await import("@/lib/http");
-      await http.post("/logout");
-    } catch {
-      // Token lokal tetap harus dihapus ketika sesi server sudah kedaluwarsa.
-    } finally {
-      localStorage.removeItem("token");
-      localStorage.removeItem("user");
-      notify.success("Anda telah keluar dari akun.");
-      navigate("/", { replace: true });
+    const { default: http, clearApiCache, getApiError } = await import("@/lib/http");
+
+    if (allDevices) {
+      try {
+        await http.post("/logout-all");
+      } catch (error) {
+        notify.error(getApiError(error, "Semua sesi belum dapat diputus. Coba lagi."));
+        return;
+      }
+    } else {
+      try {
+        await http.post("/logout");
+      } catch {
+        // Sesi lokal tetap dibersihkan jika token di perangkat ini sudah kedaluwarsa.
+      }
     }
+
+    clearApiCache();
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    notify.success(allDevices
+      ? "Semua sesi akun telah diputus."
+      : "Anda telah keluar dari akun.");
+    navigate("/", { replace: true });
   };
 }

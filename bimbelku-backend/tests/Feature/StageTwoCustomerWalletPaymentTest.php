@@ -24,6 +24,15 @@ class StageTwoCustomerWalletPaymentTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // This class covers the wallet/manual fallback, independently of the
+        // developer machine's Xendit-enabled local configuration.
+        config()->set('xendit.enabled', false);
+    }
+
     public function test_student_owns_refund_destination_and_has_no_self_credit_endpoint(): void
     {
         $student = User::factory()->create([

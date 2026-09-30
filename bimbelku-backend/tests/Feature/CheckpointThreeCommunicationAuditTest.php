@@ -9,7 +9,6 @@ use App\Models\ClassroomMessage;
 use App\Models\ClassroomMessageRead;
 use App\Models\Notification;
 use App\Models\Order;
-use App\Models\Ticket;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -62,39 +61,6 @@ class CheckpointThreeCommunicationAuditTest extends TestCase
         ]);
     }
 
-    public function test_support_ticket_ordering_and_counterpart_notifications_work_on_sqlite(): void
-    {
-        $admin = User::factory()->create([
-            'role' => 'admin',
-            'status' => 'active',
-            'email' => 'admin@example.test',
-        ]);
-        config(['bimbelku.primary_admin_email' => 'admin@example.test']);
-        $student = User::factory()->create(['role' => 'student', 'status' => 'active']);
-
-        Sanctum::actingAs($student);
-        $ticketId = $this->postJson('/api/tickets', [
-            'subject' => 'Butuh bantuan pembayaran',
-            'message' => 'Bukti pembayaran belum diperiksa oleh admin.',
-        ])->assertCreated()->json('data.id');
-        $this->assertDatabaseHas('notifications', [
-            'user_id' => $admin->id,
-            'target_url' => '/admin/pesan',
-        ]);
-
-        Sanctum::actingAs($admin);
-        $this->getJson('/api/admin/tickets')
-            ->assertOk()
-            ->assertJsonPath('0.id', $ticketId);
-        $this->postJson("/api/tickets/{$ticketId}/reply", [
-            'message' => 'Pembayaran sedang kami periksa.',
-        ])->assertOk();
-
-        $this->assertDatabaseHas('notifications', [
-            'user_id' => $student->id,
-            'target_url' => '/student/help',
-        ]);
-    }
 
     public function test_admin_notification_recipients_are_searchable_paginated_and_minimal(): void
     {

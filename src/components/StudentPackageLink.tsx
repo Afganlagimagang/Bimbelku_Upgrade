@@ -33,6 +33,9 @@ export default function StudentPackageLink({
   ...props
 }: StudentPackageLinkProps) {
   const [blockedUser, setBlockedUser] = useState<StoredUser | null>(null);
+  const target = !readStoredUser() && typeof props.to === "string" && props.to.startsWith("/student/packages/new")
+    ? props.to.replace("/student/packages/new", "/pesan")
+    : props.to;
 
   const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
     onClick?.(event);
@@ -50,7 +53,7 @@ export default function StudentPackageLink({
 
   return (
     <>
-      <Link {...props} onClick={handleClick}>
+      <Link {...props} to={target} onClick={handleClick}>
         {children}
       </Link>
 

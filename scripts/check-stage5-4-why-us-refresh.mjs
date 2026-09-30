@@ -7,7 +7,7 @@ const text = fs.readFileSync(file, 'utf8');
 
 const checks = [
   ['uses current Paket Belajar terminology', text.includes('Paket Belajar')],
-  ['uses current Kelas Kelompok terminology', text.includes('Kelas Kelompok')],
+  ['uses current Kelas Bersama terminology', text.includes('Kelas Bersama')],
   ['explains material progress', text.includes('Progress berbasis materi')],
   ['explains session history', text.includes('riwayat per sesi') || text.includes('Riwayat per sesi')],
   ['keeps StudentPackageLink guard', text.includes('StudentPackageLink')],

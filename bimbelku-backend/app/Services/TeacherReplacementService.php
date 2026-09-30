@@ -127,14 +127,14 @@ class TeacherReplacementService
                 'start_time' => $firstSession->scheduled_start_at->format('H:i:s'),
                 'end_time' => $firstSession->scheduled_end_at->format('H:i:s'),
                 'duration_hours' => $oldRequest->duration_hours,
-                'address' => $oldRequest->address,
-                'maps_link' => $oldRequest->maps_link,
-                'latitude' => $oldRequest->latitude,
-                'longitude' => $oldRequest->longitude,
+                'address' => $oldRequest->learning_mode === 'offline' ? $oldRequest->address : null,
+                'maps_link' => $oldRequest->learning_mode === 'offline' ? $oldRequest->maps_link : null,
+                'latitude' => $oldRequest->learning_mode === 'offline' ? $oldRequest->latitude : null,
+                'longitude' => $oldRequest->learning_mode === 'offline' ? $oldRequest->longitude : null,
                 'status' => $needsReschedule ? 'no_teacher' : 'matching',
                 'hourly_rate' => $oldRequest->hourly_rate,
                 'total_amount' => $oldRequest->total_amount,
-                'search_radius_km' => $oldRequest->learning_mode === 'offline' ? 3 : 12,
+                'search_radius_km' => $oldRequest->learning_mode === 'offline' ? 3 : null,
                 'search_started_at' => now(),
                 'search_expires_at' => now()->addHours($this->matchingService->maximumSearchHours()),
             ]);
@@ -152,7 +152,7 @@ class TeacherReplacementService
                     ? 'Sesi tersisa dibekukan. Ubah jadwal karena sesi terdekat kurang dari 24 jam.'
                     : 'Sesi tersisa dibekukan dan pencarian guru pengganti dimulai.',
                 'type' => 'info',
-                'target_url' => '/student/my-classes?tab=process',
+                'target_url' => '/student/packages',
             ]);
 
             return ['replacement' => $locked->fresh(), 'booking_request' => $request, 'needs_reschedule' => $needsReschedule];
@@ -365,8 +365,8 @@ class TeacherReplacementService
                     'teacher_net_amount' => $old->teacher_net_amount,
                     'status' => 'confirmed',
                     'session_flow_version' => $old->session_flow_version,
-                    'address' => $old->address,
-                    'maps_link' => $old->maps_link,
+                    'address' => $old->learning_mode === 'offline' ? $old->address : null,
+                    'maps_link' => $old->learning_mode === 'offline' ? $old->maps_link : null,
                     'payout_status' => 'locked',
                 ]);
                 $sessionRequest->update(['booking_id' => $booking->id]);

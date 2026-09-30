@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Setting;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -16,7 +17,7 @@ class AdminSettingController extends Controller
     public function updateTeacherCover(Request $request)
     {
         $request->validate([
-            'image' => 'required|image|mimes:jpeg,png,jpg,webp|max:2048',
+            'image' => 'required|image|mimes:jpeg,png,jpg,webp|max:5120',
         ]);
 
         $extension = $request->file('image')->extension();
@@ -70,12 +71,41 @@ class AdminSettingController extends Controller
         $payload = ['url' => \App\Support\PublicMedia::url($path)];
         $response = response()->json($payload);
         $response->setEtag(sha1((string) json_encode($payload)));
-        $response->setPublic();
-        $response->setMaxAge(300);
-        $response->headers->addCacheControlDirective('stale-while-revalidate', '60');
+        $response->headers->set('Cache-Control', 'no-store');
         $response->isNotModified($request);
 
         return $response;
+    }
+
+    public function teacherCoverStatus()
+    {
+        $teachers = User::query()->where('role', 'teacher');
+
+        return response()->json([
+            'teacher_count' => (clone $teachers)->count(),
+            'custom_cover_count' => (clone $teachers)
+                ->whereNotNull('profile_cover')
+                ->where('profile_cover_use_default', false)
+                ->count(),
+        ]);
+    }
+
+    public function applyDefaultTeacherCover()
+    {
+        $configured = Setting::query()->where('key', 'teacher_cover_path')->value('value');
+        if (!$configured || !Storage::disk('public')->exists($configured)) {
+            return response()->json(['message' => 'Unggah sampul default terlebih dahulu.'], 422);
+        }
+
+        $updated = User::query()->where('role', 'teacher')
+            ->whereNotNull('profile_cover')
+            ->where('profile_cover_use_default', false)
+            ->update(['profile_cover_use_default' => true]);
+
+        return response()->json([
+            'message' => 'Sampul default sekarang dipakai tutor yang sebelumnya memakai sampul pribadi. File pribadi tetap tersimpan.',
+            'updated_count' => $updated,
+        ]);
     }
 
     private function isTeacherCover(string $path): bool

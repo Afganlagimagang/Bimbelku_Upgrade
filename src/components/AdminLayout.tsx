@@ -1,3 +1,4 @@
+import DashboardBrand from "@/components/DashboardBrand";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
@@ -7,7 +8,6 @@ import {
   Bell,
   BookOpen,
   Coins,
-  CreditCard,
   FileCheck,
   Gavel,
   Globe,
@@ -20,8 +20,6 @@ import {
   MoreHorizontal,
   NotebookPen,
   PieChart,
-  QrCode,
-  RotateCcw,
   SearchCheck,
   ScrollText,
   Tags,
@@ -84,14 +82,12 @@ const operationalCountForPath = (path: string, counts: OperationalAttentionCount
   "/admin/tutor-searches": counts.matching_attention,
   "/admin/classes": counts.monitoring_attention,
   "/admin/cases": counts.cases,
-  "/admin/pembayaran": counts.orders,
-  "/admin/finance": counts.payouts,
-  "/admin/refunds": counts.refunds,
+  "/admin/finance": counts.orders + counts.refunds + counts.payouts,
   "/admin/guru": counts.teachers,
 }[path] ?? 0);
 
 const operationalToneForPath = (path: string): "urgent" | "warning" => (
-  ["/admin/refunds", "/admin/finance", "/admin/guru"].includes(path) ? "warning" : "urgent"
+  ["/admin/finance", "/admin/guru"].includes(path) ? "warning" : "urgent"
 );
 
 const navigation: NavigationSection[] = [
@@ -107,10 +103,7 @@ const navigation: NavigationSection[] = [
   {
     label: "Transaksi dan dana",
     items: [
-      { to: "/admin/pembayaran", label: "Pembayaran murid", icon: CreditCard, permission: ADMIN_PERMISSIONS.FINANCE_PAYMENTS },
-      { to: "/admin/finance", label: "Pencairan tutor", icon: BadgeDollarSign, permission: ADMIN_PERMISSIONS.FINANCE_PAYOUTS },
-      { to: "/admin/refunds", label: "Refund & saldo", icon: RotateCcw, permission: ADMIN_PERMISSIONS.FINANCE_REFUNDS },
-      { to: "/admin/settings-payment", label: "Rekening penerimaan", icon: QrCode, permission: ADMIN_PERMISSIONS.FINANCE_PAYMENTS },
+      { to: "/admin/finance", label: "Pusat keuangan", icon: BadgeDollarSign, permission: ADMIN_PERMISSIONS.FINANCE_PAYOUTS },
     ],
   },
   {
@@ -118,17 +111,16 @@ const navigation: NavigationSection[] = [
     items: [
       { to: "/admin/guru", label: "Verifikasi tutor", icon: FileCheck, permission: ADMIN_PERMISSIONS.TEACHERS_MANAGE },
       { to: "/admin/users", label: "Data pengguna", icon: Users, permission: ADMIN_PERMISSIONS.USERS_MANAGE },
-      { to: "/admin/pesan", label: "Pesan bantuan", icon: MessageSquare, permission: ADMIN_PERMISSIONS.SUPPORT_MANAGE },
       { to: "/admin/notifikasi", label: "Kirim notifikasi", icon: Bell, permission: ADMIN_PERMISSIONS.SUPPORT_MANAGE },
     ],
   },
   {
     label: "Katalog dan konten",
     items: [
-      { to: "/admin/subjects", label: "Mata pelajaran", icon: LibraryBig, permission: ADMIN_PERMISSIONS.CONTENT_MANAGE },
+      { to: "/admin/subjects", label: "Katalog & program", icon: LibraryBig, permission: ADMIN_PERMISSIONS.CONTENT_MANAGE },
       { to: "/admin/chapters", label: "Materi kurikulum", icon: Layers3, permission: ADMIN_PERMISSIONS.CONTENT_MANAGE },
       { to: "/admin/hourly-rates", label: "Harga per sesi", icon: Coins, permission: ADMIN_PERMISSIONS.CONTENT_MANAGE },
-      { to: "/admin/kelas-murah", label: "Kelas Kelompok", icon: Users, permission: ADMIN_PERMISSIONS.CONTENT_MANAGE },
+      { to: "/admin/kelas-murah", label: "Kelas Bersama", icon: Users, permission: ADMIN_PERMISSIONS.CONTENT_MANAGE },
       { to: "/admin/stage-five", label: "Paket, promo, dan konten", icon: Tags, permission: ADMIN_PERMISSIONS.CONTENT_MANAGE },
     ],
   },
@@ -136,8 +128,10 @@ const navigation: NavigationSection[] = [
     label: "Pengaturan",
     items: [
       { to: "/admin/ratings", label: "Moderasi ulasan", icon: PieChart, permission: ADMIN_PERMISSIONS.CLASSES_MANAGE },
-      { to: "/admin/settings-display", label: "Tampilan tutor", icon: Image, permission: ADMIN_PERMISSIONS.SETTINGS_MANAGE },
-      { to: "/admin/website", label: "Website publik", icon: Globe, permission: ADMIN_PERMISSIONS.SETTINGS_MANAGE },
+      { to: "/admin/settings-display", label: "Sampul default tutor", icon: Image, permission: ADMIN_PERMISSIONS.SETTINGS_MANAGE },
+      { to: "/admin/public-tutors", label: "Tutor publik", icon: Users, permission: ADMIN_PERMISSIONS.SETTINGS_MANAGE },
+      { to: "/admin/website", label: "Teks website", icon: Globe, permission: ADMIN_PERMISSIONS.SETTINGS_MANAGE },
+      { to: "/admin/website-media", label: "Media website", icon: Image, permission: ADMIN_PERMISSIONS.SETTINGS_MANAGE },
       { to: "/admin/notes", label: "Catatan admin", icon: NotebookPen, permission: ADMIN_PERMISSIONS.SETTINGS_MANAGE },
       { to: "/admin/settings-footer", label: "Footer website", icon: Globe, permission: ADMIN_PERMISSIONS.SETTINGS_MANAGE },
     ],
@@ -152,16 +146,17 @@ const navigation: NavigationSection[] = [
 
 const readAdmin = () => {
   try {
-    const value = JSON.parse(localStorage.getItem("user") || "null") as { name?: string; email?: string; role?: string; admin_type?: string | null; admin_permissions?: string[] } | null;
+    const value = JSON.parse(localStorage.getItem("user") || "null") as { name?: string; email?: string; role?: string; admin_type?: string | null; admin_permissions?: string[]; is_primary_admin?: boolean } | null;
     return {
       name: value?.name || "Administrator",
       email: value?.email || "Admin BimbelKu",
       role: value?.role || "admin",
       admin_type: value?.admin_type,
       admin_permissions: value?.admin_permissions,
+      is_primary_admin: value?.is_primary_admin,
     };
   } catch {
-    return { name: "Administrator", email: "Admin BimbelKu", role: "admin", admin_type: null, admin_permissions: undefined };
+    return { name: "Administrator", email: "Admin BimbelKu", role: "admin", admin_type: null, admin_permissions: undefined, is_primary_admin: false };
   }
 };
 
@@ -182,13 +177,13 @@ export default function AdminLayout({ children, title, subtitle = "Pusat operasi
     [admin],
   );
   const mobileNavigation = useMemo(() => {
-    const preferredPaths = ["/admin", "/admin/guru", "/admin/pembayaran", "/admin/pesan"];
+    const preferredPaths = ["/admin", "/admin/guru", "/admin/finance"];
     const availableItems = visibleNavigation.flatMap((section) => section.items);
     return preferredPaths
       .map((path) => availableItems.find((item) => item.to === path))
       .filter((item): item is NavigationItem => Boolean(item));
   }, [visibleNavigation]);
-  const adminLabel = "Admin utama";
+  const adminLabel = admin.is_primary_admin || admin.admin_type === "super_admin" ? "Admin utama" : "Admin";
   const initials = admin.name
     .split(/\s+/)
     .filter(Boolean)
@@ -261,7 +256,7 @@ export default function AdminLayout({ children, title, subtitle = "Pusat operasi
   }, [fetchAttentionData]);
 
   useEffect(() => {
-    const ids = unreadIdsForCurrentPage("admin", location.pathname, attentionNotifications);
+    const ids = unreadIdsForCurrentPage("admin", `${location.pathname}${location.search}`, attentionNotifications);
     if (!ids.length) return;
 
     const idSet = new Set(ids);
@@ -275,7 +270,7 @@ export default function AdminLayout({ children, title, subtitle = "Pusat operasi
       });
 
     return () => { cancelled = true; };
-  }, [attentionNotifications, fetchAttentionData, location.pathname]);
+  }, [attentionNotifications, fetchAttentionData, location.pathname, location.search]);
 
   return (
     <div className="flex h-dvh w-full max-w-full overflow-hidden bg-slate-50 font-sans text-slate-800">
@@ -295,9 +290,7 @@ export default function AdminLayout({ children, title, subtitle = "Pusat operasi
         }`}
       >
         <div className="flex h-20 items-center gap-3 border-b border-slate-100 px-5 sm:px-6">
-          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-slate-950 text-lg font-black text-white shadow-lg shadow-slate-300">
-            B
-          </div>
+          <DashboardBrand className="h-11 w-11" />
           <div className="min-w-0">
             <p className="truncate text-lg font-black tracking-tight text-slate-950">BimbelKu Admin</p>
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-orange-600">Pusat operasional</p>
@@ -375,19 +368,19 @@ export default function AdminLayout({ children, title, subtitle = "Pusat operasi
               <span className="h-2 w-2 rounded-full bg-emerald-500" />
               <span>Sistem aktif</span>
             </div>
-            <ProfileQuickMenu
+              <ProfileQuickMenu
               user={admin}
               accent="admin"
               roleLabel="Admin"
               profileTo="/admin/profile"
               accountTo="/admin/settings-display"
-              helpTo="/admin/pesan"
+
             />
           </div>
         </header>
 
         <div className={`mobile-app-content min-h-0 flex-1 overflow-x-hidden p-4 pb-[calc(7.25rem+env(safe-area-inset-bottom))] sm:px-6 sm:py-7 sm:pb-[calc(6.75rem+env(safe-area-inset-bottom))] xl:px-8 xl:pb-7 ${lockContentScroll ? "overflow-y-hidden" : "overflow-y-auto"}`}>
-          <div className="flex h-full min-h-0 flex-col mx-auto w-full min-w-0 max-w-[90rem] pb-12">{children}</div>
+          <div className="mx-auto flex h-full min-h-0 w-full min-w-0 max-w-[90rem] flex-col pb-20 sm:pb-24 xl:pb-16">{children}</div>
         </div>
         {!sidebarOpen && (
           <AdminMobileBottomNav
@@ -475,7 +468,6 @@ function AdminMobileBottomNav({
     "/admin/classes",
     "/admin/cases",
     "/admin/finance",
-    "/admin/refunds",
   ].reduce((total, path) => total + operationalCountForPath(path, operationalCounts), 0);
   const menuAttention = menuOperationalCount > 0 || hasAdminMobileMenuAttention(mobileRoutes, attentionNotifications);
   return (
@@ -493,10 +485,8 @@ function AdminMobileBottomNav({
             ? "Beranda"
             : item.to === "/admin/guru"
               ? "Tutor"
-              : item.to === "/admin/pembayaran"
-                ? "Bayar"
-                : item.to === "/admin/pesan"
-                  ? "Pesan"
+              : item.to === "/admin/finance"
+                ? "Dana"
                   : item.label;
 
           return (

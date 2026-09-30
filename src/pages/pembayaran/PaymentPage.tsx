@@ -1,9 +1,11 @@
 import { notify } from "@/lib/notify";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { createPortal } from "react-dom";
 import {
   AlertCircle,
   ArrowLeft,
+  ArrowRight,
   Building2,
   Check,
   CheckCircle2,
@@ -20,6 +22,7 @@ import {
   UserRound,
   WalletCards,
   XCircle,
+  X,
 } from "lucide-react";
 import StudentLayout from "@/components/StudentLayout";
 import OrderProgress from "@/components/OrderProgress";
@@ -38,7 +41,17 @@ import {
   validateUpload,
 } from "@/lib/validation";
 
+const EmbeddedCheckout = lazy(() => import("@/components/EmbeddedCheckout"));
+
+interface EmbeddedSession {
+  sessionId: string;
+  componentsKey: string;
+  amount: number;
+}
+
 interface PaymentSettings {
+  provider?: "xendit";
+  xendit_configured?: boolean;
   merchant_name: string;
   bank_name: string;
   account_number: string;
@@ -83,6 +96,8 @@ interface OrderData {
   outstandingAmount?: number;
   reconciliationStatus?: "underpaid" | "exact" | "overpaid" | null;
   topUpDueAt?: string | null;
+  gatewayStatus?: string | null;
+  gatewayExpiresAt?: string | null;
 }
 
 type State = "loading" | "pending" | "submitted" | "paid" | "expired" | "cancelled" | "refund_pending" | "refunded";
@@ -172,22 +187,30 @@ export default function PaymentPage() {
   const [pinResetCode, setPinResetCode] = useState("");
   const [pinResetSent, setPinResetSent] = useState(false);
   const [requestingPinReset, setRequestingPinReset] = useState(false);
+  const [embeddedSession, setEmbeddedSession] = useState<EmbeddedSession | null>(null);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [legacyCheckoutUrl, setLegacyCheckoutUrl] = useState<string | null>(null);
   const orderKind = order?.orderKind;
   const isCheapClass = orderKind === "cheap_class";
   const isPackage = orderKind === "package";
   const returnPath = orderKind === "cheap_class"
     ? "/student/kelas-murah"
     : orderKind === "package"
-      ? "/student/my-classes?tab=process"
+      ? "/student/packages"
       : "/student/history";
   const returnAction = isCheapClass
-    ? "Lihat Kelas Kelompok"
+    ? "Lihat Kelas Bersama"
     : isPackage
       ? "Lihat Proses Kelas"
       : "Lihat Riwayat Transaksi";
 
   const checkStatus = useCallback(async (orderId: number, showNotification = true) => {
     try {
+      try {
+        await http.post(`/orders/${orderId}/payment-status-sync`);
+      } catch {
+        // Webhook tetap menjadi jalur utama; polling ini adalah fallback aman untuk localhost.
+      }
       const response = await http.get(`/student/orders/${orderId}/status`);
       const status = response.data.status as string;
       setReason(response.data.rejection_reason || "");
@@ -206,6 +229,8 @@ export default function PaymentPage() {
         reconciliationStatus: response.data.payment_reconciliation_status ?? null,
         topUpDueAt: response.data.top_up_due_at ?? null,
         paymentDueAt: response.data.top_up_due_at ?? current.paymentDueAt,
+        gatewayStatus: response.data.gateway_status ?? current.gatewayStatus ?? null,
+        gatewayExpiresAt: response.data.gateway_expires_at ?? current.gatewayExpiresAt ?? null,
       } : current);
       if (status === "paid") {
         setState("paid");
@@ -273,6 +298,8 @@ export default function PaymentPage() {
             outstandingAmount: Number(response.data.payment_outstanding_amount || 0),
             reconciliationStatus: response.data.payment_reconciliation_status ?? null,
             topUpDueAt: response.data.top_up_due_at ?? null,
+            gatewayStatus: response.data.gateway_status ?? null,
+            gatewayExpiresAt: response.data.gateway_expires_at ?? null,
           };
         } else {
           const stored = sessionStorage.getItem("bimbelku_payment_order");
@@ -552,7 +579,7 @@ export default function PaymentPage() {
   const cancel = async () => {
     if (!order) return;
     const approved = await confirm({
-      title: isCheapClass ? "Batalkan keikutsertaan Kelas Kelompok?" : "Batalkan tagihan?",
+      title: isCheapClass ? "Batalkan keikutsertaan Kelas Bersama?" : "Batalkan tagihan?",
       description: isCheapClass
         ? "Kursi akan dilepas. Kamu masih dapat bergabung kembali jika pendaftaran masih dibuka dan kuota tersedia. Pembatalan tidak tersedia setelah bukti pembayaran dikirim."
         : "Tagihan dan pesanan akan dibatalkan. Tindakan ini tidak dapat dipulihkan.",
@@ -570,12 +597,87 @@ export default function PaymentPage() {
     }
   };
 
+  const openXenditCheckout = async () => {
+    if (!order || submitting) return;
+    setSubmitting(true);
+    setSubmitIssue(null);
+    try {
+      const mode = window.location.protocol === "https:" ? "components" : "payment_link";
+      const response = await http.post(`/orders/${order.orderId}/xendit-session`, { mode });
+      const data = response.data?.data;
+      const key = data?.components_sdk_key;
+      if (data?.mode === "COMPONENTS" && typeof key === "string" && key.length > 0) {
+        setEmbeddedSession({ sessionId: String(data.session_id), componentsKey: key, amount: Number(data.amount || order.price) });
+        setCheckoutOpen(true);
+        setLegacyCheckoutUrl(null);
+      } else if (typeof data?.checkout_url === "string" && data.checkout_url.startsWith("https://")) {
+        // Localhost uses hosted checkout because embedded Components requires HTTPS.
+        // Reopening the same order reuses its active session, never a second invoice.
+        setLegacyCheckoutUrl(data.checkout_url);
+      } else {
+        throw new Error("Pilihan pembayaran belum dapat dimuat untuk tagihan ini.");
+      }
+    } catch (error) {
+      const details = getApiErrorDetails(error, "Halaman pembayaran belum dapat dibuka.");
+      setSubmitIssue({
+        title: details.code === "xendit_not_configured" ? "Pembayaran otomatis belum tersedia" : "Pembayaran belum terbuka",
+        message: details.message,
+        tone: "amber",
+        code: details.code,
+      });
+      notify.error(details.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const paymentOrderId = order?.orderId;
+  useEffect(() => {
+    if (!checkoutOpen || !paymentOrderId || state !== "pending") return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void checkStatus(paymentOrderId, false);
+    }, 6000);
+    return () => window.clearInterval(timer);
+  }, [checkStatus, checkoutOpen, paymentOrderId, state]);
+
+  useEffect(() => {
+    if (!checkoutOpen) return;
+    const onEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setCheckoutOpen(false); };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onEscape);
+    return () => { window.removeEventListener("keydown", onEscape); document.body.style.overflow = previousOverflow; };
+  }, [checkoutOpen]);
+
   if (state === "loading") {
     return <StudentLayout title="Pembayaran"><div className="grid min-h-[65vh] place-items-center"><div className="text-center"><Loader2 className="mx-auto h-10 w-10 animate-spin text-indigo-600" /><p className="mt-3 text-sm font-bold text-slate-500">Menyiapkan tagihan…</p></div></div></StudentLayout>;
   }
 
   if (state === "paid") {
-    return <StudentLayout title="Pembayaran"><Result icon={CheckCircle2} color="emerald" title="Pembayaran diterima" text={isCheapClass ? "Pembayaran sudah diterima. Kelas akan dikonfirmasi setelah pendaftaran ditutup dan kuota minimum terpenuhi." : isPackage ? "Pembayaran sudah diterima. Sistem sekarang mencari tutor yang tersedia pada seluruh jadwalmu." : "Admin telah memverifikasi transfer untuk transaksi lama. Status kelas dan penyelesaiannya dapat dipantau dari riwayat transaksi."} action={returnAction} onClick={() => navigate(returnPath)} /></StudentLayout>;
+    return <StudentLayout title="Pembayaran">
+      <div className="mx-auto grid min-h-[65vh] max-w-xl place-items-center pb-16">
+        <div className="w-full overflow-hidden rounded-[1.75rem] border border-[#e5ebef] bg-white shadow-[0_24px_80px_-42px_rgba(13,35,54,.38)]">
+          <div className="relative overflow-hidden bg-[#102b3f] px-6 pb-8 pt-9 text-center text-white sm:px-9">
+            <div className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full border border-white/10" />
+            <div className="pointer-events-none absolute -left-12 bottom-0 h-32 w-32 rounded-full border border-[#f8b77c]/20" />
+            <div className="relative mx-auto grid h-16 w-16 place-items-center rounded-2xl bg-[#dff5e9] text-emerald-700 shadow-lg"><CheckCircle2 size={34} /></div>
+            <p className="relative mt-5 text-xs font-black uppercase tracking-[.2em] text-[#f9c49c]">Status pesanan</p>
+            <h1 className="relative mt-2 text-2xl font-black sm:text-3xl">Pembayaran diterima</h1>
+            <p className="relative mx-auto mt-3 max-w-sm text-sm leading-6 text-slate-200">{isCheapClass ? "Keikutsertaanmu tercatat. Kelas dikonfirmasi setelah pendaftaran ditutup dan kuota minimum terpenuhi." : isPackage ? "Pesananmu aktif. Sistem mulai mencari tutor sesuai jadwal yang kamu pilih." : "Status kelas dan langkah berikutnya dapat dipantau di akunmu."}</p>
+          </div>
+          <div className="p-6 sm:p-8">
+            <p className="text-xs font-black uppercase tracking-[.16em] text-slate-500">Rincian pembayaran</p>
+            <dl className="mt-4 space-y-3 text-sm">
+              <div className="flex justify-between gap-4 border-b border-slate-100 pb-3"><dt className="text-slate-500">Program</dt><dd className="max-w-[60%] text-right font-bold text-slate-900">{order?.packageName || order?.subject || "Pesanan BimbelKu"}</dd></div>
+              <div className="flex justify-between gap-4 border-b border-slate-100 pb-3"><dt className="text-slate-500">Nomor tagihan</dt><dd className="break-all text-right font-semibold text-slate-900">{order?.invoiceId || `#${order?.orderId ?? "–"}`}</dd></div>
+              <div className="flex items-end justify-between gap-4 pt-1"><dt className="font-bold text-slate-700">Total dibayar</dt><dd className="text-xl font-black text-[#102b3f]">{rupiah(Number(order?.price || 0))}</dd></div>
+            </dl>
+            <Button onClick={() => navigate(returnPath)} className="mt-7 min-h-12 w-full rounded-xl bg-[#d45e27] font-black text-white hover:bg-[#b84b1b]">{returnAction}<ArrowRight size={17} className="ml-2" /></Button>
+            <button type="button" onClick={() => navigate("/student/dashboard")} className="mt-2 min-h-11 w-full text-sm font-bold text-slate-600 hover:text-slate-900">Ke dashboard</button>
+          </div>
+        </div>
+      </div>
+    </StudentLayout>;
   }
 
   if (state === "refund_pending" || state === "refunded") {
@@ -592,10 +694,78 @@ export default function PaymentPage() {
         <div className="mx-auto grid min-h-[65vh] max-w-2xl place-items-center">
           <div className="w-full rounded-[1.75rem] bg-gradient-to-br from-slate-950 via-indigo-950 to-violet-900 p-5 text-center text-white shadow-2xl sm:rounded-[2.5rem] sm:p-8">
             <div className="relative mx-auto h-36 w-36"><div className="absolute inset-0 animate-ping rounded-full border border-indigo-300/30" /><div className="absolute inset-4 animate-spin rounded-full border-4 border-indigo-400/20 border-t-indigo-300" /><div className="absolute inset-0 grid place-items-center"><ShieldCheck size={42} className="text-indigo-200" /></div></div>
-            <p className="mt-6 text-xs font-black uppercase tracking-[.2em] text-indigo-200">Pemeriksaan manual admin</p><h1 className="mt-3 text-2xl font-black sm:text-3xl">{isCheapClass && order.willRefundIfAccepted ? (order.refundReasonIfAccepted === "capacity_full" ? "Kuota penuh · bukti tetap diperiksa" : "Kelas dibatalkan · bukti tetap diperiksa") : "Bukti transfer sudah diterima"}</h1><p className="mx-auto mt-3 max-w-lg text-sm leading-7 text-indigo-100/70 sm:text-base">{isCheapClass && order.willRefundIfAccepted ? (order.refundReasonIfAccepted === "capacity_full" ? "Kapasitas peserta terverifikasi sudah penuh. Bukti tetap diperiksa admin. Jika transfer valid, dana akan masuk antrean refund penuh dan tidak mengaktifkan peserta tambahan." : `Kelas telah dibatalkan${order.cheapClassCancellationReason ? `: ${order.cheapClassCancellationReason}` : "."} Bukti transfer tetap diperiksa. Jika transfer valid, dana akan masuk antrean refund penuh. Jika bukti tidak valid, pembatalan selesai tanpa refund.`) : "Anda tidak perlu mengunggah ulang. Status diperiksa otomatis setiap 15 detik dan akan berubah setelah admin memberi keputusan."}</p>
+            <p className="mt-6 text-xs font-black uppercase tracking-[.2em] text-indigo-200">Konfirmasi pembayaran otomatis</p><h1 className="mt-3 text-2xl font-black sm:text-3xl">{isCheapClass && order.willRefundIfAccepted ? "Kelas dibatalkan · pembayaran tetap diperiksa" : "Pembayaran sedang dikonfirmasi"}</h1><p className="mx-auto mt-3 max-w-lg text-sm leading-7 text-indigo-100/70 sm:text-base">{isCheapClass && order.willRefundIfAccepted ? "Dana sudah diterima, tetapi kelas tidak dapat dilanjutkan. Sistem sedang menyiapkan refund penuh tanpa mengaktifkan peserta tambahan." : "Jangan membayar ulang. BimbelKu sedang menunggu konfirmasi pembayaran dan akan memperbarui status tagihan secara otomatis."}</p>
             <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row"><Button variant="outline" onClick={() => checkStatus(order.orderId)} className="rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"><RefreshCw size={16} className="mr-2" />Periksa sekarang</Button><Button onClick={() => navigate("/student/dashboard")} className="rounded-xl bg-white text-indigo-950 hover:bg-indigo-50">Ke dashboard</Button></div>
           </div>
         </div>
+      </StudentLayout>
+    );
+  }
+
+  if (settings.provider === "xendit") {
+    const returnedFromGateway = new URLSearchParams(location.search).get("gateway");
+    return (
+      <StudentLayout title="Pembayaran">
+        <div className="mx-auto w-full max-w-6xl space-y-5 pb-20">
+          <button type="button" onClick={() => navigate(returnPath)} className="inline-flex min-h-10 items-center gap-2 text-sm font-bold text-slate-600 hover:text-slate-950"><ArrowLeft size={17} />Kembali ke pesanan</button>
+          {returnedFromGateway === "cancelled" && <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">Pembayaran belum selesai. Tagihan tetap aktif selama waktu pembayaran masih tersedia.</div>}
+          {returnedFromGateway === "success" && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-900">Pembayaran telah dikirim. Status sedang dipastikan dari sistem pembayaran.</div>}
+          {submitIssue && <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900"><p className="font-black">{submitIssue.title}</p><p className="mt-1 text-sm leading-6">{submitIssue.message}</p></div>}
+          <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(360px,.95fr)] lg:gap-7">
+            <section className="min-w-0 space-y-5">
+              <div className="rounded-[1.75rem] border border-[#e3ebef] bg-white p-5 shadow-[0_20px_50px_-36px_rgba(13,35,54,.26)] sm:p-8">
+                <span className="inline-flex items-center gap-2 text-xs font-black uppercase tracking-[.17em] text-[#ba5527]"><ShieldCheck size={16} />Pembayaran BimbelKu</span>
+                <h1 className="mt-3 max-w-lg text-2xl font-black leading-tight text-[#102b3f] sm:text-4xl">Satu langkah lagi sebelum mulai belajar.</h1>
+                <p className="mt-3 max-w-xl text-sm leading-6 text-slate-600">Periksa rincian pesanan, lalu pilih cara bayar yang nyaman. Pencarian tutor dimulai setelah pembayaran terkonfirmasi.</p>
+                <div className="relative mt-6 overflow-hidden rounded-[1.4rem] bg-[#102b3f] p-5 text-white sm:p-7">
+                  <div className="pointer-events-none absolute -right-12 -top-16 h-52 w-52 rounded-full border border-[#f7b57d]/20" />
+                  <div className="pointer-events-none absolute -right-5 -top-9 h-36 w-36 rounded-full border border-[#f7b57d]/30" />
+                  <div className="pointer-events-none absolute bottom-0 right-10 h-20 w-20 rotate-12 rounded-2xl bg-white/[.04]" />
+                  <div className="relative flex items-start justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[.16em] text-[#f9c49c]">Tagihan aktif</p><p className="mt-2 break-all text-sm font-bold text-slate-100">{order.invoiceId || `#${order.orderId}`}</p></div><div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/10"><CreditCard size={21} /></div></div>
+                  <p className="relative mt-7 text-sm text-slate-300">Total yang perlu dibayar</p>
+                  <p className="relative mt-1 text-3xl font-black tracking-tight sm:text-4xl">{rupiah(Number(order.outstandingAmount) > 0 ? Number(order.outstandingAmount) : order.price)}</p>
+                  {order.paymentDueAt && <div className="relative mt-6 flex items-center gap-2 border-t border-white/15 pt-4 text-sm"><Clock3 size={16} className="text-[#f9c49c]" /><span className="text-slate-300">Sisa waktu pembayaran</span><strong className="ml-auto font-mono text-base text-white">{timeText}</strong></div>}
+                </div>
+                <dl className="mt-6 space-y-3 text-sm">
+                  <div className="flex justify-between gap-4 border-b border-slate-100 pb-3"><dt className="text-slate-500">Program</dt><dd className="max-w-[60%] text-right font-bold text-slate-900">{order.packageName || order.subject || "Pesanan BimbelKu"}</dd></div>
+                  <div className="flex justify-between gap-4 border-b border-slate-100 pb-3"><dt className="text-slate-500">Jenis kelas</dt><dd className="text-right font-bold text-slate-900">{order.type || "Belajar privat"}</dd></div>
+                  {Boolean(order.discountAmount && order.discountAmount > 0) && <div className="flex justify-between gap-4 border-b border-slate-100 pb-3"><dt className="text-slate-500">Diskon</dt><dd className="font-bold text-emerald-700">−{rupiah(order.discountAmount || 0)}</dd></div>}
+                </dl>
+              </div>
+            </section>
+            <section className="min-w-0 rounded-[1.75rem] border border-[#e3ebef] bg-white p-5 shadow-[0_20px_50px_-36px_rgba(13,35,54,.26)] sm:p-8">
+              <div className="flex items-start gap-3"><div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[#fff0e6] text-[#bb5526]"><WalletCards size={21} /></div><div><p className="text-xs font-black uppercase tracking-[.14em] text-[#ba5527]">Cara bayar</p><h2 className="mt-1 text-xl font-black text-[#102b3f]">Pilih metode pembayaran</h2></div></div>
+              <p className="mt-4 text-sm leading-6 text-slate-600">Metode yang tersedia untuk tagihanmu akan muncul di panel pembayaran. Data kartu atau akun pembayaran tidak disimpan oleh BimbelKu.</p>
+              <div className="mt-6 space-y-3">
+                <div className="flex items-center gap-3 rounded-xl border border-slate-200 p-4"><div className="grid h-10 w-10 place-items-center rounded-lg bg-slate-100 text-[#102b3f]"><CreditCard size={20} /></div><div className="min-w-0"><p className="font-bold text-slate-900">Metode tersedia</p><p className="text-xs leading-5 text-slate-500">Lihat pilihan yang aktif untuk transaksi ini</p></div><ArrowRight size={18} className="ml-auto shrink-0 text-slate-400" /></div>
+                <div className="flex items-start gap-3 rounded-xl bg-[#f4f7fa] p-4 text-sm leading-6 text-slate-600"><CheckCircle2 size={18} className="mt-0.5 shrink-0 text-emerald-600" />Status diperbarui otomatis setelah pembayaran berhasil. Kamu tidak perlu mengunggah bukti transfer.</div>
+              </div>
+              {legacyCheckoutUrl ? <><a href={legacyCheckoutUrl} target="_blank" rel="noopener noreferrer" className="mt-6 flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#d45e27] px-4 text-sm font-black text-white hover:bg-[#b84b1b]">Buka pilihan pembayaran<ArrowRight size={17} /></a><p className="mt-2 text-center text-xs leading-5 text-slate-500">Pembayaran dibuka di tab baru. Setelah selesai, kembali ke sini lalu tekan “Periksa status tagihan”.</p></> : <Button type="button" disabled={submitting || paymentExpired || !settings.xendit_configured} onClick={() => void openXenditCheckout()} className="mt-6 min-h-12 w-full rounded-xl bg-[#d45e27] text-sm font-black text-white hover:bg-[#b84b1b]">{submitting ? <Loader2 size={18} className="mr-2 animate-spin" /> : <ArrowRight size={18} className="mr-2" />}{submitting ? "Menyiapkan pilihan…" : "Lihat pilihan pembayaran"}</Button>}
+              {!settings.xendit_configured && <p className="mt-3 text-center text-xs font-bold leading-5 text-rose-700">Pembayaran otomatis belum tersedia. Hubungi admin BimbelKu.</p>}
+              <button type="button" onClick={() => void checkStatus(order.orderId)} className="mt-2 flex min-h-11 w-full items-center justify-center gap-2 text-sm font-bold text-slate-600 hover:text-slate-900"><RefreshCw size={15} />Periksa status tagihan</button>
+              <p className="mt-4 flex items-start gap-2 border-t border-slate-100 pt-4 text-xs leading-5 text-slate-500"><ShieldCheck size={16} className="mt-0.5 shrink-0 text-emerald-600" />Nominal dikunci oleh tagihan. Menutup panel pembayaran tidak membuat tagihan baru.</p>
+            </section>
+          </div>
+        </div>
+        {checkoutOpen && embeddedSession && createPortal(
+          <div className="fixed inset-0 z-[100] flex items-end justify-center bg-[#0c1f30]/65 sm:items-center sm:p-5" onMouseDown={(event) => { if (event.target === event.currentTarget) setCheckoutOpen(false); }}>
+            <section role="dialog" aria-modal="true" aria-labelledby="payment-dialog-title" className="flex max-h-[94dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-[1.75rem] bg-white shadow-2xl sm:max-h-[90dvh] sm:rounded-[1.75rem]">
+              <div className="mx-auto mt-2 h-1.5 w-12 rounded-full bg-slate-200 sm:hidden" />
+              <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 pb-4 pt-5 sm:px-8 sm:pt-7"><div><p className="text-xs font-black uppercase tracking-[.15em] text-[#ba5527]">Langkah pembayaran</p><h2 id="payment-dialog-title" className="mt-1 text-xl font-black text-[#102b3f] sm:text-2xl">Pilih cara bayar</h2><p className="mt-1 text-sm text-slate-600">Selesaikan tagihan tanpa keluar dari BimbelKu.</p></div><button type="button" onClick={() => setCheckoutOpen(false)} aria-label="Tutup pilihan pembayaran" className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-700 hover:bg-slate-200"><X size={19} /></button></div>
+              <div className="min-h-0 overflow-y-auto px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-5 sm:px-8 sm:py-7">
+                <Suspense fallback={<div className="flex items-center justify-center gap-2 py-10 text-sm text-slate-600"><Loader2 size={18} className="animate-spin" />Memuat pilihan…</div>}>
+                  <EmbeddedCheckout
+                    key={embeddedSession.sessionId}
+                    componentsKey={embeddedSession.componentsKey}
+                    amount={embeddedSession.amount}
+                    resume={new URLSearchParams(location.search).get("checkout") === "resume"}
+                    onComplete={() => void checkStatus(order.orderId, false)}
+                    onFailure={(message) => { setSubmitIssue({ title: "Pembayaran belum selesai", message, tone: "amber" }); setCheckoutOpen(false); void checkStatus(order.orderId, false); }}
+                  />
+                </Suspense>
+              </div>
+            </section>
+          </div>, document.body)}
       </StudentLayout>
     );
   }

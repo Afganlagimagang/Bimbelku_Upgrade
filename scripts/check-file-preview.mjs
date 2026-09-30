@@ -34,12 +34,13 @@ if (violations.length > 0) {
 
 const appSource = await readFile(path.resolve("src/App.tsx"), "utf8");
 const previewProvider = await readFile(path.resolve("src/components/FilePreviewProvider.tsx"), "utf8");
+const pdfCanvasPreview = await readFile(path.resolve("src/components/PdfCanvasPreview.tsx"), "utf8");
 for (const requirement of [
   ["provider global", appSource.includes("<FilePreviewProvider />")],
   ["kontrol perbesar", previewProvider.includes("ZoomIn")],
   ["kontrol perkecil", previewProvider.includes("ZoomOut")],
   ["kontrol putar", previewProvider.includes("RotateCw")],
-  ["pratinjau PDF", previewProvider.includes("<iframe")],
+  ["pratinjau PDF tanpa iframe", previewProvider.includes("<PdfCanvasPreview") && !previewProvider.includes("<iframe") && pdfCanvasPreview.includes("<canvas")],
 ]) {
   if (!requirement[1]) {
     console.error(`Pratinjau berkas belum memenuhi pemeriksaan: ${requirement[0]}.`);

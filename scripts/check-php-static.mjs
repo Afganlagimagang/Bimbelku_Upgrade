@@ -25,6 +25,12 @@ const failures = [];
 
 for (const file of phpFiles) {
   const source = fs.readFileSync(file, "utf8");
+  // CSS dalam Blade memakai # untuk warna; parser PHP sederhana di bawah
+  // akan salah menganggapnya sebagai komentar PHP. Abaikan blok style HTML,
+  // sementara ekspresi Blade dan markup lain tetap diperiksa.
+  const scannedSource = file.endsWith(".blade.php")
+    ? source.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
+    : source;
   const relative = path.relative(projectRoot, file);
   if (!file.endsWith(".blade.php") && !source.startsWith("<?php")) {
     failures.push(`${relative}: tag pembuka <?php tidak ditemukan`);
@@ -38,9 +44,9 @@ for (const file of phpFiles) {
   let escaped = false;
   let line = 1;
 
-  for (let index = 0; index < source.length; index += 1) {
-    const character = source[index];
-    const next = source[index + 1];
+  for (let index = 0; index < scannedSource.length; index += 1) {
+    const character = scannedSource[index];
+    const next = scannedSource[index + 1];
     if (character === "\n") line += 1;
 
     if (state === "line-comment") {

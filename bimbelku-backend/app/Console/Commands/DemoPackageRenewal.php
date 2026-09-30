@@ -165,6 +165,7 @@ class DemoPackageRenewal extends Command
                 'status' => 'paid',
                 'verified_at' => now()->subDays(14),
                 'class_details_snapshot' => [
+                    'is_demo_seed' => true,
                     'flow_version' => 6,
                     'learning_package_id' => $package->id,
                     'package_code' => $package->package_code,

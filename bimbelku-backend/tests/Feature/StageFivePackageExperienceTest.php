@@ -22,6 +22,21 @@ class StageFivePackageExperienceTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_duplicate_package_name_has_a_clear_message_and_original_package_can_still_be_edited(): void
+    {
+        $this->seed(StageFiveExperienceSeeder::class);
+        $admin = User::factory()->create(['role' => 'admin', 'status' => 'active']);
+        Sanctum::actingAs($admin);
+        $plan = PackagePlan::query()->where('slug', 'bulanan-dasar')->firstOrFail();
+        $payload = $plan->only(['name', 'slug', 'description', 'session_count', 'validity_days', 'maximum_subjects', 'sort_order', 'is_active']);
+
+        $this->postJson('/api/admin/stage-five/plans', [...$payload, 'slug' => 'paket-lain'])
+            ->assertUnprocessable()
+            ->assertJsonPath('errors.name.0', 'Nama paket ini sudah digunakan. Pilih nama lain agar tidak membingungkan murid.');
+
+        $this->putJson("/api/admin/stage-five/plans/{$plan->id}", $payload)->assertOk();
+    }
+
     protected function tearDown(): void
     {
         Carbon::setTestNow();
@@ -387,7 +402,7 @@ class StageFivePackageExperienceTest extends TestCase
                 'weekdays' => [1],
                 'schedules' => [
                     '2026-08-03 15:00:00',
-                    '2026-08-10 15:00:00',
+                    '2026-08-10 16:00:00',
                     '2026-08-17 15:00:00',
                     '2026-08-24 15:00:00',
                 ],
@@ -401,6 +416,10 @@ class StageFivePackageExperienceTest extends TestCase
         $this->assertDatabaseHas('package_sessions', [
             'scheduled_start_at' => '2026-08-03 15:00:00',
             'scheduled_end_at' => '2026-08-03 17:00:00',
+        ]);
+        $this->assertDatabaseHas('package_sessions', [
+            'scheduled_start_at' => '2026-08-10 16:00:00',
+            'scheduled_end_at' => '2026-08-10 18:00:00',
         ]);
         $this->assertDatabaseHas('booking_requests', [
             'duration_hours' => 2,

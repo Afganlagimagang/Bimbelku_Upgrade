@@ -105,12 +105,13 @@ const statusMap: Record<string, { label: string; className: string }> = {
   cancelled: { label: "Dibatalkan", className: "bg-slate-100 text-slate-600" },
 };
 
-export default function PaymentVerification() {
+export default function PaymentVerification({ embedded = false }: { embedded?: boolean }) {
   const confirm = useConfirmDialog();
   const [data, setData] = useState<ResponseData | null>(null);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<number | null>(null);
   const [tab, setTab] = useState<"pending" | "history">("pending");
+  const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [proof, setProof] = useState<Payment | null>(null);
@@ -142,7 +143,7 @@ export default function PaymentVerification() {
     };
   }, [load]);
 
-  const rows = useMemo(() => {
+  const filteredRows = useMemo(() => {
     const source = tab === "pending" ? data?.pending || [] : data?.history || [];
     const needle = search.trim().toLowerCase();
     return source.filter((item) => {
@@ -153,6 +154,10 @@ export default function PaymentVerification() {
       return matchesSearch && matchesStatus;
     });
   }, [data, search, status, tab]);
+
+  useEffect(() => setPage(1), [search, status, tab]);
+  const lastPage = Math.max(1, Math.ceil(filteredRows.length / 25));
+  const rows = filteredRows.slice((page - 1) * 25, page * 25);
 
   const verify = async (payment: Payment, nextStatus: "paid" | "rejected", reason?: string, actualAmount?: number) => {
     setProcessingId(payment.id);
@@ -222,7 +227,7 @@ export default function PaymentVerification() {
       description: rejecting.will_refund_if_accepted
         ? rejecting.refund_reason_if_accepted === "capacity_full"
           ? "Kapasitas peserta terverifikasi sudah penuh. Jika bukti ditolak, kursi anomali akan diakhiri tanpa refund karena transfer dianggap tidak valid."
-          : "Kelas Kelompok sudah dibatalkan. Jika bukti ditolak, pembatalan selesai tanpa refund dan murid tidak dapat mengunggah ulang bukti untuk kelas ini."
+          : "Kelas Bersama sudah dibatalkan. Jika bukti ditolak, pembatalan selesai tanpa refund dan murid tidak dapat mengunggah ulang bukti untuk kelas ini."
         : rejecting.is_cheap_class && !rejecting.can_resubmit_if_rejected
           ? "Jika bukti ditolak, kursi akan berakhir karena masa pembayaran, pendaftaran, atau kapasitas tidak lagi memungkinkan unggah ulang."
           : "Murid akan menerima alasan ini dan dapat mengunggah ulang bukti sebelum tenggat.",
@@ -233,7 +238,7 @@ export default function PaymentVerification() {
   };
 
   return (
-    <AdminLayout title="Pembayaran murid" subtitle="Uang masuk murid; refund dan pencairan tutor dipisahkan pada menu masing-masing">
+    <FinanceSectionFrame embedded={embedded} title="Pembayaran murid" subtitle="Verifikasi dana masuk murid dan rekonsiliasi pembayaran">
       <div className="space-y-6 pb-16">
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <SummaryCard icon={Clock3} label="Menunggu pemeriksaan" value={String(data?.summary.pending_count || 0)} detail={rupiah(data?.summary.pending_amount || 0)} tone="amber" />
@@ -301,6 +306,7 @@ export default function PaymentVerification() {
               ))}
             </div>
           )}
+          {!loading && filteredRows.length > 0 && <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3 text-sm"><span className="text-slate-500">Maksimal 25 data per halaman · total {filteredRows.length}</span><div className="flex items-center gap-2"><button type="button" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} className="rounded-lg border px-3 py-2 font-bold disabled:opacity-40">Sebelumnya</button><span className="font-black">{page} / {lastPage}</span><button type="button" disabled={page >= lastPage} onClick={() => setPage((value) => Math.min(lastPage, value + 1))} className="rounded-lg border px-3 py-2 font-bold disabled:opacity-40">Berikutnya</button></div></div>}
         </section>
       </div>
 
@@ -336,8 +342,12 @@ export default function PaymentVerification() {
           </div>
         </div>
       )}
-    </AdminLayout>
+    </FinanceSectionFrame>
   );
+}
+
+function FinanceSectionFrame({ embedded, title, subtitle, children }: { embedded: boolean; title: string; subtitle: string; children: React.ReactNode }) {
+  return embedded ? <>{children}</> : <AdminLayout title={title} subtitle={subtitle}>{children}</AdminLayout>;
 }
 
 function SummaryCard({ icon: Icon, label, value, detail, tone }: { icon: typeof CreditCard; label: string; value: string; detail: string; tone: "amber" | "emerald" | "rose" | "indigo" }) {
@@ -346,5 +356,5 @@ function SummaryCard({ icon: Icon, label, value, detail, tone }: { icon: typeof 
 }
 
 function ProofModal({ payment, onClose, onAccept, onReject, pending }: { payment: Payment; onClose: () => void; onAccept: () => void; onReject: () => void; pending: boolean }) {
-  return <div className="fixed inset-0 z-[var(--layer-detail)] grid place-items-center bg-slate-950/65 p-3 backdrop-blur-sm sm:p-4"><div role="dialog" aria-modal="true" className="max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl overflow-y-auto rounded-[1.75rem] bg-white shadow-2xl sm:max-h-[92dvh]"><div className="sticky top-0 z-10 grid grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-start gap-2 border-b border-slate-100 bg-white/95 p-3 backdrop-blur sm:p-4"><button type="button" aria-label="Kembali ke daftar pembayaran" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-xl hover:bg-slate-100"><ArrowLeft size={18} /></button><div className="min-w-0 text-center"><p className="break-words font-black text-slate-950">Bukti transfer {payment.order_id}</p><p className="mt-1 break-words text-xs text-slate-500">{payment.student?.name} · transfer {rupiah(payment.external_payment_amount ?? payment.amount)}{(payment.wallet_reserved_amount || 0) + (payment.wallet_applied_amount || 0) ? ` · saldo ${rupiah((payment.wallet_reserved_amount || 0) + (payment.wallet_applied_amount || 0))}` : ""}</p></div><button type="button" aria-label="Tutup" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-xl hover:bg-slate-100"><X size={18} /></button></div><div className="p-4 sm:p-6">{payment.will_refund_if_accepted && <div className="mb-4 rounded-xl border border-violet-200 bg-violet-50 p-4 text-sm font-bold leading-6 text-violet-800">{payment.refund_reason_if_accepted === "capacity_full" ? "Kapasitas peserta terverifikasi sudah penuh. Jika bukti ini diterima, dana otomatis masuk antrean refund penuh dan peserta tidak ditambahkan." : "Kelas Kelompok sudah dibatalkan. Jika bukti ini diterima, dana otomatis masuk antrean refund penuh. Jika ditolak, pembatalan selesai tanpa refund."}</div>}<div className="rounded-2xl bg-slate-100 p-2"><ProtectedImage source={payment.payment_proof || ""} alt={`Bukti pembayaran ${payment.order_id}`} className="mx-auto max-h-[60dvh] w-full rounded-xl object-contain" /></div>{pending && <div className="mt-5 grid gap-2 sm:grid-cols-2"><Button variant="outline" onClick={onReject} className="h-11 rounded-xl border-rose-200 text-rose-700">Tolak</Button><Button onClick={onAccept} className="h-11 rounded-xl bg-slate-950">Terima pembayaran</Button></div>}</div></div></div>;
+  return <div className="fixed inset-0 z-[var(--layer-detail)] grid place-items-center bg-slate-950/65 p-3 backdrop-blur-sm sm:p-4"><div role="dialog" aria-modal="true" className="max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl overflow-y-auto rounded-[1.75rem] bg-white shadow-2xl sm:max-h-[92dvh]"><div className="sticky top-0 z-10 grid grid-cols-[2.5rem_minmax(0,1fr)_2.5rem] items-start gap-2 border-b border-slate-100 bg-white/95 p-3 backdrop-blur sm:p-4"><button type="button" aria-label="Kembali ke daftar pembayaran" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-xl hover:bg-slate-100"><ArrowLeft size={18} /></button><div className="min-w-0 text-center"><p className="break-words font-black text-slate-950">Bukti transfer {payment.order_id}</p><p className="mt-1 break-words text-xs text-slate-500">{payment.student?.name} · transfer {rupiah(payment.external_payment_amount ?? payment.amount)}{(payment.wallet_reserved_amount || 0) + (payment.wallet_applied_amount || 0) ? ` · saldo ${rupiah((payment.wallet_reserved_amount || 0) + (payment.wallet_applied_amount || 0))}` : ""}</p></div><button type="button" aria-label="Tutup" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-xl hover:bg-slate-100"><X size={18} /></button></div><div className="p-4 sm:p-6">{payment.will_refund_if_accepted && <div className="mb-4 rounded-xl border border-violet-200 bg-violet-50 p-4 text-sm font-bold leading-6 text-violet-800">{payment.refund_reason_if_accepted === "capacity_full" ? "Kapasitas peserta terverifikasi sudah penuh. Jika bukti ini diterima, dana otomatis masuk antrean refund penuh dan peserta tidak ditambahkan." : "Kelas Bersama sudah dibatalkan. Jika bukti ini diterima, dana otomatis masuk antrean refund penuh. Jika ditolak, pembatalan selesai tanpa refund."}</div>}<div className="rounded-2xl bg-slate-100 p-2"><ProtectedImage source={payment.payment_proof || ""} alt={`Bukti pembayaran ${payment.order_id}`} className="mx-auto max-h-[60dvh] w-full rounded-xl object-contain" /></div>{pending && <div className="mt-5 grid gap-2 sm:grid-cols-2"><Button variant="outline" onClick={onReject} className="h-11 rounded-xl border-rose-200 text-rose-700">Tolak</Button><Button onClick={onAccept} className="h-11 rounded-xl bg-slate-950">Terima pembayaran</Button></div>}</div></div></div>;
 }

@@ -127,7 +127,7 @@ class AdminAuditService
         $requestId = (string) Str::uuid();
         $createdAt = now()->startOfSecond();
         $payload = $this->sanitize($request->except([
-            'password', 'password_confirmation', 'current_password', 'code', 'current_code',
+            'password', 'password_confirmation', 'current_password', 'super_admin_password', 'code', 'current_code',
             'finance_totp_secret', 'token', 'access_token',
         ]));
         $reason = trim((string) ($request->input('reason') ?? $request->input('notes') ?? '')) ?: null;
@@ -318,7 +318,7 @@ class AdminAuditService
     private function sanitize(array $payload): array
     {
         $sensitive = [
-            'password', 'password_confirmation', 'current_password', 'finance_totp_secret',
+            'password', 'password_confirmation', 'current_password', 'super_admin_password', 'finance_totp_secret',
             'token', 'access_token', 'code', 'current_code', 'guardian_phone', 'guardian_name',
             'guardian_relationship', 'phone', 'address', 'maps_link', 'latitude', 'longitude',
             'date_of_birth', 'remember_token', 'consent_ip', 'consent_user_agent',

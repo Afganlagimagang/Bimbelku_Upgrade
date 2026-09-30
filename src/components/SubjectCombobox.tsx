@@ -108,10 +108,14 @@ export default function SubjectCombobox({
     const width = Math.max(0, Math.min(rect.width, viewportWidth - margin * 2));
     const left = clamp(rect.left, viewportLeft + margin, viewportLeft + viewportWidth - width - margin);
     const top = placement === "bottom" ? rect.bottom + gap : rect.top - gap;
+    // A modal dialog locks wheel/touch scrolling outside its own DOM subtree.
+    // Keep the list inside the dialog and express fixed coordinates relative to
+    // its transformed content box; elsewhere the list stays in document.body.
+    const dialogRect = trigger.closest<HTMLElement>('[role="dialog"]')?.getBoundingClientRect();
 
     setMenuPosition({
-      top,
-      left,
+      top: top - (dialogRect?.top ?? 0),
+      left: left - (dialogRect?.left ?? 0),
       width,
       maxHeight: Math.max(0, Math.min(desiredHeight, availableHeight)),
       placement,
@@ -172,9 +176,10 @@ export default function SubjectCombobox({
   const menu = open && !disabled && menuPosition && typeof document !== "undefined" ? (
     <div
       ref={listboxRef}
+      data-dialog-interactive-portal
       id={listboxId}
       role="listbox"
-      className="fixed z-[var(--layer-detail-popover)] min-w-0 max-w-[calc(100dvw-1.5rem)] overflow-x-hidden overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
+      className="pointer-events-auto fixed z-[var(--layer-detail-popover)] min-w-0 max-w-[calc(100dvw-1.5rem)] overflow-x-hidden overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
       style={{
         top: menuPosition.top,
         left: menuPosition.left,
@@ -212,7 +217,7 @@ export default function SubjectCombobox({
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white text-orange-600">
             {creating ? <Loader2 size={17} className="animate-spin" /> : <Plus size={17} />}
           </span>
-          <span className="min-w-0 flex-1 break-anywhere text-sm font-black">Tambahkan “{query.trim()}” sebagai mapel baru</span>
+          <span className="min-w-0 flex-1 break-words text-sm font-black">Tambahkan “{query.trim()}” sebagai mapel baru</span>
         </button>
       )}
       {!filtered.length && !canCreate && (
@@ -304,7 +309,7 @@ export default function SubjectCombobox({
           <ChevronDown size={17} className={cn("transition", open && "rotate-180")} />
         </button>
       </div>
-      {menu ? createPortal(menu, document.body) : null}
+      {menu ? createPortal(menu, rootRef.current?.closest('[role="dialog"]') ?? document.body) : null}
     </div>
   );
 }

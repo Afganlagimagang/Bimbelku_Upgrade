@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Services\PersistentLoginService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -18,13 +19,16 @@ class GoogleAuthController extends Controller
 {
     public function redirect(Request $request): RedirectResponse
     {
+        $frontendOrigin = $this->allowedFrontendOrigin($request->query('frontend_origin'));
         if (!config('services.google.client_id') || !config('services.google.client_secret')) {
-            return $this->frontendError('Login Google belum dikonfigurasi oleh admin.');
+            return $this->frontendError('Login Google belum dikonfigurasi oleh admin.', $frontendOrigin);
         }
 
         $state = Str::random(64);
         Cache::put($this->stateKey($state), [
             'redirect' => $this->safeStudentRedirect($request->query('redirect')),
+            'frontend_origin' => $frontendOrigin,
+            'remember_device' => $request->boolean('remember_device', true),
         ], now()->addMinutes(10));
 
         return Socialite::driver('google')
@@ -38,21 +42,22 @@ class GoogleAuthController extends Controller
         $state = (string) $request->query('state', '');
         $attempt = $state !== '' ? Cache::pull($this->stateKey($state)) : null;
         if (!is_array($attempt)) return $this->frontendError('Sesi login Google kedaluwarsa. Silakan coba lagi.');
+        $frontendOrigin = $this->allowedFrontendOrigin($attempt['frontend_origin'] ?? null);
 
         try {
             $googleUser = Socialite::driver('google')->stateless()->user();
             $email = mb_strtolower(trim((string) $googleUser->getEmail()));
             $raw = is_array($googleUser->user ?? null) ? $googleUser->user : [];
             if ($email === '' || (array_key_exists('verified_email', $raw) && !$raw['verified_email'])) {
-                return $this->frontendError('Google tidak memberikan email yang sudah terverifikasi.');
+                return $this->frontendError('Google tidak memberikan email yang sudah terverifikasi.', $frontendOrigin);
             }
 
             $user = User::query()->whereRaw('LOWER(email) = ?', [$email])->first();
-            if ($user && $user->role !== 'student') {
-                return $this->frontendError('Login Google hanya tersedia untuk akun murid.');
+            if ($user && !in_array($user->role, ['student', 'teacher'], true)) {
+                return $this->frontendError('Akun administrator masuk melalui halaman login admin.', $frontendOrigin);
             }
             if ($user && in_array($user->status, ['banned', 'rejected'], true)) {
-                return $this->frontendError('Akun ini sedang tidak dapat digunakan. Hubungi admin BimbelKu.');
+                return $this->frontendError('Akun ini sedang tidak dapat digunakan. Hubungi admin BimbelKu.', $frontendOrigin);
             }
 
             if (!$user) {
@@ -67,6 +72,16 @@ class GoogleAuthController extends Controller
                     'google_avatar_url' => $googleUser->getAvatar(),
                     'google_onboarding_required_at' => now(),
                 ]);
+            } elseif ($user->role === 'teacher') {
+                if ($user->status !== 'active' || !$user->teacherProfile?->verified_at) {
+                    return $this->frontendError('Akun tutor belum aktif atau belum selesai diverifikasi.', $frontendOrigin);
+                }
+
+                $user->forceFill([
+                    'email_verified_at' => $user->email_verified_at ?: now(),
+                    'google_id' => (string) $googleUser->getId(),
+                    'google_avatar_url' => $googleUser->getAvatar(),
+                ])->save();
             } else {
                 $updates = [
                     'email_verified_at' => $user->email_verified_at ?: now(),
@@ -79,7 +94,7 @@ class GoogleAuthController extends Controller
                 if ($user->status === 'pending' && !$user->google_onboarding_required_at) {
                     $updates['status'] = 'active';
                 } elseif ($user->status !== 'active' && !$user->google_onboarding_required_at) {
-                    return $this->frontendError('Akun ini sedang tidak aktif. Hubungi admin BimbelKu.');
+                    return $this->frontendError('Akun ini sedang tidak aktif. Hubungi admin BimbelKu.', $frontendOrigin);
                 }
 
                 $user->forceFill($updates)->save();
@@ -89,34 +104,46 @@ class GoogleAuthController extends Controller
             Cache::put($this->codeKey($code), [
                 'user_id' => $user->id,
                 'redirect' => $attempt['redirect'] ?? null,
+                'remember_device' => (bool) ($attempt['remember_device'] ?? true),
             ], now()->addMinutes(3));
 
-            return redirect()->away($this->frontendUrl('/oauth/google/callback?code='.urlencode($code)));
+            return redirect()->away($this->frontendUrl('/oauth/google/callback?code='.urlencode($code), $frontendOrigin));
         } catch (Throwable $exception) {
             report($exception);
-            return $this->frontendError('Login Google gagal diproses. Silakan coba lagi.');
+            return $this->frontendError('Login Google gagal diproses. Silakan coba lagi.', $frontendOrigin);
         }
     }
 
-    public function exchange(Request $request): JsonResponse
+    public function exchange(Request $request, PersistentLoginService $sessions): JsonResponse
     {
         $data = $request->validate(['code' => ['required', 'string', 'min:40', 'max:160']]);
         $payload = Cache::pull($this->codeKey($data['code']));
         $user = is_array($payload) ? User::find($payload['user_id'] ?? null) : null;
 
-        if (!$user || $user->role !== 'student') {
+        if (!$user || !in_array($user->role, ['student', 'teacher'], true)) {
             return response()->json(['message' => 'Kode login Google tidak valid atau sudah digunakan.'], 422);
         }
+        if ($user->role === 'teacher' && ($user->status !== 'active' || !$user->teacherProfile?->verified_at)) {
+            return response()->json(['message' => 'Akun tutor belum aktif atau belum selesai diverifikasi.'], 403);
+        }
 
-        $token = $user->createToken('google_auth')->plainTextToken;
+        $session = $sessions->issue(
+            $user,
+            (bool) ($payload['remember_device'] ?? true),
+            'google'
+        );
+
         return response()->json([
             'message' => 'Login Google berhasil.',
-            'access_token' => $token,
+            'access_token' => $session['access_token'],
             'token_type' => 'Bearer',
+            'session_transport' => 'http_only_cookie',
+            'session_expires_at' => $session['expires_at']->toIso8601String(),
+            'remember_device' => $session['remembered'],
             'user' => $user,
-            'requires_profile_completion' => $user->google_onboarding_required_at !== null,
+            'requires_profile_completion' => $user->role === 'student' && $user->google_onboarding_required_at !== null,
             'redirect' => $payload['redirect'] ?? null,
-        ]);
+        ])->withCookie($session['cookie']);
     }
 
     public function completeProfile(Request $request): JsonResponse
@@ -125,16 +152,16 @@ class GoogleAuthController extends Controller
         abort_unless($user && $user->role === 'student' && $user->google_onboarding_required_at, 403, 'Profil ini tidak memerlukan onboarding Google.');
 
         $data = $request->validate([
-            'phone' => ['required', 'regex:/^[0-9+() .-]{8,20}$/'],
-            'date_of_birth' => ['required', 'date', 'before_or_equal:today'],
+            'phone' => ['nullable', 'regex:/^[0-9+() .-]{8,20}$/'],
+            'date_of_birth' => ['nullable', 'date', 'before_or_equal:today'],
             'school_name' => ['nullable', 'string', 'max:150'],
             'grade' => ['nullable', 'string', 'max:100'],
             'terms_accepted' => ['accepted'],
             'privacy_accepted' => ['accepted'],
         ]);
 
-        $birthDate = Carbon::parse($data['date_of_birth']);
-        if ($birthDate->age < 18) {
+        $birthDate = !empty($data['date_of_birth']) ? Carbon::parse($data['date_of_birth']) : null;
+        if ($birthDate && $birthDate->age < 18) {
             $data += $request->validate([
                 'guardian_name' => ['required', 'string', 'max:150'],
                 'guardian_phone' => ['required', 'regex:/^[0-9+() .-]{8,20}$/'],
@@ -144,8 +171,8 @@ class GoogleAuthController extends Controller
         }
 
         $user->forceFill([
-            'phone' => $data['phone'],
-            'date_of_birth' => $data['date_of_birth'],
+            'phone' => $data['phone'] ?? null,
+            'date_of_birth' => $data['date_of_birth'] ?? null,
             'school_name' => $data['school_name'] ?? null,
             'grade' => $data['grade'] ?? null,
             'guardian_name' => $data['guardian_name'] ?? null,
@@ -168,17 +195,32 @@ class GoogleAuthController extends Controller
     {
         if (!is_string($value) || !str_starts_with($value, '/') || str_starts_with($value, '//')) return null;
         $path = strtok($value, '?#') ?: '';
-        return $path === '/search' || $path === '/payment' || str_starts_with($path, '/student/') ? $value : null;
+        return $path === '/search' || $path === '/payment' || str_starts_with($path, '/student/') || str_starts_with($path, '/pesanan/') ? $value : null;
     }
 
-    private function frontendError(string $message): RedirectResponse
+    private function allowedFrontendOrigin(mixed $value): ?string
     {
-        return redirect()->away($this->frontendUrl('/login?google_error='.urlencode($message)));
+        if (!is_string($value) || trim($value) === '') return null;
+        $candidate = rtrim(trim($value), '/');
+        $parts = parse_url($candidate);
+        if (!is_array($parts) || !in_array($parts['scheme'] ?? '', ['http', 'https'], true) || empty($parts['host'])) return null;
+        if (isset($parts['path']) && $parts['path'] !== '') return null;
+
+        $origin = ($parts['scheme'].'://'.$parts['host']).(isset($parts['port']) ? ':'.$parts['port'] : '');
+        $allowed = array_map(static fn ($item) => rtrim((string) $item, '/'), (array) config('cors.allowed_origins', []));
+        $allowed[] = rtrim((string) config('app.frontend_url'), '/');
+
+        return in_array($origin, array_unique($allowed), true) ? $origin : null;
     }
 
-    private function frontendUrl(string $path): string
+    private function frontendError(string $message, ?string $frontendOrigin = null): RedirectResponse
     {
-        return rtrim((string) config('app.frontend_url'), '/').$path;
+        return redirect()->away($this->frontendUrl('/login?google_error='.urlencode($message), $frontendOrigin));
+    }
+
+    private function frontendUrl(string $path, ?string $frontendOrigin = null): string
+    {
+        return rtrim($frontendOrigin ?: (string) config('app.frontend_url'), '/').$path;
     }
 
     private function stateKey(string $state): string { return 'google_oauth_state:'.hash('sha256', $state); }

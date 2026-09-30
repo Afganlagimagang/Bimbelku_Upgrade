@@ -1,7 +1,9 @@
 import { notify } from "@/lib/notify";
-import { API_BASE_URL } from "@/lib/http";
+import http, { API_BASE_URL, getApiError } from "@/lib/http";
 import { useCallback, useState, useEffect } from "react";
 import AdminLayout from "../../components/AdminLayout";
+import AdminAccountsPanel from "@/components/AdminAccountsPanel";
+import TeacherScheduleAdminPanel from "@/components/TeacherScheduleAdminPanel";
 import { 
   Users, Search, Ban, Unlock, GraduationCap, School, 
   Eye, X, Mail, Calendar, Building2, BookOpen, Linkedin, FileText, CheckCircle, Loader2, ExternalLink, Wifi, MapPin,
@@ -10,11 +12,20 @@ import {
 import axios from "axios";
 import { useConfirmDialog } from "@/components/ConfirmDialogProvider";
 import { openProtectedFile } from "@/components/ProtectedImage";
+import { validateUpload } from "@/lib/validation";
 
 export default function UserManagement() {
   const confirmDialog = useConfirmDialog();
   const [users, setUsers] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<"student" | "teacher">("student");
+  const [canManageAdmins] = useState(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem("user") || "null") as { is_primary_admin?: boolean; admin_type?: string } | null;
+      return stored?.is_primary_admin === true || stored?.admin_type === "super_admin";
+    } catch {
+      return false;
+    }
+  });
+  const [activeTab, setActiveTab] = useState<"student" | "teacher" | "admin">("student");
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [appliedSearch, setAppliedSearch] = useState("");
@@ -26,6 +37,7 @@ export default function UserManagement() {
   // State Modal Detail
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [savingTeacherCover, setSavingTeacherCover] = useState(false);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -36,6 +48,7 @@ export default function UserManagement() {
   }, [searchTerm]);
   // 1. FETCH DATA DARI API
   const fetchUsers = useCallback(async () => {
+    if (activeTab === "admin") { setIsLoading(false); return; }
     setIsLoading(true);
     try {
       const token = localStorage.getItem("token");
@@ -88,6 +101,70 @@ export default function UserManagement() {
   const openModal = (user: any) => {
     setSelectedUser(user);
     setModalOpen(true);
+  };
+
+  const updateTeacherCover = async (file?: File) => {
+    if (!file || !selectedUser || selectedUser.role !== "teacher") return;
+    const error = validateUpload(file, {
+      label: "Sampul tutor",
+      maxSizeMb: 5,
+      extensions: ["jpg", "jpeg", "png", "webp"],
+    });
+    if (error) return notify.error(error);
+
+    setSavingTeacherCover(true);
+    try {
+      const formData = new FormData();
+      formData.append("profile_cover", file);
+      const response = await http.post<{ message: string; profile_cover_url: string }>(`/admin/users/${selectedUser.id}/profile-cover`, formData);
+      const profile_cover_url = response.data.profile_cover_url;
+      setSelectedUser((current: any) => ({ ...current, profile_cover_url, personal_profile_cover_url: profile_cover_url, profile_cover_use_default: false }));
+      setUsers((current) => current.map((user) => user.id === selectedUser.id ? { ...user, profile_cover_url, personal_profile_cover_url: profile_cover_url, profile_cover_use_default: false } : user));
+      notify.success(response.data.message);
+    } catch (error) {
+      notify.error(getApiError(error, "Sampul tutor gagal disimpan."));
+    } finally {
+      setSavingTeacherCover(false);
+    }
+  };
+
+  const resetTeacherCover = async () => {
+    if (!selectedUser || selectedUser.role !== "teacher") return;
+    const approved = await confirmDialog({
+      title: "Pakai sampul default lagi?",
+      description: "Profil tutor akan memakai sampul default. Foto pribadinya tetap tersimpan dan dapat dipakai lagi.",
+      confirmText: "Pakai sampul default",
+      tone: "primary",
+    });
+    if (!approved) return;
+
+    setSavingTeacherCover(true);
+    try {
+      const response = await http.delete<{ message: string }>(`/admin/users/${selectedUser.id}/profile-cover`);
+      setSelectedUser((current: any) => ({ ...current, profile_cover_url: null, profile_cover_use_default: true }));
+      setUsers((current) => current.map((user) => user.id === selectedUser.id ? { ...user, profile_cover_url: null, profile_cover_use_default: true } : user));
+      notify.success(response.data.message);
+    } catch (error) {
+      notify.error(getApiError(error, "Sampul tutor gagal dikembalikan ke default."));
+    } finally {
+      setSavingTeacherCover(false);
+    }
+  };
+
+  const restoreTeacherCover = async () => {
+    if (!selectedUser || selectedUser.role !== "teacher") return;
+    setSavingTeacherCover(true);
+    try {
+      const response = await http.post<{ message: string; profile_cover_url: string }>(`/admin/users/${selectedUser.id}/profile-cover/restore`);
+      const profile_cover_url = response.data.profile_cover_url;
+      setSelectedUser((current: any) => ({ ...current, profile_cover_url, profile_cover_use_default: false }));
+      setUsers((current) => current.map((user) => user.id === selectedUser.id ? { ...user, profile_cover_url, profile_cover_use_default: false } : user));
+      notify.success(response.data.message);
+    } catch (error) {
+      notify.error(getApiError(error, "Sampul pribadi gagal dipulihkan."));
+    } finally {
+      setSavingTeacherCover(false);
+    }
   };
 
   const filteredUsers = users;
@@ -167,6 +244,19 @@ export default function UserManagement() {
                   {/* --- TAMPILAN KHUSUS GURU (LENGKAP) --- */}
                   {selectedUser.role === "teacher" && selectedUser.teacher_profile && (
                     <div className="space-y-4">
+                      <div className="min-w-0 rounded-xl border border-orange-100 bg-orange-50/60 p-3 sm:p-4">
+                        <p className="text-sm font-black text-slate-900">Sampul profil tutor</p>
+                        <p className="mt-1 text-xs leading-5 text-slate-600">Pilih sampul yang dipakai tutor ini. Beralih ke default tidak menghapus foto pribadinya.</p>
+                        {selectedUser.profile_cover_url ? <img src={selectedUser.profile_cover_url} alt={`Sampul ${selectedUser.name}`} className="mt-3 aspect-[3/1] w-full rounded-xl object-cover" /> : <div className="mt-3 grid aspect-[3/1] w-full place-items-center rounded-xl bg-gradient-to-r from-slate-950 to-indigo-900 px-3 text-center text-xs font-bold text-white">Memakai sampul default</div>}
+                        <div className="mt-3 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+                          <label className="min-w-0 flex-1 text-xs font-bold text-slate-700">Unggah sampul baru (JPG, PNG, WebP; maks. 5 MB)
+                            <input type="file" accept=".jpg,.jpeg,.png,.webp" disabled={savingTeacherCover} onChange={(event) => { void updateTeacherCover(event.target.files?.[0]); event.target.value = ""; }} className="mt-2 block min-h-11 w-full min-w-0 rounded-xl border border-slate-200 bg-white p-2 text-xs file:mr-2 file:rounded-lg file:border-0 file:bg-orange-100 file:px-2 file:py-1 file:font-bold file:text-orange-900" />
+                          </label>
+                          {selectedUser.profile_cover_url && <button type="button" disabled={savingTeacherCover} onClick={() => void resetTeacherCover()} className="min-h-11 w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 disabled:opacity-50 sm:w-auto">Pakai default</button>}
+                          {selectedUser.profile_cover_use_default && selectedUser.personal_profile_cover_url && <button type="button" disabled={savingTeacherCover} onClick={() => void restoreTeacherCover()} className="min-h-11 w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-xs font-bold text-slate-700 disabled:opacity-50 sm:w-auto">Pakai foto pribadi</button>}
+                        </div>
+                        {savingTeacherCover && <p role="status" className="mt-2 text-xs font-bold text-orange-800">Menyimpan sampul…</p>}
+                      </div>
                       {/* Grid Keahlian & Metode */}
                       <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2 sm:gap-4">
                           <div className="bg-gray-50 p-3 rounded-xl border border-gray-100">
@@ -183,6 +273,8 @@ export default function UserManagement() {
                           </div>
                       </div>
                       
+                      <TeacherScheduleAdminPanel teacherId={Number(selectedUser.id)} />
+
                       {/* LinkedIn */}
                       {selectedUser.teacher_profile.linkedin && (
                         <div>
@@ -253,12 +345,13 @@ export default function UserManagement() {
               >
                 <GraduationCap size={16} /> Data Tutor
               </button>
+              {canManageAdmins && <button onClick={() => { setActiveTab("admin"); setPage(1); }} className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-bold transition-all ${activeTab === "admin" ? "bg-white text-orange-600 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}><Users size={16} /> Data Admin</button>}
            </div>
 
            {activeTab === "teacher" && <select value={subjectFilter} onChange={(e) => { setSubjectFilter(e.target.value); setPage(1); }} className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm sm:w-52"><option value="">Semua mapel</option>{subjectOptions.map((subject) => <option key={subject} value={subject}>{subject}</option>)}</select>}
 
            {/* SEARCH BOX */}
-           <div className="relative w-full sm:w-64">
+           {activeTab !== "admin" && <div className="relative w-full sm:w-64">
              <input 
                type="text" 
                placeholder={activeTab === 'student' ? "Cari murid..." : "Cari tutor..."} 
@@ -267,9 +360,10 @@ export default function UserManagement() {
                className="w-full pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:bg-white transition-all" 
              />
              <Search className="absolute left-3 top-2.5 text-gray-400" size={16} />
-           </div>
+           </div>}
         </div>
 
+        {activeTab === "admin" ? <div className="border-t border-gray-100 p-4 sm:p-6"><AdminAccountsPanel /></div> : <>
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-6 py-4 text-sm">
           <span className="text-gray-500">Menampilkan {users.length} dari {meta.total} data</span>
           <div className="flex items-center gap-2"><button type="button" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} className="rounded-lg border border-gray-200 px-3 py-2 font-bold text-gray-600 disabled:opacity-40">Sebelumnya</button><span className="font-bold text-gray-700">Halaman {meta.current_page} / {meta.last_page}</span><button type="button" disabled={page >= meta.last_page} onClick={() => setPage((value) => Math.min(meta.last_page, value + 1))} className="rounded-lg border border-gray-200 px-3 py-2 font-bold text-gray-600 disabled:opacity-40">Berikutnya</button></div>
@@ -355,6 +449,7 @@ export default function UserManagement() {
             </tbody>
           </table>
         </div>
+        </>}
       </div>
     </AdminLayout>
   );

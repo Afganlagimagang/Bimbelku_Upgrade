@@ -16,12 +16,14 @@ export default function TestimonialCard({ testimonial, compact = false }: { test
           <div className="min-w-0">
             <h3 className="truncate font-extrabold text-[#14213D]">{testimonial.display_name}</h3>
             <p className="mt-1 truncate text-xs font-bold text-slate-500">{testimonial.audience_role || testimonial.program_name || "Siswa BimbelKu"}</p>
+            {testimonial.program_name && testimonial.audience_role && <p className="mt-1 truncate text-xs text-slate-500">{testimonial.program_name}</p>}
           </div>
           <Quote size={20} className="shrink-0 text-orange-300" aria-hidden="true" />
         </div>
         {testimonial.rating && <div className="mt-3 flex gap-0.5" aria-label={`${testimonial.rating} dari 5 bintang`}>{[1, 2, 3, 4, 5].map((star) => <Star key={star} size={13} className={star <= testimonial.rating! ? "fill-orange-400 text-orange-400" : "text-stone-200"} />)}</div>}
         <blockquote className={`${compact ? "mt-3 line-clamp-3 text-sm leading-6" : "mt-5 flex-1 text-base leading-7"} font-semibold text-slate-700`}>“{testimonial.quote}”</blockquote>
         {testimonial.outcome && <div className="mt-5 rounded-2xl bg-orange-50 px-4 py-3"><p className="text-xs font-extrabold uppercase tracking-[0.12em] text-orange-700">Hasil belajar</p><p className="mt-1 font-extrabold text-[#14213D]">{testimonial.outcome}</p>{detail && <p className="mt-1 text-xs font-semibold text-slate-500">{detail}</p>}</div>}
+        <p className="mt-4 border-t border-stone-100 pt-3 text-[11px] leading-5 text-slate-500">Rating murid terhubung · Izin publikasi tercatat{testimonial.consent_at ? ` ${new Date(testimonial.consent_at).toLocaleDateString("id-ID")}` : ""} · Bukti pendukung disimpan privat · Diperiksa {testimonial.verified_by_name || "tim BimbelKu"}{testimonial.verified_at ? ` ${new Date(testimonial.verified_at).toLocaleDateString("id-ID")}` : ""}</p>
       </div>
     </article>
   );

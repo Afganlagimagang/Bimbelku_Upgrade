@@ -61,7 +61,7 @@ interface SearchItem {
   status: "matching" | "teacher_pending" | "no_teacher" | "expired";
   status_label: string;
   status_description: string;
-  search_radius_km: number;
+  search_radius_km: number | null;
   matching_attempts: number;
   search_started_at?: string | null;
   search_expires_at?: string | null;
@@ -660,7 +660,7 @@ export default function TutorSearchMonitoring() {
                 <div className="grid gap-4 lg:grid-cols-2">
                   <DetailPanel title="Kondisi pencarian">
                     <DetailRow label="Status" value={detail.status_label} />
-                    <DetailRow label="Radius saat ini" value={`${detail.search_radius_km} km`} />
+                    {detail.learning_mode === "offline" && <DetailRow label="Radius saat ini" value={`${detail.search_radius_km ?? 3} km`} />}
                     <DetailRow label="Jumlah percobaan" value={String(detail.matching_attempts)} />
                     <DetailRow label="Mulai mencari" value={formatDateTime(detail.search_started_at)} />
                     <DetailRow label="Batas pencarian" value={formatDateTime(detail.search_expires_at)} />

@@ -3,6 +3,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   BarChart3,
+  BookOpen,
   CalendarClock,
   CheckCircle2,
   ClipboardCheck,
@@ -433,16 +434,21 @@ export default function LearningSessionHub({ bookingId, open, onOpenChange, init
           <div className="grid min-h-72 place-items-center"><Loader2 className="animate-spin text-indigo-600" /></div>
         ) : (
           <div className="space-y-5">
-            <section className="rounded-2xl border border-slate-200 bg-gradient-to-br from-slate-950 to-indigo-950 p-5 text-white">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs font-black uppercase tracking-[.18em] text-indigo-200">{hub.booking.subject}</p>
-                  <h3 className="mt-2 text-xl font-black">{hub.booking.chapter || "Sesi belajar"}</h3>
-                  <p className="mt-2 text-sm text-indigo-100/80">{dateTime(hub.booking.start_at)} · {hub.booking.learning_mode === "online" ? "Online" : "Offline"}</p>
+            <section className="relative overflow-hidden rounded-[1.6rem] bg-[#102b3f] p-5 text-white sm:p-7">
+              <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full border border-white/10" />
+              <div className="pointer-events-none absolute -right-4 -top-8 h-36 w-36 rounded-full border border-[#f6ba89]/20" />
+              <div className="relative flex flex-wrap items-start justify-between gap-3">
+                <div className="flex min-w-0 items-start gap-3">
+                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[#f6ba89] text-[#102b3f]"><BookOpen size={22} /></span>
+                  <div className="min-w-0"><p className="text-xs font-black uppercase tracking-[.16em] text-[#f6ba89]">{hub.booking.subject} · Privat</p><h3 className="mt-1 break-words text-xl font-black leading-tight sm:text-2xl">{hub.booking.chapter || "Sesi belajar"}</h3></div>
                 </div>
-                <span className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-black">{statusLabel}</span>
+                <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-black">{statusLabel}</span>
               </div>
-              {hub.booking.session_focus_note && <p className="mt-4 rounded-xl bg-white/10 px-4 py-3 text-sm"><b>Fokus:</b> {hub.booking.session_focus_note}</p>}
+              <div className="relative mt-6 grid gap-2 sm:grid-cols-2">
+                <div className="flex items-start gap-3 rounded-xl bg-white/[.09] p-3.5"><CalendarClock size={18} className="mt-0.5 shrink-0 text-[#f6ba89]" /><div><p className="text-[11px] font-bold text-slate-300">Jadwal belajar</p><p className="mt-1 text-sm font-bold">{dateTime(hub.booking.start_at)}</p></div></div>
+                <div className="flex items-start gap-3 rounded-xl bg-white/[.09] p-3.5"><UserCheck size={18} className="mt-0.5 shrink-0 text-[#f6ba89]" /><div><p className="text-[11px] font-bold text-slate-300">{hub.role === "teacher" ? "Murid" : "Tutor"} · {hub.booking.learning_mode === "online" ? "Online" : "Tatap muka"}</p><p className="mt-1 break-words text-sm font-bold">{hub.role === "teacher" ? hub.booking.student_name : hub.booking.teacher_name}</p></div></div>
+              </div>
+              {hub.booking.session_focus_note && <div className="relative mt-3 border-l-2 border-[#f6ba89] bg-white/[.07] px-4 py-3 text-sm leading-6"><span className="font-black text-[#f6ba89]">Fokus sesi</span><p className="mt-1 text-slate-100">{hub.booking.session_focus_note}</p></div>}
             </section>
 
             <div className="grid min-w-0 grid-cols-3 gap-1.5 rounded-2xl bg-slate-100 p-1.5 sm:gap-2 sm:p-2">
@@ -481,7 +487,13 @@ export default function LearningSessionHub({ bookingId, open, onOpenChange, init
                     <div className="flex items-center gap-2 font-black text-emerald-950"><CheckCircle2 size={19} />Kehadiran sudah terkonfirmasi</div>
                     <p className="mt-2 text-sm leading-6 text-emerald-800">Sesi resmi dimulai {dateTime(hub.booking.session_started_at || hub.booking.student_confirmed_at)}. Selama belajar, BimbelKu tidak meminta langkah administrasi tambahan.</p>
                     {hub.role === "student" && hub.booking.learning_mode === "online" && hub.booking.meeting_link && (<Button asChild className="mt-4 w-full rounded-xl bg-emerald-600 font-black hover:bg-emerald-700"><a href={hub.booking.meeting_link} target="_blank" rel="noreferrer">Masuk ke Zoom</a></Button>)} 
-                    {hub.role === "teacher" && hub.permissions.can_check_out && <Button type="button" variant="outline" onClick={() => setConfirmCheckout(true)} disabled={processing} className="mt-4 w-full rounded-xl border-emerald-300 bg-white text-emerald-800">Akhiri Sesi</Button>}
+                  </section>
+                )}
+
+                {hub.role === "teacher" && hub.booking.student_confirmed_at && hub.permissions.can_check_out && (
+                  <section className="rounded-2xl border border-[#e8d8c8] bg-[#fff9f2] p-4 sm:p-5">
+                    <div className="flex items-start gap-3"><span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#fce6d4] text-[#b65a2c]"><ClipboardCheck size={20} /></span><div><h4 className="font-black text-[#102b3f]">Sesudah pembelajaran selesai</h4><p className="mt-1 text-sm leading-6 text-slate-600">Catat waktu selesai, lalu isi hasil belajar murid. Langkah ini tetap tersedia jika Ruang Belajar ditutup dan dibuka lagi dari Kelas Saya.</p></div></div>
+                    <Button type="button" onClick={() => setConfirmCheckout(true)} disabled={processing} className="mt-4 min-h-11 w-full rounded-xl bg-[#d45e27] font-black text-white hover:bg-[#b84b1b]">Selesaikan pembelajaran & isi hasil</Button>
                   </section>
                 )}
 
@@ -546,12 +558,12 @@ export default function LearningSessionHub({ bookingId, open, onOpenChange, init
     <Dialog open={confirmCheckout} onOpenChange={setConfirmCheckout}>
       <DialogContent overlayClassName="!z-[6000] !bg-slate-950/60" onPointerDownOutside={(event) => event.preventDefault()} onInteractOutside={(event) => event.preventDefault()} className="!z-[6001] max-w-md rounded-2xl">
         <DialogHeader>
-          <DialogTitle>Yakin ingin mengakhiri sesi?</DialogTitle>
-          <DialogDescription>Pastikan pembelajaran sudah selesai. Setelah sesi diakhiri, kamu akan mengisi kehadiran dan hasil belajar murid.</DialogDescription>
+          <DialogTitle>Pembelajaran sudah selesai?</DialogTitle>
+          <DialogDescription>Waktu selesai akan dicatat sekarang. Setelah itu, isi hasil belajar murid sebelum sesi dikirim untuk konfirmasi.</DialogDescription>
         </DialogHeader>
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button type="button" variant="outline" className="rounded-xl" onClick={() => setConfirmCheckout(false)}>Batal</Button>
-          <Button type="button" className="rounded-xl bg-emerald-600 hover:bg-emerald-700" onClick={() => { setConfirmCheckout(false); void checkOut(); }}>Ya, Akhiri Sesi</Button>
+          <Button type="button" className="rounded-xl bg-emerald-600 hover:bg-emerald-700" onClick={() => { setConfirmCheckout(false); void checkOut(); }}>Ya, Lanjut ke hasil belajar</Button>
         </div>
       </DialogContent>
     </Dialog>

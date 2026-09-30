@@ -1,233 +1,102 @@
 import { notify } from "@/lib/notify";
 import { API_BASE_URL } from "@/lib/apiBase";
 import { useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Mail, Lock, Eye, EyeOff, ArrowLeft, ArrowRight, AlertCircle, Loader2 } from "lucide-react";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { ArrowRight, Eye, EyeOff, Loader2, Lock, Mail } from "lucide-react";
 import GoogleAuthButton from "@/components/GoogleAuthButton";
-export default function Login() {
+import AuthExperience from "@/components/AuthExperience";
+import { storeBrowserSession } from "@/lib/session";
+
+export default function Login({ adminOnly = false }: { adminOnly?: boolean }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const requestedRedirect = searchParams.get("redirect");
-  const registerHref = requestedRedirect
-    ? `/register?redirect=${encodeURIComponent(requestedRedirect)}`
-    : "/register";
+  const guestEmail = typeof (location.state as { email?: unknown } | null)?.email === "string" ? String((location.state as { email?: string }).email) : "";
+  const registerHref = requestedRedirect ? `/register?redirect=${encodeURIComponent(requestedRedirect)}` : "/register";
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [rememberDevice, setRememberDevice] = useState(true);
+  const [formData, setFormData] = useState({ email: searchParams.get("email") || guestEmail, password: "" });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [summaryError, setSummaryError] = useState("");
   const googleError = searchParams.get("google_error");
 
-  // State untuk menampung input user
-  const [formData, setFormData] = useState({
-    email: "",
-    password: ""
-  });
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleLogin = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (isLoading) return;
+    setErrors({});
+    setSummaryError("");
     setIsLoading(true);
-
     let axiosModule: typeof import("axios") | null = null;
     try {
-      // Axios baru dimuat saat form benar-benar dikirim, bukan pada initial paint halaman login.
       axiosModule = await import("axios");
-      const response = await axiosModule.default.post(`${API_BASE_URL}/login`, formData);
+      const response = await axiosModule.default.post(`${API_BASE_URL}/login`, {
+        ...formData,
+        remember_device: rememberDevice,
+        login_portal: adminOnly ? "admin" : "user",
+      }, { withCredentials: true });
       const { access_token, user } = response.data;
-
-      // 2. Simpan Token & Data User
-      localStorage.setItem("token", access_token);
-      localStorage.setItem("user", JSON.stringify(user));
-
-      // 3. LOGIKA REDIRECT
-      const dashboardByRole: Record<string, string> = {
-        admin: "/admin",
-        teacher: "/guru",
-        student: "/student/dashboard",
-      };
+      const dashboardByRole: Record<string, string> = { admin: "/admin", teacher: "/guru", student: "/student/dashboard" };
       const dashboard = dashboardByRole[user.role];
-
-      if (!dashboard) {
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
-        notify.error("Peran akun tidak dikenali. Hubungi admin BimbelKu.");
-        return;
-      }
-
-      notify.success(`Selamat datang, ${user.name}!`);
+      if (!dashboard) return notify.error("Peran akun tidak dikenali. Hubungi admin BimbelKu.");
+      storeBrowserSession(user);
       const requestedPath = requestedRedirect?.split(/[?#]/, 1)[0] || "";
-      const allowedRedirect = Boolean(
-        requestedRedirect
-        && requestedRedirect.startsWith("/")
-        && !requestedRedirect.startsWith("//")
-        && (
-          (user.role === "student" && (requestedPath === "/search" || requestedPath === "/payment" || requestedPath.startsWith("/student/")))
-          || (user.role === "teacher" && (requestedPath === "/guru" || requestedPath.startsWith("/guru/")))
-          || (user.role === "admin" && (requestedPath === "/admin" || requestedPath.startsWith("/admin/")))
-        )
-      );
-      navigate(allowedRedirect ? requestedRedirect! : dashboard, { replace: true });
-
+      const allowed = Boolean(requestedRedirect?.startsWith("/") && !requestedRedirect.startsWith("//") && ((user.role === "student" && (requestedPath === "/search" || requestedPath === "/payment" || requestedPath.startsWith("/student/") || requestedPath.startsWith("/pesanan/"))) || (user.role === "teacher" && requestedPath.startsWith("/guru")) || (user.role === "admin" && requestedPath.startsWith("/admin"))));
+      let destination = allowed ? requestedRedirect! : dashboard;
+      if (user.role === "student" && !allowed) {
+        try {
+          const pending = await axiosModule.default.get(`${API_BASE_URL}/student/guest-packages/pending`, {
+            headers: { Authorization: `Bearer ${access_token}` },
+            withCredentials: true,
+          });
+          const code = pending.data?.data?.[0]?.code;
+          if (code) destination = `/pesanan/${encodeURIComponent(code)}`;
+        } catch {
+          // Penemuan draf tidak boleh menggagalkan login utama.
+        }
+      }
+      notify.success(`Selamat datang, ${user.name}!`);
+      navigate(destination, { replace: true });
     } catch (error: unknown) {
       const axios = axiosModule?.default;
       const isAxiosError = axios ? axios.isAxiosError(error) : false;
-      const status = isAxiosError ? (error as { response?: { status?: number } }).response?.status : undefined;
-      const errorData = isAxiosError
-        ? (error as { response?: { data?: { error_code?: string; email?: string } } }).response?.data
-        : undefined;
-      if (errorData?.error_code === 'email_not_verified' && errorData.email) {
-        notify.warning('Email belum diverifikasi', {
-          description: 'Masukkan kode OTP yang telah dikirim ke email Anda.',
-        });
-        const verifyParams = new URLSearchParams({ email: errorData.email });
-        if (requestedRedirect) verifyParams.set("redirect", requestedRedirect);
-        navigate('/verify-email?' + verifyParams.toString(), {
-          state: { email: errorData.email, redirect: requestedRedirect },
-        });
+      const data = isAxiosError ? (error as { response?: { data?: { error_code?: string; email?: string; message?: string; errors?: Record<string, string[]> } } }).response?.data : undefined;
+      if (data?.error_code === "email_not_verified" && data.email) {
+        const params = new URLSearchParams({ email: data.email });
+        if (requestedRedirect) params.set("redirect", requestedRedirect);
+        navigate(`/verify-email?${params}`, { state: { email: data.email, redirect: requestedRedirect } });
         return;
       }
-      const message = isAxiosError
-        ? ((error as { response?: { data?: { message?: string } } }).response?.data)?.message
-          || "Gagal masuk. Periksa email/password."
-        : "Gagal masuk. Silakan coba lagi.";
-
-      if (status === 403) {
-        notify.warning("Akun Belum Aktif", {
-          description: message,
-          icon: <AlertCircle className="text-orange-600" />
-        });
-      } else {
-        notify.error("Gagal Masuk", { description: message });
-      }
-    } finally {
-      setIsLoading(false);
-    }
+      const message = data?.message || "Periksa email dan kata sandi, lalu coba lagi.";
+      setSummaryError(message);
+      setErrors(Object.fromEntries(Object.entries(data?.errors || {}).map(([key, value]) => [key, value[0] || message])));
+      notify.error("Gagal masuk", { description: message });
+    } finally { setIsLoading(false); }
   };
 
-  return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-orange-50/50 relative overflow-hidden font-sans">
-      
-      {/* Dekorasi Background Blob */}
-      <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-orange-200/40 rounded-full blur-3xl" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-red-200/40 rounded-full blur-3xl" />
-
-      {/* Login Card */}
-      <div className="relative w-full max-w-md bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-white/50 backdrop-blur-sm p-8 sm:p-10 animate-in fade-in zoom-in-95 duration-500">
-        <Link
-          to="/"
-          aria-label="Kembali ke halaman utama BimbelKu"
-          className="mb-6 inline-flex min-h-11 items-center gap-2 rounded-xl px-2.5 py-2 text-sm font-semibold text-gray-600 transition-colors hover:bg-orange-50 hover:text-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2"
-        >
-          <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-          Kembali ke Beranda
-        </Link>
-        
-        {/* Header */}
-        <div className="text-center mb-8">
-           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white border border-orange-100 shadow-sm mb-4 overflow-hidden">
-            {/* Placeholder Logo jika gambar tidak ada */}
-            <span className="text-3xl">🎓</span>
-          </div>
-          <h2 className="text-2xl font-bold text-gray-900 tracking-tight">
-            Selamat Datang
-          </h2>
-          <p className="text-sm text-gray-500 mt-2">
-            Masuk untuk melanjutkan belajar
-          </p>
-        </div>
-
-        {googleError && (
-          <div role="alert" className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {googleError}
-          </div>
-        )}
-
-
-        <form onSubmit={handleLogin} className="space-y-6">
-          <div className="space-y-4">
-            {/* Email Input */}
-             <div className="relative group">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <Mail className="h-5 w-5 text-gray-400 group-focus-within:text-orange-500 transition-colors" />
-              </div>
-              <input
-                name="email"
-                type="email"
-                required
-                onChange={handleChange}
-                className="block w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all text-sm font-medium"
-                placeholder="Alamat Email"
-              />
-            </div>
-
-            {/* Password Input */}
-            <div className="relative group">
-              <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <Lock className="h-5 w-5 text-gray-400 group-focus-within:text-orange-500 transition-colors" />
-              </div>
-              <input
-                name="password"
-                type={showPassword ? "text" : "password"}
-                required
-                onChange={handleChange}
-                className="block w-full pl-11 pr-11 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 transition-all text-sm font-medium"
-                placeholder="Password"
-              />
-              <button
-                type="button"
-                aria-label={showPassword ? "Sembunyikan password" : "Tampilkan password"}
-                className="absolute inset-y-0 right-0 pr-4 flex items-center cursor-pointer text-gray-400 hover:text-gray-600 transition-colors"
-                onClick={() => setShowPassword(!showPassword)}
-              >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
-            </div>
-          </div>
-
-
-          <div className="flex justify-end text-sm">
-            <Link to="/forgot-password" className="font-medium text-orange-600 hover:text-orange-500 hover:underline">
-              Lupa password?
-            </Link>
-          </div>
-
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full relative flex justify-center items-center py-3.5 px-4 border border-transparent text-sm font-bold rounded-xl text-white bg-orange-600 hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 shadow-lg shadow-orange-500/20 transition-all duration-200 hover-rise-half"
-          >
-            {isLoading ? (
-               <div className="flex items-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Memproses...</span>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                Masuk Sekarang <ArrowRight size={18} />
-              </div>
-            )}
-          </button>
-
-          <div>
-            <div className="mb-5 flex items-center gap-3 text-xs font-bold uppercase tracking-widest text-slate-400">
-              <span className="h-px flex-1 bg-slate-200" />
-              <span>atau</span>
-              <span className="h-px flex-1 bg-slate-200" />
-            </div>
-            <GoogleAuthButton redirect={requestedRedirect} />
-          </div>
+  return <AuthExperience mode="login" role={adminOnly ? "admin" : "all"}>
+      <section>
+        <p className="mt-8 text-xs font-extrabold uppercase tracking-wider text-orange-700">{adminOnly ? "Akses pengelola" : "Satu pintu akun"}</p>
+        <h2 className="mt-2 text-3xl font-extrabold text-[#14213D]">{adminOnly ? "Masuk sebagai admin" : "Masuk ke BimbelKu"}</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-500">{adminOnly ? "Halaman khusus administrator BimbelKu. Akun murid dan tutor masuk melalui halaman login umum." : "Murid dan tutor masuk dari form yang sama. Sistem akan mengarahkan akun ke dashboard yang sesuai."}</p>
+        {googleError && <p role="alert" className="mt-5 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{googleError}</p>}
+        {summaryError && <p role="alert" aria-live="assertive" className="mt-5 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{summaryError}</p>}
+        <form onSubmit={handleLogin} className="auth-login-form mt-7 space-y-5">
+          <label htmlFor="login-email" className="block text-sm font-bold text-slate-700">Email<div className="auth-control mt-2" data-invalid={Boolean(errors.email)}><span className="auth-control-icon" aria-hidden="true"><Mail size={19} /></span><input id="login-email" name="email" type="email" autoComplete="email" required aria-invalid={Boolean(errors.email)} aria-describedby={errors.email ? "login-email-error" : undefined} value={formData.email} onChange={(event) => { setFormData((value) => ({ ...value, email: event.target.value })); setErrors((value) => ({ ...value, email: "" })); }} placeholder="nama@email.com" /></div>{errors.email && <span id="login-email-error" className="mt-1 block text-xs font-semibold text-red-700">{errors.email}</span>}</label>
+          <label htmlFor="login-password" className="block text-sm font-bold text-slate-700">Kata sandi<div className="auth-control mt-2" data-invalid={Boolean(errors.password)}><span className="auth-control-icon" aria-hidden="true"><Lock size={19} /></span><input id="login-password" name="password" type={showPassword ? "text" : "password"} autoComplete="current-password" required aria-invalid={Boolean(errors.password)} aria-describedby={errors.password ? "login-password-error" : undefined} value={formData.password} onChange={(event) => { setFormData((value) => ({ ...value, password: event.target.value })); setErrors((value) => ({ ...value, password: "" })); }} placeholder="Masukkan kata sandi" /><button type="button" onClick={() => setShowPassword((value) => !value)} className="auth-control-action" aria-controls="login-password" aria-label={showPassword ? "Sembunyikan kata sandi" : "Tampilkan kata sandi"}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></div>{errors.password && <span id="login-password-error" className="mt-1 block text-xs font-semibold text-red-700">{errors.password}</span>}</label>
+          <div className="flex flex-wrap items-center justify-between gap-3"><label className="inline-flex cursor-pointer items-center gap-2 text-sm font-bold text-slate-600"><input type="checkbox" checked={rememberDevice} onChange={(event) => setRememberDevice(event.target.checked)} className="h-4 w-4 rounded border-slate-300 text-orange-600 focus:ring-orange-500" /><span>Ingat perangkat ini selama 30 hari</span></label><Link to="/forgot-password" className="text-sm font-bold text-orange-700">Lupa kata sandi?</Link></div>
+          <button disabled={isLoading} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#14213D] px-5 text-sm font-extrabold text-white hover:bg-slate-800 disabled:opacity-50">{isLoading ? <Loader2 className="animate-spin" size={18} /> : <ArrowRight size={18} />}{isLoading ? "Memproses…" : "Masuk"}</button>
+          {!adminOnly && <><div className="flex items-center gap-3 py-2 text-xs font-bold uppercase tracking-wider text-slate-400"><span className="h-px flex-1 bg-slate-200" />atau<span className="h-px flex-1 bg-slate-200" /></div><GoogleAuthButton redirect={requestedRedirect} rememberDevice={rememberDevice} /></>}
         </form>
-
-        <div className="mt-8 text-center">
-          <p className="text-sm text-gray-500">
-            Belum punya akun?{" "}
-            <Link to={registerHref} className="font-medium text-orange-600 hover:text-orange-500 hover:underline transition-all">
-              Daftar Gratis
-            </Link>
-          </p>
-        </div>
-      </div>
-    </div>
-  );
+        {adminOnly ? (
+          <p className="mt-7 text-center text-sm text-slate-500">Bukan administrator? <Link to="/login" className="font-extrabold text-orange-700">Masuk sebagai murid atau tutor</Link></p>
+        ) : (
+          <>
+            <p className="mt-7 text-center text-sm text-slate-500">Belum punya akun untuk belajar? <Link to={registerHref} state={guestEmail ? { email: guestEmail } : undefined} className="font-extrabold text-orange-700">Daftar murid</Link></p>
+            <p className="mt-3 text-center text-sm text-slate-500">Ingin mengajar? <Link to="/jadi-tutor" className="font-extrabold text-teal-700">Daftar sebagai tutor</Link></p>
+          </>
+        )}
+      </section>
+  </AuthExperience>;
 }

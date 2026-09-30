@@ -37,6 +37,7 @@ import http, { getApiError, getCached } from "@/lib/http";
 import { announceNavigationAttentionChanged, unreadIdsForTeacherClassScope, type AttentionNotification } from "@/lib/navigationAttention";
 import { isValidHttpUrl, validateUpload } from "@/lib/validation";
 import TeacherCheapClasses from "./CheapClasses";
+import WorkspacePageIntro from "@/components/WorkspacePageIntro";
 
 const LearningSessionHub = lazy(() => import("@/components/LearningSessionHub"));
 
@@ -226,7 +227,7 @@ export default function ManageClasses() {
   const [hubReturnClass, setHubReturnClass] = useState<TeacherClass | null>(null);
   const [classAttention, setClassAttention] = useState<AttentionNotification[]>([]);
   const [hubInitialTab, setHubInitialTab] = useState<"session" | "progress">("session");
-  const [classScope, setClassScope] = useState<ClassScope>("active");
+  const [classScope, setClassScope] = useState<ClassScope>(() => searchParams.get("scope") === "history" ? "history" : "active");
   const [methodFilter, setMethodFilter] = useState<MethodFilter>("all");
   const [scheduleSort, setScheduleSort] = useState<ScheduleSort>("nearest");
   const [groupRefreshToken, setGroupRefreshToken] = useState(0);
@@ -255,6 +256,10 @@ export default function ManageClasses() {
 
   const openClassScope = async (scope: ClassScope) => {
     setClassScope(scope);
+    const next = new URLSearchParams(searchParams);
+    if (scope === "history") next.set("scope", "history");
+    else next.delete("scope");
+    setSearchParams(next, { replace: true });
     const ids = unreadIdsForTeacherClassScope(scope, classAttention);
     if (!ids.length) return;
 
@@ -464,31 +469,32 @@ export default function ManageClasses() {
 
   return (
     <TeacherLayout title="Kelas Saya" onAttentionNotificationsChange={setClassAttention}>
-      <div className="mx-auto max-w-7xl space-y-7 pb-12">
-        <section data-tour="teacher-classes-hero" className="flex flex-col justify-between gap-5 rounded-[1.7rem] bg-gradient-to-br from-slate-950 via-indigo-950 to-violet-900 p-5 text-white shadow-xl sm:rounded-[2rem] sm:p-7 md:flex-row md:items-end">
-          <div><p className="text-xs font-black uppercase tracking-[.2em] text-indigo-200">Pelaksanaan sesi</p><h1 className="mt-3 text-2xl font-black sm:text-3xl">Kelas yang sudah dipesan</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-indigo-100/75">Kelola kelas privat dan kelompok dari satu halaman, mulai dari konfirmasi hadir sampai hasil belajar. Kelas yang selesai tetap dapat dibuka dari tab Riwayat.</p></div>
-          <Button onClick={() => { void loadClasses(); setGroupRefreshToken((current) => current + 1); }} variant="outline" className="rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"><RefreshCw size={16} className="mr-2" />Muat ulang</Button>
-        </section>
+      <div className="mx-auto max-w-7xl space-y-8 pb-24 sm:space-y-10 sm:pb-16">
+        <div data-tour="teacher-classes-hero"><WorkspacePageIntro eyebrow="Pelaksanaan sesi" title="Kelas Saya" description="Kelola kelas privat dan Kelas Bersama dari konfirmasi hadir sampai hasil belajar. Kelas selesai tetap tersedia di Riwayat." icon={BookOpen} actions={<Button onClick={() => { void loadClasses(); setGroupRefreshToken((current) => current + 1); }} variant="outline" className="h-11 w-full rounded-xl sm:w-auto"><RefreshCw size={16} className="mr-2" />Muat ulang</Button>} /></div>
 
-        <section className="rounded-[1.5rem] border border-slate-100 bg-white p-2 shadow-sm">
-          <div className="grid grid-cols-3 gap-1.5 rounded-2xl bg-slate-100 p-1.5">
-            {([['all', 'Semua'], ['private', 'Privat'], ['group', 'Kelompok']] as const).map(([value, label]) => <button key={value} type="button" onClick={() => changeClassKind(value)} aria-pressed={classKind === value} className={`min-h-11 rounded-xl px-2 text-sm font-black transition ${classKind === value ? "bg-white text-indigo-700 shadow-sm" : "text-slate-500 hover:bg-white/70"}`}>{label}</button>)}
+        <section className="rounded-[1.75rem] border border-slate-100 bg-white p-4 shadow-sm sm:p-5">
+          <div className="grid gap-4 lg:grid-cols-2 lg:gap-6">
+            <div>
+              <p className="mb-2 text-[11px] font-black uppercase tracking-[.14em] text-slate-500">Jenis kelas</p>
+              <div className="grid grid-cols-3 gap-1.5 rounded-2xl bg-slate-100 p-1.5">
+                {([['all', 'Semua'], ['private', 'Privat'], ['group', 'Kelas Bersama']] as const).map(([value, label]) => <button key={value} type="button" onClick={() => changeClassKind(value)} aria-pressed={classKind === value} className={`min-h-11 rounded-xl px-2 text-xs font-black transition sm:text-sm ${classKind === value ? "bg-white text-indigo-700 shadow-sm" : "text-slate-500 hover:bg-white/70"}`}>{label}</button>)}
+              </div>
+            </div>
+            <div>
+              <p className="mb-2 text-[11px] font-black uppercase tracking-[.14em] text-slate-500">Status kelas</p>
+              <div className="grid grid-cols-2 gap-1.5 rounded-2xl bg-slate-100 p-1.5">
+                {([['active', 'Aktif'], ['history', 'Riwayat']] as const).map(([scope, label]) => <button key={scope} type="button" onClick={() => void openClassScope(scope)} aria-pressed={classScope === scope} className={`relative min-h-11 rounded-xl px-3 text-sm font-black transition ${classScope === scope ? "bg-white text-indigo-700 shadow-sm" : "text-slate-500 hover:bg-white/70"}`}>{label}{unreadIdsForTeacherClassScope(scope, classAttention).length > 0 && <span aria-label={`Ada pembaruan baru di ${label}`} className="absolute right-3 top-2.5 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-white" />}</button>)}
+              </div>
+            </div>
           </div>
         </section>
-
-        <section className="rounded-[1.5rem] border border-slate-100 bg-white p-2 shadow-sm">
-          <div className="grid grid-cols-2 gap-1.5 rounded-2xl bg-slate-100 p-1.5">
-            {([['active', 'Aktif'], ['history', 'Riwayat']] as const).map(([scope, label]) => <button key={scope} type="button" onClick={() => void openClassScope(scope)} aria-pressed={classScope === scope} className={`relative min-h-11 rounded-xl px-3 text-sm font-black transition ${classScope === scope ? "bg-white text-indigo-700 shadow-sm" : "text-slate-500 hover:bg-white/70"}`}>{label}{unreadIdsForTeacherClassScope(scope, classAttention).length > 0 && <span aria-label={`Ada pembaruan baru di ${label}`} className="absolute right-3 top-2.5 h-2.5 w-2.5 rounded-full bg-rose-500 ring-2 ring-white" />}</button>)}
-          </div>
-        </section>
-
         <div className={classKind === "group" ? "hidden" : "contents"}>
 
         {classKind === "private" && <section data-tour="teacher-class-steps" className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-          {["Siap mulai", "Kehadiran", "Akhiri sesi", "Hasil belajar", "Konfirmasi murid"].map((label, index) => <div key={label} className="rounded-2xl border border-slate-100 bg-white p-3 shadow-sm"><span className="grid h-7 w-7 place-items-center rounded-lg bg-indigo-50 text-xs font-black text-indigo-700">{index + 1}</span><p className="mt-2 text-xs font-black leading-5 text-slate-700">{label}</p></div>)}
+          {["Siap mulai", "Kehadiran", "Selesaikan belajar", "Hasil belajar", "Konfirmasi murid"].map((label, index) => <div key={label} className="rounded-2xl border border-slate-100 bg-white p-3 shadow-sm"><span className="grid h-7 w-7 place-items-center rounded-lg bg-indigo-50 text-xs font-black text-indigo-700">{index + 1}</span><p className="mt-2 text-xs font-black leading-5 text-slate-700">{label}</p></div>)}
         </section>}
 
-        {classKind === "all" && <div className="my-7 flex items-center gap-3"><span className="h-px flex-1 bg-slate-200" /><h2 className="text-sm font-black uppercase tracking-[.16em] text-slate-500">Kelas Privat</h2><span className="h-px flex-1 bg-slate-200" /></div>}
+        {classKind === "all" && <div className="my-10 flex items-center gap-4"><span className="h-px flex-1 bg-slate-200" /><h2 className="text-sm font-black uppercase tracking-[.16em] text-slate-500">Kelas Privat</h2><span className="h-px flex-1 bg-slate-200" /></div>}
 
         {!loadError && classes.length > 0 && (
           <section className="rounded-[1.7rem] border border-slate-100 bg-white p-4 shadow-sm sm:p-5">
@@ -580,9 +586,9 @@ export default function ManageClasses() {
             {methodFilter !== "all" && <Button type="button" variant="outline" className="mt-5 rounded-xl" onClick={() => setMethodFilter("all")}>Tampilkan semua metode</Button>}
           </div>
         ) : (
-          <div data-tour="teacher-class-list" className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          <div data-tour="teacher-class-list" className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
             {visibleClasses.map((item) => (
-              <article key={item.id} className="render-auto flex min-w-0 max-w-full flex-col overflow-hidden rounded-[1.6rem] border border-slate-100 bg-white p-4 shadow-sm transition hover-rise hover-shadow-xl sm:rounded-[2rem] sm:p-5">
+              <article key={item.id} className="render-auto flex min-w-0 max-w-full flex-col overflow-hidden rounded-[1.75rem] border border-slate-100 bg-white p-5 shadow-sm transition hover-rise hover-shadow-xl sm:rounded-[2rem] sm:p-6">
                 <div className="flex items-start justify-between gap-3">
                   <div className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl ${item.method === "online" ? "bg-indigo-50 text-indigo-600" : "bg-emerald-50 text-emerald-600"}`}>
                     {item.method === "online" ? <Monitor /> : <MapPin />}
@@ -612,15 +618,15 @@ export default function ManageClasses() {
                 {item.status === "awaiting_student_approval" && (
                   <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4"><p className="text-[10px] font-black uppercase tracking-[.14em] text-amber-700">Menunggu murid</p><p className="mt-1 text-sm font-black text-amber-950">Keputusan sesi sudah diminta</p><p className="mt-1 text-xs leading-5 text-amber-800">Tidak ada tindakan tutor lagi. Murid sedang diminta memilih Sesi Sesuai atau Ada masalah.</p></div>
                 )}
-                <div className="mt-auto grid gap-2 pt-5 sm:grid-cols-2"><Button variant="outline" onClick={() => { setSelected(item); setMeetingLink(item.meeting_link || ""); }} className="rounded-xl">{teacherHistoryStatuses.has(item.status) ? "Lihat detail" : "Kelola sesi"}</Button>{item.package_subject_id ? <Link to={`/guru/progress/package-subject/${item.package_subject_id}`} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-3 text-sm font-black text-white hover:bg-indigo-700"><BarChart3 size={16} />Lihat Progress</Link> : <Button type="button" variant="outline" onClick={() => { setHubReturnClass(item); setHubInitialTab("progress"); setHubBookingId(item.id); }} className="rounded-xl border-indigo-200 text-indigo-700"><BarChart3 size={16} className="mr-2" />Progress sesi</Button>}</div>
+                <div className="mt-auto grid gap-3 pt-6 sm:grid-cols-2 [&>*]:min-h-11"><Button variant="outline" onClick={() => { setSelected(item); setMeetingLink(item.meeting_link || ""); }} className="rounded-xl">{teacherHistoryStatuses.has(item.status) ? "Lihat detail" : item.status === "in_progress" && item.completion_steps.attendance && !item.completion_steps.check_out ? "Kelola & selesaikan" : "Kelola sesi"}</Button>{item.package_subject_id ? <Link to={`/guru/progress/package-subject/${item.package_subject_id}`} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-3 text-sm font-black text-white hover:bg-indigo-700"><BarChart3 size={16} />Lihat Progress</Link> : <Button type="button" variant="outline" onClick={() => { setHubReturnClass(item); setHubInitialTab("progress"); setHubBookingId(item.id); }} className="rounded-xl border-indigo-200 text-indigo-700"><BarChart3 size={16} className="mr-2" />Progress sesi</Button>}</div>
               </article>
             ))}
           </div>
         )}
         </div>
 
-        {classKind === "all" && <div className="flex items-center gap-3"><span className="h-px flex-1 bg-slate-200" /><h2 className="text-sm font-black uppercase tracking-[.16em] text-slate-500">Kelas Kelompok</h2><span className="h-px flex-1 bg-slate-200" /></div>}
-        {classKind !== "private" && <TeacherCheapClasses embedded controlledScope={classScope} onScopeChange={setClassScope} refreshToken={groupRefreshToken} />}
+        {classKind === "all" && <div className="flex items-center gap-3"><span className="h-px flex-1 bg-slate-200" /><h2 className="text-sm font-black uppercase tracking-[.16em] text-slate-500">Kelas Bersama</h2><span className="h-px flex-1 bg-slate-200" /></div>}
+        {classKind !== "private" && <div className="pb-6"><TeacherCheapClasses embedded controlledScope={classScope} onScopeChange={setClassScope} refreshToken={groupRefreshToken} /></div>}
       </div>
 
       <Dialog open={Boolean(selected)} onOpenChange={(open) => { if (!open) { setSelected(null); clearSessionActionQuery(); } }}>
@@ -639,7 +645,7 @@ export default function ManageClasses() {
             {selected.learning_goal && <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-4"><p className="text-xs font-black uppercase tracking-widest text-indigo-500">Tujuan murid</p><p className="mt-2 text-sm leading-6 text-indigo-900">{selected.learning_goal}</p></div>}
             {selected.method === "online" ? (["confirmed", "in_progress"].includes(selected.status) ? <div><Label className="font-bold">Tautan Google Meet/Zoom</Label><div className="mt-2 flex gap-2"><Input type="url" className="h-11 rounded-xl" value={meetingLink} onChange={(event) => setMeetingLink(event.target.value)} placeholder="https://..." /><Button aria-label="Simpan tautan kelas" onClick={() => saveMeetingLink(selected)} disabled={processing} className="rounded-xl bg-indigo-600"><Link2 size={16} /></Button></div></div> : <div className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm text-slate-600"><p className="font-black text-slate-800">Tautan sesi</p>{selected.meeting_link ? <a href={selected.meeting_link} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 font-bold text-indigo-700 underline">Buka tautan kelas <ExternalLink size={13} /></a> : <p className="mt-1 text-xs">Tidak ada tautan tersimpan.</p>}</div>) : selected.maps_link ? <Button asChild className="rounded-xl bg-emerald-600 hover:bg-emerald-700"><a href={selected.maps_link} target="_blank" rel="noreferrer"><MapPin size={16} className="mr-2" />Buka lokasi murid</a></Button> : <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 text-sm text-amber-800">Alamat lengkap dibuka setelah pembayaran dikonfirmasi.</div>}
             <div><p className="text-sm font-black text-slate-800">Peserta</p><div className="mt-2 space-y-2">{selected.participants.length ? selected.participants.map((participant) => <div key={participant.id} className="flex items-center justify-between rounded-xl border border-slate-100 p-3 text-sm"><div><p className="font-bold text-slate-800">{participant.name}</p><p className="text-xs text-slate-400">{participant.status}</p></div><span className="font-bold text-slate-600">{rupiah(participant.amount)}</span></div>) : <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-500">Data peserta belum tersedia.</p>}</div></div>
-            {["confirmed", "in_progress", "awaiting_student_approval", "disputed", "absence_review", "admin_review_required", "completed"].includes(selected.status) && <div className="grid gap-2 sm:grid-cols-2"><Button variant="outline" className="rounded-xl border-indigo-200 text-indigo-700" onClick={() => { setHubReturnClass(selected); setHubInitialTab("session"); setHubBookingId(selected.id); setSelected(null); }}><MessageCircle size={16} className="mr-2" />Buka ruang belajar</Button>{selected.package_subject_id && <Button asChild variant="outline" className="rounded-xl border-violet-200 text-violet-700"><Link to={`/guru/progress/package-subject/${selected.package_subject_id}`}><BarChart3 size={16} className="mr-2" />Lihat Progress Kelas</Link></Button>}</div>}
+            {["confirmed", "in_progress", "awaiting_student_approval", "disputed", "absence_review", "admin_review_required", "completed"].includes(selected.status) && <div className="grid gap-2 sm:grid-cols-2"><Button variant="outline" className={`rounded-xl ${selected.status === "in_progress" && selected.completion_steps.attendance && !selected.completion_steps.check_out ? "border-orange-300 bg-orange-50 text-orange-800" : "border-indigo-200 text-indigo-700"}`} onClick={() => { setHubReturnClass(selected); setHubInitialTab("session"); setHubBookingId(selected.id); setSelected(null); }}><MessageCircle size={16} className="mr-2" />{selected.status === "in_progress" && selected.completion_steps.attendance && !selected.completion_steps.check_out ? "Buka & selesaikan belajar" : "Buka ruang belajar"}</Button>{selected.package_subject_id && <Button asChild variant="outline" className="rounded-xl border-violet-200 text-violet-700"><Link to={`/guru/progress/package-subject/${selected.package_subject_id}`}><BarChart3 size={16} className="mr-2" />Lihat Progress Kelas</Link></Button>}</div>}
             {["confirmed", "in_progress", "awaiting_student_approval", "completed"].includes(selected.status) && <CompletionGuide item={selected} onOpenProgress={() => { setHubReturnClass(selected); setHubInitialTab("progress"); setHubBookingId(selected.id); setSelected(null); }} />}
             {selected.latest_report && <div className="flex gap-3 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-900"><FileWarning className="shrink-0" /><div><p className="font-black">Laporan {selected.latest_report.status}</p><p className="mt-1 line-clamp-3 leading-6">{selected.latest_report.chronology}</p></div></div>}
             {selected.latest_dispute && <div className="flex gap-3 rounded-2xl border border-rose-100 bg-rose-50 p-4 text-sm text-rose-900"><ShieldAlert className="shrink-0" /><div><p className="font-black">Keberatan murid {selected.latest_dispute.status}</p><p className="mt-1 leading-6">{selected.latest_dispute.reason}</p></div></div>}
@@ -703,7 +709,7 @@ function CompletionGuide({ item, onOpenProgress }: { item: TeacherClass; onOpenP
     { label: "Keputusan murid", done: item.status === "completed" },
   ];
   const canOpenProgress = steps.check_out && !confirmationDone;
-  return <section className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4 sm:p-5"><div><p className="text-sm font-black text-indigo-950">Penyelesaian sesi</p><p className="mt-1 text-xs leading-5 text-indigo-700">Setelah sesi diakhiri, cukup simpan hasil belajar. BimbelKu otomatis meminta keputusan murid.</p></div><div className="mt-4 space-y-2">{rows.map((row, index) => <div key={row.label} className="flex items-center gap-3 rounded-xl bg-white px-3 py-2.5"><span className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg text-xs font-black ${row.done ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-400"}`}>{row.done ? <CheckCircle2 size={15} /> : index + 1}</span><span className={`text-sm font-bold ${row.done ? "text-slate-700" : "text-slate-500"}`}>{row.label}</span></div>)}</div>{!confirmationDone && <Button type="button" variant="outline" onClick={onOpenProgress} disabled={!canOpenProgress} className="mt-4 w-full rounded-xl border-indigo-200 bg-white text-indigo-700"><BarChart3 size={16} className="mr-2" />{steps.progress ? "Lihat Hasil Belajar" : "Isi Hasil Belajar"}</Button>}{!steps.check_out && !confirmationDone && <p className="mt-3 text-xs font-semibold text-slate-500">Hasil belajar baru dapat diisi setelah sesi diakhiri.</p>}{confirmationDone && <p className="mt-3 rounded-xl bg-white p-3 text-xs font-bold text-emerald-700">{item.status === "completed" ? "Sesi sudah final." : "Semua langkah Tutor sudah selesai. Menunggu keputusan murid."}</p>}</section>;
+  return <section className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4 sm:p-5"><div><p className="text-sm font-black text-indigo-950">Penyelesaian sesi</p><p className="mt-1 text-xs leading-5 text-indigo-700">Sesudah belajar, catat waktu selesai di Ruang Belajar lalu isi hasil belajar. BimbelKu otomatis meminta keputusan murid.</p></div><div className="mt-4 space-y-2">{rows.map((row, index) => <div key={row.label} className="flex items-center gap-3 rounded-xl bg-white px-3 py-2.5"><span className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg text-xs font-black ${row.done ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-400"}`}>{row.done ? <CheckCircle2 size={15} /> : index + 1}</span><span className={`text-sm font-bold ${row.done ? "text-slate-700" : "text-slate-500"}`}>{row.label}</span></div>)}</div>{!confirmationDone && <Button type="button" variant="outline" onClick={onOpenProgress} disabled={!canOpenProgress} className="mt-4 w-full rounded-xl border-indigo-200 bg-white text-indigo-700"><BarChart3 size={16} className="mr-2" />{steps.progress ? "Lihat Hasil Belajar" : "Isi Hasil Belajar"}</Button>}{!steps.check_out && !confirmationDone && <p className="mt-3 text-xs font-semibold text-slate-500">Hasil belajar dapat diisi setelah waktu selesai dicatat. Gunakan tombol Ruang Belajar di atas saat pembelajaran berakhir.</p>}{confirmationDone && <p className="mt-3 rounded-xl bg-white p-3 text-xs font-bold text-emerald-700">{item.status === "completed" ? "Sesi sudah final." : "Semua langkah Tutor sudah selesai. Menunggu keputusan murid."}</p>}</section>;
 }
 
 function Info({ icon: Icon, text }: { icon: typeof Clock3; text: string }) {

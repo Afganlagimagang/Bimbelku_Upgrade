@@ -24,6 +24,8 @@ use App\Models\Refund;
 use App\Models\Setting;
 use App\Services\HourlyRateService;
 use App\Services\PackageCheckoutService;
+use App\Services\PrivateParticipantPricing;
+use App\Services\RefundSettlementService;
 use App\Services\TeacherMatchingService;
 use App\Support\EducationCatalog;
 use App\Support\PackageChapterProgress;
@@ -32,6 +34,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class StudentPackageController extends Controller
 {
@@ -241,8 +244,10 @@ class StudentPackageController extends Controller
     public function store(
         Request $request,
         HourlyRateService $rateService,
-        PackageCheckoutService $checkoutService
+        PackageCheckoutService $checkoutService,
+        PrivateParticipantPricing $participantPricing
     ) {
+        $maximumParticipants = $participantPricing->maximumParticipants();
         // Draf lama dapat membawa hari, bab, atau subbab yang sama lebih dari sekali.
         // Duplikasi dinormalisasi sebelum validasi tanpa mengubah jadwal pengguna.
         if (is_array($request->input('subjects'))) {
@@ -271,16 +276,26 @@ class StudentPackageController extends Controller
 
         $validated = $request->validate([
             'package_plan_id' => ['required', 'integer', 'exists:package_plans,id'],
+            'learning_program_id' => ['nullable', 'integer', 'exists:learning_programs,id'],
             'education_level' => ['required', Rule::in(EducationCatalog::LEVELS)],
             'grade' => ['required', 'string', 'max:50'],
             'learning_mode' => ['required', Rule::in(['online', 'offline'])],
             'duration_hours' => ['nullable', 'integer', Rule::in([1, 2])],
+            'participant_count' => ['nullable', 'integer', 'between:1,'.$maximumParticipants],
+            'purchaser_participates' => ['nullable', 'boolean'],
+            'participant_details' => ['nullable', 'array', 'max:'.$maximumParticipants],
+            'participant_details.*.full_name' => ['required', 'string', 'min:2', 'max:100'],
+            'participant_details.*.nickname' => ['required', 'string', 'min:1', 'max:60'],
+            'participant_details.*.birth_date' => ['required', 'date', 'before_or_equal:today'],
+            'participant_details.*.gender' => ['required', Rule::in(['male', 'female'])],
             'promotion_code' => ['nullable', 'string', 'max:60'],
             'promotion_claim_id' => ['nullable', 'integer', 'exists:promotion_claims,id'],
             'renewal_of_id' => ['nullable', 'integer', 'exists:learning_packages,id'],
+            'participant_names' => ['nullable', 'array', 'max:'.$maximumParticipants],
+            'participant_names.*' => ['required', 'string', 'min:2', 'max:100'],
             'subjects' => ['required', 'array', 'min:1'],
             'subjects.*.curriculum_subject_id' => ['required', 'integer', 'distinct', 'exists:curriculum_subjects,id'],
-            'subjects.*.curriculum_chapter_ids' => ['nullable', 'array', 'min:1', 'max:8'],
+            'subjects.*.curriculum_chapter_ids' => ['nullable', 'array', 'max:8'],
             'subjects.*.curriculum_chapter_ids.*' => ['integer', 'distinct', 'exists:curriculum_chapters,id'],
             'subjects.*.learning_goal' => ['nullable', 'string', 'max:1500'],
             'subjects.*.preferred_teacher_id' => ['nullable', 'integer', 'exists:users,id'],
@@ -291,6 +306,9 @@ class StudentPackageController extends Controller
         ], [
             'subjects.*.curriculum_subject_id.distinct' => 'Satu mata pelajaran tidak boleh dipilih lebih dari sekali.',
             'subjects.*.curriculum_chapter_ids.*.distinct' => 'Bab yang sama tidak boleh dipilih lebih dari sekali.',
+            'subjects.min' => 'Pilih minimal satu mata pelajaran.',
+            'subjects.*.weekdays.min' => 'Pilih minimal satu hari belajar untuk setiap mapel.',
+            'subjects.*.schedules.min' => 'Atur minimal satu jadwal belajar untuk setiap mapel.',
             'subjects.*.weekdays.max' => 'Setiap mata pelajaran hanya boleh memiliki maksimal 4 hari belajar.',
         ]);
         abort_if(
@@ -305,6 +323,18 @@ class StudentPackageController extends Controller
         );
 
         $student = $request->user();
+        $participantCount = (int) ($validated['participant_count'] ?? 1);
+        $participantPricing->forCount($participantCount);
+        $purchaserParticipates = (bool) ($validated['purchaser_participates'] ?? true);
+        $participantDetails = array_values($validated['participant_details'] ?? []);
+        $expectedParticipantDetails = $participantCount - ($purchaserParticipates ? 1 : 0);
+        abort_if(count($participantDetails) !== $expectedParticipantDetails, 422, 'Lengkapi identitas setiap peserta di luar pemesan.');
+        $participantNames = collect($participantDetails)->pluck('full_name')->values();
+        if ($purchaserParticipates) {
+            $participantNames->prepend($student->name);
+        }
+        $participantNames = $participantNames->all();
+        abort_if(! empty($validated['renewal_of_id']) && $participantCount > 1, 422, 'Perpanjangan multi-peserta belum tersedia; buat pesanan baru agar semua peserta dapat diperiksa.');
         $durationHours = (int) ($validated['duration_hours'] ?? 1);
         if ($validated['learning_mode'] === 'offline') {
             abort_if(
@@ -315,6 +345,12 @@ class StudentPackageController extends Controller
         }
 
         $plan = PackagePlan::query()->where('is_active', true)->findOrFail($validated['package_plan_id']);
+        if (!empty($validated['learning_program_id'])) {
+            app(\App\Services\LearningProgramSelection::class)->validate(
+                (int) $validated['learning_program_id'], (int) $plan->id,
+                $validated['education_level'], $validated['grade'], $validated['subjects']
+            );
+        }
         abort_if(count($validated['subjects']) > $plan->maximum_subjects, 422, "Paket ini maksimal {$plan->maximum_subjects} mata pelajaran.");
         $maximumWeekdays = match ((int) $plan->session_count) {
             1 => 1, 4 => 2, default => 4
@@ -428,17 +464,12 @@ class StudentPackageController extends Controller
                 return $start;
             })->sortBy(fn (Carbon $date) => $date->timestamp)->values();
             abort_if($starts->unique(fn (Carbon $date) => $date->timestamp)->count() !== $starts->count(), 422, 'Jadwal dalam satu mapel tidak boleh sama.');
-            abort_if(
-                $starts->map(fn (Carbon $date) => $date->format('H:i'))->unique()->count() !== 1,
-                422,
-                'Semua hari pada satu mata pelajaran harus memakai jam yang sama.'
-            );
-            if (empty($item['curriculum_chapter_ids'])) {
+            if (empty($item['curriculum_chapter_ids']) && empty($validated['learning_program_id'])) {
                 throw ValidationException::withMessages([
                     'subjects' => "Pilih sedikitnya satu bab untuk {$subject->name}.",
                 ]);
             }
-            $chapterIds = collect($item['curriculum_chapter_ids'])->map(fn ($id) => (int) $id)->unique()->values();
+            $chapterIds = collect($item['curriculum_chapter_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->values();
             $chapters = CurriculumChapter::query()
                 ->where('curriculum_subject_id', $subject->id)
                 ->where('education_level', $validated['education_level'])
@@ -456,13 +487,18 @@ class StudentPackageController extends Controller
                 'private',
                 $validated['learning_mode']
             );
+            $normalSubtotal = $unitPrice * $participantCount * $durationHours * $starts->count();
+            $groupTotal = $participantPricing->customerHourlyTotal($unitPrice, $participantCount)
+                * $durationHours * $starts->count();
             $normalizedSubjects[] = [
                 ...$item,
                 'subject' => $subject,
                 'starts' => $starts,
                 'chapters' => $chapters,
                 'unit_price' => $unitPrice,
-                'subtotal' => $unitPrice * $durationHours * $starts->count(),
+                'tutor_hourly_gross' => $participantPricing->tutorHourlyGross($unitPrice, $participantCount),
+                'subtotal' => $normalSubtotal,
+                'group_discount' => $normalSubtotal - $groupTotal,
             ];
         }
         $sortedStarts = $allStarts->sortBy(fn (Carbon $date) => $date->timestamp)->values();
@@ -480,11 +516,12 @@ class StudentPackageController extends Controller
         );
 
         $subtotal = collect($normalizedSubjects)->sum('subtotal');
+        $groupDiscount = collect($normalizedSubjects)->sum('group_discount');
         [$promotion, $claim] = $this->resolvePromotion($student->id, $validated);
-        $discount = $promotion
+        $promotionDiscount = $promotion
             ? $checkoutService->calculateDiscount(
                 $promotion,
-                $subtotal,
+                $subtotal - $groupDiscount,
                 $plan->id,
                 $validated['education_level'],
                 collect($normalizedSubjects)->pluck('subject.name')->all(),
@@ -493,6 +530,7 @@ class StudentPackageController extends Controller
                 $claim
             )
             : 0;
+        $discount = $groupDiscount + $promotionDiscount;
 
         [$package, $order] = DB::transaction(function () use (
             $student,
@@ -505,7 +543,11 @@ class StudentPackageController extends Controller
             $claim,
             $checkoutService,
             $renewalOf,
-            $durationHours
+            $durationHours,
+            $participantCount,
+            $purchaserParticipates,
+            $participantNames,
+            $participantDetails
         ) {
             \App\Models\User::query()->lockForUpdate()->findOrFail($student->id);
             if ($renewalOf) {
@@ -533,9 +575,14 @@ class StudentPackageController extends Controller
             $package = LearningPackage::create([
                 'student_id' => $student->id,
                 'package_plan_id' => $plan->id,
+                'learning_program_id' => $validated['learning_program_id'] ?? null,
                 'promotion_id' => $promotion?->id,
                 'renewal_of_id' => $renewalOf?->id,
                 'package_code' => 'BKU-'.now()->format('ymdHis').'-'.$student->id.'-'.random_int(10, 99),
+                'participant_count' => $participantCount,
+                'purchaser_participates' => $purchaserParticipates,
+                'participant_names' => $participantNames,
+                'participant_details' => $participantDetails,
                 'education_level' => $validated['education_level'],
                 'grade' => $validated['grade'],
                 'learning_mode' => $validated['learning_mode'],
@@ -562,6 +609,7 @@ class StudentPackageController extends Controller
                     'learning_goal' => $item['learning_goal'] ?? null,
                     'allocated_sessions' => $item['starts']->count(),
                     'unit_price' => $item['unit_price'],
+                    'tutor_hourly_gross' => $item['tutor_hourly_gross'],
                     'subtotal_amount' => $item['subtotal'],
                     'status' => 'awaiting_payment',
                 ]);
@@ -617,11 +665,11 @@ class StudentPackageController extends Controller
                     'latitude' => $validated['learning_mode'] === 'offline' ? $student->latitude : null,
                     'longitude' => $validated['learning_mode'] === 'offline' ? $student->longitude : null,
                     'status' => 'awaiting_payment',
-                    'search_radius_km' => 3,
+                    'search_radius_km' => $validated['learning_mode'] === 'offline' ? 3 : null,
                     'search_started_at' => null,
                     'search_expires_at' => null,
-                    'hourly_rate' => $item['unit_price'],
-                    'total_amount' => $item['subtotal'],
+                    'hourly_rate' => $item['tutor_hourly_gross'],
+                    'total_amount' => $participantCount > 1 ? $item['tutor_hourly_gross'] * $durationHours : $item['subtotal'],
                 ]);
 
                 if ($renewalOf) {
@@ -909,7 +957,6 @@ class StudentPackageController extends Controller
                 })->sortBy(fn (Carbon $date) => $date->timestamp)->values();
                 abort_unless($starts->count() === (int) $subject->allocated_sessions, 422, "Jumlah jadwal {$subject->subject_name} harus {$subject->allocated_sessions} sesi.");
                 abort_if($starts->unique(fn (Carbon $date) => $date->timestamp)->count() !== $starts->count(), 422, "Jadwal {$subject->subject_name} tidak boleh duplikat.");
-                abort_if($starts->map(fn (Carbon $date) => $date->format('H:i'))->unique()->count() !== 1, 422, 'Semua sesi pada satu mata pelajaran harus memakai jam yang sama.');
                 foreach ($starts as $start) {
                     $newIntervals->push(['subject_id' => $subject->id, 'start' => $start, 'end' => $start->copy()->addHours($durationHours)]);
                 }
@@ -948,7 +995,7 @@ class StudentPackageController extends Controller
                     'status' => 'matching',
                     'matched_teacher_id' => null,
                     'teacher_response_deadline' => null,
-                    'search_radius_km' => $package->learning_mode === 'offline' ? 3 : 12,
+                    'search_radius_km' => $package->learning_mode === 'offline' ? 3 : null,
                     'search_started_at' => now(),
                     'search_expires_at' => now()->addHours($matchingService->maximumSearchHours()),
                 ]);
@@ -959,7 +1006,7 @@ class StudentPackageController extends Controller
                     'action' => 'schedule_changed',
                     'reason' => 'Murid mengubah jadwal setelah tutor belum ditemukan.',
                     'before_state' => ['schedules' => $beforeSchedules],
-                    'after_state' => ['schedules' => $starts->map(fn (Carbon $date) => $date->toIso8601String())->all(), 'search_radius_km' => $package->learning_mode === 'offline' ? 3 : 12],
+                    'after_state' => ['schedules' => $starts->map(fn (Carbon $date) => $date->toIso8601String())->all(), 'search_radius_km' => $package->learning_mode === 'offline' ? 3 : null],
                     'metadata' => ['source' => 'student_package', 'package_id' => $package->id, 'package_subject_id' => $subject->id],
                 ]);
             }
@@ -985,10 +1032,10 @@ class StudentPackageController extends Controller
         ]);
     }
 
-    public function cancel(Request $request, LearningPackage $learningPackage)
+    public function cancel(Request $request, LearningPackage $learningPackage, RefundSettlementService $refunds)
     {
         abort_unless($learningPackage->student_id === $request->user()->id, 403);
-        [$teacherIds, $refundPending] = DB::transaction(function () use ($learningPackage) {
+        [$teacherIds, $refund, $automatic] = DB::transaction(function () use ($learningPackage) {
             $package = LearningPackage::query()
                 ->with(['subjects.sessions', 'subjects.bookingRequest.offers', 'promotionClaims', 'orders'])
                 ->lockForUpdate()
@@ -1001,6 +1048,9 @@ class StudentPackageController extends Controller
 
             $paidOrder = $package->orders->where('status', 'paid')->sortByDesc('id')->first();
             $refundPending = (bool) $paidOrder;
+            // Pembatalan sebelum kelas terbentuk tidak membutuhkan keputusan admin:
+            // dana kembali melalui jalur pembayaran asal dengan referensi yang sama.
+            $automatic = in_array($package->status, ['no_teacher', 'matching', 'teacher_pending'], true);
             $nextStatus = $refundPending ? 'refund_pending' : 'cancelled';
             $teacherIds = collect();
             foreach ($package->subjects as $subject) {
@@ -1031,22 +1081,25 @@ class StudentPackageController extends Controller
                 ->whereIn('status', ['requested', 'tutor_accepted'])
                 ->update(['status' => 'cancelled']);
             $package->update(['status' => $nextStatus]);
+            $refund = null;
             if ($paidOrder) {
                 $paidOrder->update(['status' => 'refund_pending']);
-                Refund::firstOrCreate(
+                $refund = Refund::firstOrCreate(
                     ['order_id' => $paidOrder->id],
                     [
                         'user_id' => $package->student_id,
                         'booking_id' => $paidOrder->booking_id,
                         'amount' => $paidOrder->amount,
-                        'reason' => 'Paket dibatalkan murid saat pencarian tutor',
+                        'reason' => $automatic ? 'Tutor tidak ditemukan' : 'Paket dibatalkan murid saat pencarian tutor',
                         'status' => 'pending',
                     ]
                 );
             }
 
-            return [$teacherIds->filter()->unique()->values(), $refundPending];
+            return [$teacherIds->filter()->unique()->values(), $refund, $automatic];
         }, 3);
+
+        $automaticStarted = $refund && $automatic && $refunds->startAutomatic($refund);
 
         $teacherIds->each(fn (int $teacherId) => Notification::create([
             'user_id' => $teacherId,
@@ -1056,21 +1109,23 @@ class StudentPackageController extends Controller
             'target_url' => '/guru/permintaan',
         ]));
 
-        if ($refundPending) {
+        if ($refund && ! $automatic) {
             \App\Models\User::query()->where('role', 'admin')->pluck('id')->each(
                 fn (int $adminId) => Notification::create([
                     'user_id' => $adminId,
                     'title' => 'Refund paket menunggu proses',
                     'message' => "Paket {$learningPackage->package_code} dibatalkan saat pencarian tutor.",
                     'type' => 'warning',
-                    'target_url' => '/admin/refunds',
+                    'target_url' => '/admin/finance?tab=refunds',
                 ])
             );
         }
 
         return response()->json([
-            'message' => $refundPending
-                ? 'Pencarian dihentikan. Pengembalian dana masuk antrean admin.'
+            'message' => $refund
+                ? ($automaticStarted
+                    ? 'Pencarian dihentikan. Refund diproses otomatis ke sumber pembayaran asal.'
+                    : 'Pencarian dihentikan. Pilih dan konfirmasi tujuan refund di Riwayat Transaksi sebelum dana diproses.')
                 : 'Pencarian paket dibatalkan dan voucher dikembalikan.',
         ]);
     }
@@ -1078,8 +1133,10 @@ class StudentPackageController extends Controller
     public function previewPromotion(
         Request $request,
         HourlyRateService $rateService,
-        PackageCheckoutService $checkoutService
+        PackageCheckoutService $checkoutService,
+        PrivateParticipantPricing $participantPricing
     ) {
+        $maximumParticipants = $participantPricing->maximumParticipants();
         $validated = $request->validate([
             'code' => ['nullable', 'string', 'max:60'],
             'promotion_claim_id' => ['nullable', 'integer'],
@@ -1087,22 +1144,30 @@ class StudentPackageController extends Controller
             'education_level' => ['required', Rule::in(EducationCatalog::LEVELS)],
             'learning_mode' => ['required', Rule::in(['online', 'offline'])],
             'duration_hours' => ['nullable', 'integer', Rule::in([1, 2])],
+            'participant_count' => ['nullable', 'integer', 'between:1,'.$maximumParticipants],
             'subjects' => ['required', 'array', 'min:1'],
             'subjects.*.curriculum_subject_id' => ['required', 'integer', 'exists:curriculum_subjects,id'],
             'subjects.*.session_count' => ['required', 'integer', 'min:1'],
         ]);
         abort_if(filled($validated['code'] ?? null) && filled($validated['promotion_claim_id'] ?? null), 422);
 
-        [$promotion, $claim] = $this->resolvePromotion($request->user()->id, [
-            'promotion_code' => $validated['code'] ?? null,
-            'promotion_claim_id' => $validated['promotion_claim_id'] ?? null,
-        ]);
+        if (! $request->user() && (filled($validated['code'] ?? null) || filled($validated['promotion_claim_id'] ?? null))) {
+            abort(422, 'Kode promo dan voucher hanya dapat diperiksa setelah masuk.');
+        }
+        [$promotion, $claim] = $request->user()
+            ? $this->resolvePromotion($request->user()->id, [
+                'promotion_code' => $validated['code'] ?? null,
+                'promotion_claim_id' => $validated['promotion_claim_id'] ?? null,
+            ])
+            : [null, null];
         $durationHours = (int) ($validated['duration_hours'] ?? 1);
+        $participantCount = (int) ($validated['participant_count'] ?? 1);
+        $participantPricing->forCount($participantCount);
         $subjects = CurriculumSubject::query()
             ->whereIn('id', collect($validated['subjects'])->pluck('curriculum_subject_id'))
             ->get()
             ->keyBy('id');
-        $lines = collect($validated['subjects'])->map(function (array $item) use ($subjects, $validated, $rateService, $durationHours) {
+        $lines = collect($validated['subjects'])->map(function (array $item) use ($subjects, $validated, $rateService, $durationHours, $participantCount, $participantPricing) {
             $subject = $subjects[$item['curriculum_subject_id']] ?? null;
             abort_unless($subject, 422, 'Mata pelajaran tidak ditemukan.');
 
@@ -1119,16 +1184,19 @@ class StudentPackageController extends Controller
                 'session_count' => $item['session_count'],
                 'duration_hours' => $durationHours,
                 'unit_price' => $unit,
-                'meeting_price' => $unit * $durationHours,
-                'subtotal_amount' => $unit * $durationHours * $item['session_count'],
+                'meeting_price' => $unit * $participantCount * $durationHours,
+                'subtotal_amount' => $unit * $participantCount * $durationHours * $item['session_count'],
+                'group_discount_amount' => ($unit * $participantCount - $participantPricing->customerHourlyTotal($unit, $participantCount))
+                    * $durationHours * $item['session_count'],
             ];
         })->values();
 
         $subtotal = (int) $lines->sum('subtotal_amount');
-        $discount = $promotion
+        $groupDiscount = (int) $lines->sum('group_discount_amount');
+        $promotionDiscount = $promotion
             ? $checkoutService->calculateDiscount(
                 $promotion,
-                $subtotal,
+                $subtotal - $groupDiscount,
                 $validated['package_plan_id'],
                 $validated['education_level'],
                 $subjects->pluck('name')->all(),
@@ -1137,9 +1205,12 @@ class StudentPackageController extends Controller
                 $claim
             )
             : 0;
+        $discount = $groupDiscount + $promotionDiscount;
 
         return response()->json([
             'promotion' => $promotion,
+            'participant_count' => $participantCount,
+            'group_discount_amount' => $groupDiscount,
             'duration_hours' => $durationHours,
             'total_learning_hours' => $durationHours * collect($validated['subjects'])->sum('session_count'),
             'lines' => $lines,
@@ -1284,6 +1355,10 @@ class StudentPackageController extends Controller
             'duration_hours' => (int) ($package->duration_hours ?? 1),
             'total_learning_hours' => $package->total_sessions * (int) ($package->duration_hours ?? 1),
             'total_sessions' => $package->total_sessions,
+            'participant_count' => (int) ($package->participant_count ?? 1),
+            'purchaser_participates' => (bool) ($package->purchaser_participates ?? true),
+            'participant_names' => $package->participant_names ?? [],
+            'participant_details' => $package->participant_details ?? [],
             'used_sessions' => $completed,
             'remaining_sessions' => max(0, $package->total_sessions - $completed),
             'subtotal_amount' => (float) $package->subtotal_amount,
@@ -1384,7 +1459,7 @@ class StudentPackageController extends Controller
             ? $bookingRequest->latestMatchingExhaustion
             : $bookingRequest->latestMatchingExhaustion()->first();
         $manualRestarts = $logs->where('action', 'search_restarted')->count();
-        $radius = (int) ($bookingRequest->search_radius_km ?? 3);
+        $radius = $bookingRequest->learning_mode === 'offline' ? (int) ($bookingRequest->search_radius_km ?? 3) : null;
         $nextRadius = $bookingRequest->learning_mode === 'offline'
             ? match ($radius) {
                 3 => 5, 5 => 8, 8 => 12, default => null

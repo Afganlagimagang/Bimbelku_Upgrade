@@ -26,6 +26,11 @@ class RateLimiterIsolationTest extends TestCase
             'account-password-change',
             'student-cheap-class-join',
             'student-session-presence-confirm',
+            'student-refund-sync',
+            'student-class-join-request',
+            'student-class-code-create',
+            'student-class-join-decision',
+            'student-payment-status-sync',
             'student-package-retry',
             'teacher-offer-action',
             'teacher-bank-change',
@@ -34,8 +39,12 @@ class RateLimiterIsolationTest extends TestCase
             'teacher-session-checkout',
             'admin-cheap-class-template-create',
             'admin-matching-synchronize',
+            'admin-refund-reconcile',
+            'admin-refund-retry',
             'auth-login',
             'auth-forgot-password',
+            'public-read',
+            'public-media',
         ];
 
         foreach ($required as $name) {

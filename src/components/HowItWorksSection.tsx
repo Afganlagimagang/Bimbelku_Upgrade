@@ -1,7 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowRight, BookOpenCheck, CreditCard, Radar, SlidersHorizontal, type LucideIcon } from "lucide-react";
 
-import Reveal from "@/components/Reveal";
 import StudentPackageLink from "@/components/StudentPackageLink";
 import { useWebsiteContent } from "@/components/WebsiteContentProvider";
 
@@ -54,60 +53,64 @@ export default function HowItWorksSection() {
   const cms = section("how_it_works");
   const [selected, setSelected] = useState(0);
   const step = steps[selected];
-  const Icon = step.icon;
+  const stepRefs = useRef<Array<HTMLLIElement | null>>([]);
+
+  useEffect(() => {
+    if (!("IntersectionObserver" in window)) return;
+    const observer = new IntersectionObserver((entries) => {
+      const visible = entries
+        .filter((entry) => entry.isIntersecting)
+        .sort((left, right) => right.intersectionRatio - left.intersectionRatio)[0];
+      const index = visible?.target.getAttribute("data-step-index");
+      if (index != null) setSelected(Number(index));
+    }, { rootMargin: "-28% 0px -42%", threshold: [0.2, 0.55, 0.8] });
+    stepRefs.current.forEach((item) => item && observer.observe(item));
+    return () => observer.disconnect();
+  }, []);
 
   return (
-    <section className="bg-orange-50 py-20 sm:py-24 lg:py-28">
-      <div className="mx-auto max-w-[1200px] px-5 sm:px-8">
-        <div className="grid gap-10 lg:grid-cols-[.8fr_1.2fr] lg:gap-14">
-          <Reveal direction="right" width="100%">
-            <div className="lg:sticky lg:top-40">
-              <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-orange-700">{cms?.eyebrow || "Dari kebutuhan sampai kelas pertama"}</p>
-              <h2 className="mt-4 text-balance text-3xl font-extrabold tracking-tight text-[#14213D] sm:text-4xl">{cms?.title || "Empat langkah yang jelas, tanpa kejutan di tengah."}</h2>
-              <p className="mt-5 max-w-xl text-base leading-8 text-slate-600">{cms?.description || "Harga dan jadwal dipilih lebih dulu. Pencarian tutor dimulai setelah pembayaran terverifikasi."}</p>
-              <StudentPackageLink to="/student/packages/new" className="mt-7 inline-flex min-h-12 items-center gap-2 rounded-2xl bg-[#14213D] px-5 text-sm font-extrabold text-white transition hover:bg-slate-800">
-                Susun kebutuhan <ArrowRight size={17} />
+    <section className="relative bg-[#F7F1E8] py-20 sm:py-24 lg:py-28">
+      <div className="pointer-events-none absolute right-0 top-20 h-72 w-72 rounded-full border border-[#147D7E]/10" aria-hidden="true" />
+      <div className="relative mx-auto max-w-[1200px] px-5 sm:px-8">
+        <div className="grid gap-11 lg:grid-cols-[minmax(0,.88fr)_minmax(0,1.12fr)] lg:items-start lg:gap-20">
+          <div className="lg:sticky lg:top-28 lg:self-start">
+            <div>
+              <p className="text-xs font-extrabold uppercase tracking-[.18em] text-[#A94316]">{cms?.eyebrow || "Dari kebutuhan sampai kelas pertama"}</p>
+              <h2 className="mt-4 max-w-[15ch] text-balance text-3xl font-extrabold leading-tight tracking-tight text-[#14213D] sm:text-4xl lg:text-[2.75rem]">{cms?.title || "Empat langkah yang jelas, tanpa kejutan di tengah."}</h2>
+              <p className="mt-5 max-w-lg text-base leading-8 text-slate-600">{cms?.description || "Harga dan jadwal dipilih lebih dulu. Pencarian tutor dimulai setelah pembayaran terverifikasi."}</p>
+              <div className="mt-8 flex items-center gap-3 border-t border-[#14213D]/15 pt-5">
+                <span className="text-3xl font-extrabold tabular-nums text-[#147D7E]">0{selected + 1}<span className="text-lg text-slate-400">/04</span></span>
+                <span className="text-sm font-bold text-slate-600">{step.short}</span>
+              </div>
+              <StudentPackageLink to="/student/packages/new" className="mt-8 inline-flex min-h-12 items-center gap-2 rounded-xl bg-[#C2410C] px-5 text-sm font-extrabold text-white transition hover:bg-[#9A3412]">
+                Mulai susun kebutuhan <ArrowRight size={17} />
               </StudentPackageLink>
             </div>
-          </Reveal>
-
-          <div>
-            <div className="grid gap-3 sm:grid-cols-2" role="tablist" aria-label="Tahapan memesan tutor">
-              {steps.map((item, index) => {
-                const StepIcon = item.icon;
-                const active = selected === index;
-                return (
-                  <button key={item.title} type="button" role="tab" aria-selected={active} onClick={() => setSelected(index)} className={`group flex min-h-[112px] items-start gap-4 rounded-3xl border p-5 text-left transition ${active ? "border-[#14213D] bg-[#14213D] text-white shadow-[0_16px_35px_rgba(20,33,61,.16)]" : "border-stone-200 bg-white text-[#14213D] hover:-translate-y-0.5 hover:border-orange-300"}`}>
-                    <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl ${active ? "bg-white/[.12] text-orange-300" : item.accent}`}><StepIcon size={20} /></span>
-                    <span className="min-w-0">
-                      <span className={`text-[10px] font-extrabold uppercase tracking-[.16em] ${active ? "text-orange-300" : "text-slate-400"}`}>Langkah 0{index + 1}</span>
-                      <span className="mt-1 block text-base font-extrabold">{item.title}</span>
-                      <span className={`mt-1 block text-xs leading-5 ${active ? "text-slate-300" : "text-slate-500"}`}>{item.short}</span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            <Reveal key={step.title} width="100%">
-              <div role="tabpanel" className="mt-4 overflow-hidden rounded-[28px] border border-stone-200 bg-white shadow-sm">
-                <div className="grid gap-7 p-6 sm:p-8 md:grid-cols-[auto_1fr]">
-                  <span className={`grid h-16 w-16 place-items-center rounded-[22px] ${step.accent}`}><Icon size={28} /></span>
-                  <div>
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <h3 className="text-2xl font-extrabold text-[#14213D]">{step.title}</h3>
-                      <span className="rounded-full bg-stone-100 px-3 py-1.5 text-xs font-extrabold text-slate-500">0{selected + 1} / 04</span>
-                    </div>
-                    <p className="mt-3 leading-7 text-slate-600">{step.description}</p>
-                    <ul className="mt-6 grid gap-3 sm:grid-cols-3">
-                      {step.detail.map((item) => <li key={item} className="rounded-2xl bg-stone-50 p-4 text-xs font-bold leading-5 text-slate-600"><span className="mb-2 block h-1.5 w-7 rounded-full bg-orange-500" />{item}</li>)}
-                    </ul>
-                  </div>
-                </div>
-                {selected === 2 && <div className="border-t border-amber-200 bg-amber-50 px-6 py-4 text-sm font-bold leading-6 text-amber-950 sm:px-8">Transparansi alur: pembayaran dilakukan sebelum matching. Jika tutor belum ditemukan, keputusan berikutnya tidak diambil diam-diam—pilihan yang tersedia ditampilkan kepada murid.</div>}
-              </div>
-            </Reveal>
           </div>
+
+          <ol className="relative space-y-4 border-l-2 border-[#147D7E]/25 pl-5 sm:pl-8" aria-label="Empat tahap pemesanan BimbelKu">
+            {steps.map((item, index) => {
+              const StepIcon = item.icon;
+              const active = selected === index;
+              return (
+                <li key={item.title} ref={(element) => { stepRefs.current[index] = element; }} data-step-index={index} onMouseEnter={() => setSelected(index)} className="relative scroll-mt-32">
+                  <span className={`absolute -left-[1.87rem] top-8 h-4 w-4 rounded-full border-[3px] border-[#F7F1E8] sm:-left-[2.63rem] ${active ? "bg-[#C2410C]" : "bg-[#147D7E]"}`} aria-hidden="true" />
+                  <article className={`rounded-2xl border bg-white p-5 transition-colors sm:p-7 ${active ? "border-[#147D7E]/40 shadow-[0_14px_35px_rgba(20,33,61,.08)]" : "border-stone-200"}`}>
+                    <div className="flex items-start gap-4">
+                      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[#E7F2F0] text-[#147D7E]"><StepIcon size={21} aria-hidden="true" /></span>
+                      <div className="min-w-0 flex-1"><p className="text-[11px] font-extrabold uppercase tracking-[.16em] text-[#A94316]">Langkah 0{index + 1}</p><h3 className="mt-1 text-xl font-extrabold text-[#14213D] sm:text-2xl">{item.title}</h3></div>
+                    </div>
+                    <p className="mt-5 text-sm font-bold text-[#147D7E]">{item.short}</p>
+                    <p className="mt-2 text-sm leading-7 text-slate-600 sm:text-base">{item.description}</p>
+                    <ul className="mt-5 space-y-2 border-t border-stone-100 pt-4 text-xs font-semibold leading-5 text-slate-600">
+                      {item.detail.map((detail) => <li key={detail} className="flex gap-2"><span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#C2410C]" />{detail}</li>)}
+                    </ul>
+                    {index === 2 && <p className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-xs font-bold leading-5 text-amber-900">Jika tutor belum ditemukan, murid dapat memilih lanjut pencarian atau proses pengembalian dana sesuai kebijakan.</p>}
+                  </article>
+                </li>
+              );
+            })}
+          </ol>
         </div>
       </div>
     </section>

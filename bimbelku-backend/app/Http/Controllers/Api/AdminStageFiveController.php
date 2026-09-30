@@ -22,7 +22,7 @@ class AdminStageFiveController extends Controller
         '/student/dashboard',
         '/student/dashboard#tutorial',
         '/student/packages',
-        '/student/my-classes?tab=process',
+        '/student/packages',
         '/student/my-classes?tab=history',
         '/student/packages/new',
         '/student/kelas-murah',
@@ -258,7 +258,7 @@ class AdminStageFiveController extends Controller
     private function validatePlan(Request $request, ?PackagePlan $plan = null): array
     {
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:100'],
+            'name' => ['required', 'string', 'max:100', Rule::unique('package_plans', 'name')->ignore($plan?->id)],
             'slug' => ['required', 'string', 'max:100', Rule::unique('package_plans', 'slug')->ignore($plan?->id)],
             'description' => ['nullable', 'string', 'max:1000'],
             'session_count' => ['required', 'integer', 'min:1', 'max:100'],
@@ -266,6 +266,9 @@ class AdminStageFiveController extends Controller
             'maximum_subjects' => ['required', 'integer', 'min:1', 'max:5'],
             'sort_order' => ['nullable', 'integer', 'min:0'],
             'is_active' => ['required', 'boolean'],
+        ], [
+            'name.unique' => 'Nama paket ini sudah digunakan. Pilih nama lain agar tidak membingungkan murid.',
+            'slug.unique' => 'Alamat paket ini sudah digunakan. Ganti nama atau slug paket.',
         ]);
         abort_if(
             (int) $data['maximum_subjects'] > (int) $data['session_count'],

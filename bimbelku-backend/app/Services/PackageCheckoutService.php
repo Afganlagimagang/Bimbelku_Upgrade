@@ -208,6 +208,9 @@ class PackageCheckoutService
                 ->lockForUpdate()
                 ->findOrFail($request->package_subject_id);
             $package = LearningPackage::query()->lockForUpdate()->findOrFail($subject->learning_package_id);
+            abort_if($package->learning_program_id && $package->subjects()
+                ->whereKeyNot($subject->id)->where('assigned_teacher_id', $teacher->id)->exists(), 422,
+                'Tutor ini sudah mengajar mapel lain dalam program yang sama. Tiap mapel memakai tutor berbeda.');
 
             abort_unless(
                 $request->status === 'teacher_pending',
@@ -302,7 +305,7 @@ class PackageCheckoutService
                     'title' => 'Tutor paket ditemukan',
                     'message' => "{$teacher->name} menerima {$subject->subject_name}. Pencarian mapel lain masih berjalan.",
                     'type' => 'success',
-                    'target_url' => '/student/my-classes?tab=process',
+                    'target_url' => '/student/packages',
                 ]);
 
                 return ['package' => $package->fresh('subjects.assignedTeacher'), 'package_activated' => false];
@@ -399,7 +402,7 @@ class PackageCheckoutService
                     'status' => 'matching',
                     'matched_teacher_id' => null,
                     'payment_due_at' => null,
-                    'search_radius_km' => 3,
+                    'search_radius_km' => $package->learning_mode === 'offline' ? 3 : null,
                     'search_started_at' => now(),
                     'search_expires_at' => now()->addHours($this->matchingService->maximumSearchHours()),
                 ]);
@@ -416,7 +419,7 @@ class PackageCheckoutService
                 'title' => 'Pembayaran diterima',
                 'message' => "Pembayaran {$package->package_code} diterima. Sistem mulai mencari tutor untuk setiap mata pelajaran.",
                 'type' => 'success',
-                'target_url' => '/student/my-classes?tab=process',
+                'target_url' => '/student/packages',
             ]);
 
             return $package->subjects->pluck('id')->all();
@@ -467,22 +470,22 @@ class PackageCheckoutService
                 'title' => 'Pembayaran paket ditolak',
                 'message' => 'Bukti pembayaran ditolak: '.$reason,
                 'type' => 'warning',
-                'target_url' => '/student/my-classes?tab=process',
+                'target_url' => '/student/packages',
             ]);
         }, 3);
     }
 
     public function createInvoiceBeforeMatching(LearningPackage $package): Order
     {
+        $xenditReady = (bool) config('xendit.enabled')
+            && filled(config('xendit.secret_key'))
+            && filled(config('xendit.webhook_token'));
         $paymentSettings = PaymentSetting::query()->lockForUpdate()->first();
-        abort_unless(
-            $paymentSettings
-                && filled($paymentSettings->bank_name)
-                && filled($paymentSettings->account_number)
-                && filled($paymentSettings->account_name),
-            503,
-            'Rekening pembayaran belum dikonfigurasi admin.'
-        );
+        $legacyTransferReady = $paymentSettings
+            && filled($paymentSettings->bank_name)
+            && filled($paymentSettings->account_number)
+            && filled($paymentSettings->account_name);
+        abort_unless($xenditReady || $legacyTransferReady, 503, 'Pembayaran otomatis belum dikonfigurasi pada server.');
 
         $package->load(['plan', 'promotion', 'subjects.sessions', 'promotionClaims']);
         $firstSessionAt = $package->subjects
@@ -558,7 +561,7 @@ class PackageCheckoutService
             'title' => 'Tagihan paket tersedia',
             'message' => "Periksa dan bayar paket {$package->package_code}. Pencarian tutor dimulai setelah pembayaran diterima.",
             'type' => 'success',
-            'target_url' => '/student/my-classes?tab=process',
+            'target_url' => '/student/packages',
         ]);
 
         return $order->fresh(['booking', 'learningPackage']);
@@ -573,13 +576,14 @@ class PackageCheckoutService
         $order = $package->orders()->where('status', 'paid')->lockForUpdate()->latest()->first();
         abort_unless($order, 422, 'Pembayaran paket belum diterima.');
 
-        $commissionPercent = (float) (Setting::where('key', 'admin_fee')->value('value') ?? 20);
+        $commissionPercent = 20.0;
         $durationHours = (int) ($package->duration_hours ?? 1);
         $firstBooking = null;
         $firstSessionAt = $package->subjects->flatMap->sessions->sortBy('scheduled_start_at')->first()?->scheduled_start_at;
 
         foreach ($package->subjects as $subject) {
             abort_unless($subject->assigned_teacher_id, 422, 'Semua tutor harus menerima paket terlebih dahulu.');
+            $tutorHourlyGross = (float) ($subject->tutor_hourly_gross ?? $subject->unit_price);
             foreach ($subject->sessions as $session) {
                 $anchor = $subject->bookingRequest;
                 $bookingRequest = $session->sequence === 1 && $anchor
@@ -600,23 +604,23 @@ class PackageCheckoutService
                         'start_time' => $session->scheduled_start_at->format('H:i:s'),
                         'end_time' => $session->scheduled_end_at->format('H:i:s'),
                         'duration_hours' => $durationHours,
-                        'address' => $package->address,
-                        'maps_link' => $package->maps_link,
-                        'latitude' => $package->student->latitude,
-                        'longitude' => $package->student->longitude,
+                        'address' => $package->learning_mode === 'offline' ? $package->address : null,
+                        'maps_link' => $package->learning_mode === 'offline' ? $package->maps_link : null,
+                        'latitude' => $package->learning_mode === 'offline' ? $package->student->latitude : null,
+                        'longitude' => $package->learning_mode === 'offline' ? $package->student->longitude : null,
                         'status' => 'confirmed',
-                        'hourly_rate' => $subject->unit_price,
-                        'total_amount' => $subject->unit_price * $durationHours,
+                        'hourly_rate' => $tutorHourlyGross,
+                        'total_amount' => $tutorHourlyGross * $durationHours,
                     ]);
 
                 $bookingRequest->update([
                     'matched_teacher_id' => $subject->assigned_teacher_id,
                     'status' => 'confirmed',
-                    'hourly_rate' => $subject->unit_price,
-                    'total_amount' => $subject->unit_price * $durationHours,
+                    'hourly_rate' => $tutorHourlyGross,
+                    'total_amount' => $tutorHourlyGross * $durationHours,
                     'payment_due_at' => null,
                 ]);
-                $gross = (float) $subject->unit_price * $durationHours;
+                $gross = $tutorHourlyGross * $durationHours;
                 $teacherNet = max(0, $gross * (100 - $commissionPercent) / 100);
                 $booking = Booking::updateOrCreate(
                     ['booking_request_id' => $bookingRequest->id],
@@ -629,7 +633,7 @@ class PackageCheckoutService
                         'duration_hours' => $durationHours,
                         'learning_mode' => $package->learning_mode,
                         'class_type' => 'private',
-                        'hourly_rate' => $subject->unit_price,
+                        'hourly_rate' => $tutorHourlyGross,
                         'total_amount' => $gross,
                         'gross_amount' => $gross,
                         'teacher_net_amount' => $teacherNet,
@@ -637,8 +641,8 @@ class PackageCheckoutService
                         'status' => 'confirmed',
                         'session_flow_version' => 'presence_confirmation_v2',
                         'payment_due_at' => null,
-                        'address' => $package->address,
-                        'maps_link' => $package->maps_link,
+                        'address' => $package->learning_mode === 'offline' ? $package->address : null,
+                        'maps_link' => $package->learning_mode === 'offline' ? $package->maps_link : null,
                         'payout_status' => 'locked',
                     ]
                 );

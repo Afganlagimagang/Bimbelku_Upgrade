@@ -20,6 +20,7 @@ const routes = read("bimbelku-backend/routes/api.php");
 const learning = read("bimbelku-backend/app/Http/Controllers/Api/LearningSessionController.php");
 const schedule = read("bimbelku-backend/app/Http/Controllers/Api/ScheduleChangeController.php");
 const operations = read("bimbelku-backend/app/Http/Controllers/Api/TeacherOperationsController.php");
+const payoutService = read("bimbelku-backend/app/Services/TeacherPayoutService.php");
 const completion = read("bimbelku-backend/app/Http/Controllers/Api/SessionWorkflowController.php");
 const migration = read("bimbelku-backend/database/migrations/2026_08_01_000300_build_stage_six_b_teacher_operations.php");
 const featureTest = read("bimbelku-backend/tests/Feature/StageSixBTeacherOperationsTest.php");
@@ -57,7 +58,7 @@ expect(completion.includes("student_confirmed_at") && completion.includes("stude
 for (const balance of ["held", "available", "requested", "paid"]) {
   expect(salary.includes(`balances.${balance}`), `dompet memisahkan saldo ${balance}`);
 }
-expect(salary.includes("/teacher/payout-requests") && salary.includes("commission_amount"), "tutor mengajukan pencairan dengan rincian komisi");
+expect(salary.includes("/teacher/payout-requests") && salary.includes("requested_amount") && salary.includes("tax_amount"), "tutor memilih nominal pencairan dan melihat potongan pajak");
 expect(performance.includes("rating.distribution") && performance.includes("ratings"), "halaman performa memuat rating dan ulasan terverifikasi");
 
 for (const table of ["classroom_message_reads", "participant_attendances", "schedule_change_requests", "schedule_change_responses", "teacher_payout_requests"]) {
@@ -67,8 +68,9 @@ expect(routes.includes("LearningSessionController::class, 'conversations'") && r
 expect(routes.includes("studentConfirmPresence") && routes.includes("ScheduleChangeController::class, 'respond'"), "API konfirmasi kehadiran V2 dan persetujuan jadwal tersedia");
 expect(learning.includes("whereDoesntHave('reads'") && learning.includes("client_token"), "backend menghitung pesan belum dibaca dan idempotensi kirim");
 expect(schedule.includes("teacherHasConflict") && schedule.includes("Jadwal baru bertabrakan"), "backend memeriksa bentrok tutor dan peserta");
-expect(operations.includes("requestPayout") && operations.includes("payout_status' => 'requested'"), "pengajuan pencairan mengunci sesi agar tidak diajukan dua kali");
-for (const scenario of ["test_paid_chat_attachment_is_idempotent_and_gets_a_read_receipt", "test_schedule_changes_only_after_the_other_party_approves", "test_teacher_payout_request_moves_ready_sessions_to_requested_once"]) {
+expect(operations.includes("requestPayout") && operations.includes("$payouts->request"), "controller mengirim pengajuan melalui layanan payout otomatis");
+expect(payoutService.includes("teacher_reserved_amount") && payoutService.includes("lockForUpdate") && payoutService.includes("MINIMUM_AMOUNT = 10000"), "layanan payout mencadangkan saldo atomik dan menerapkan minimum pencairan");
+for (const scenario of ["test_paid_chat_attachment_is_idempotent_and_gets_a_read_receipt", "test_schedule_changes_only_after_the_other_party_approves", "test_teacher_payout_request_is_sent_automatically_and_reserves_only_requested_amount"]) {
   expect(featureTest.includes(scenario), `pengujian backend memuat ${scenario}`);
 }
 

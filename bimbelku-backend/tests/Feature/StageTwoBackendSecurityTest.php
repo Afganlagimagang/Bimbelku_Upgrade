@@ -101,6 +101,13 @@ class StageTwoBackendSecurityTest extends TestCase
             'notes' => 'Dokumen lengkap dan dapat diverifikasi.',
             'screening_passed' => true,
         ];
+        $this->patchJson("/api/admin/teachers/{$teacher->id}/verification-stage", ['stage' => 'documents_checked'])->assertOk();
+        $this->patchJson("/api/admin/teachers/{$teacher->id}/verification-stage", ['stage' => 'whatsapp_scheduled'])->assertOk();
+        $this->patchJson("/api/admin/teachers/{$teacher->id}/verification-stage", [
+            'stage' => 'whatsapp_passed',
+            'notes' => 'Tes mengajar WhatsApp dinyatakan lulus.',
+        ])->assertOk();
+
         $this->postJson('/api/admin/verify-teacher', [...$payload, 'screening_passed' => false])
             ->assertUnprocessable()
             ->assertJsonPath('message', 'Kelulusan seleksi dan ringkasan hasil tes WhatsApp wajib dicatat sebelum tutor diaktifkan.');
@@ -139,7 +146,7 @@ class StageTwoBackendSecurityTest extends TestCase
             ->assertHeader('Content-Disposition', 'inline; filename="selfie.jpg"');
     }
 
-    public function test_payment_account_configuration_remains_a_single_record(): void
+    public function test_retired_admin_payment_account_endpoint_does_not_create_a_record(): void
     {
         $admin = User::factory()->create([
             'role' => 'admin',
@@ -147,14 +154,13 @@ class StageTwoBackendSecurityTest extends TestCase
         ]);
         Sanctum::actingAs($admin);
 
-        $this->getJson('/api/admin/payment-settings')->assertOk();
-        $this->getJson('/api/admin/payment-settings')->assertOk();
+        $this->getJson('/api/admin/payment-settings')->assertNotFound();
+        $this->getJson('/api/admin/payment-settings')->assertNotFound();
 
-        $this->assertDatabaseCount('payment_settings', 1);
-        $this->assertDatabaseHas('payment_settings', ['singleton_key' => 1]);
+        $this->assertDatabaseCount('payment_settings', 0);
     }
 
-    public function test_admin_can_complete_the_first_payment_account_while_an_old_invoice_is_open(): void
+    public function test_admin_cannot_complete_a_retired_payment_account_while_an_old_invoice_is_open(): void
     {
         $admin = User::factory()->create([
             'role' => 'admin',
@@ -224,13 +230,13 @@ class StageTwoBackendSecurityTest extends TestCase
             'bank_name' => 'BCA',
             'account_number' => '1234567890',
             'account_name' => 'BimbelKu',
-        ], ['Idempotency-Key' => 'test-payment-setting-001'])->assertOk();
+        ], ['Idempotency-Key' => 'test-payment-setting-001'])->assertNotFound();
 
         $this->assertDatabaseHas('payment_settings', [
             'singleton_key' => 1,
-            'bank_name' => 'BCA',
-            'account_number' => '1234567890',
-            'account_name' => 'BimbelKu',
+            'bank_name' => '',
+            'account_number' => '',
+            'account_name' => '',
         ]);
     }
 

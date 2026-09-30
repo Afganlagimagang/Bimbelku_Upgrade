@@ -122,18 +122,18 @@ export default function ProfileQuickMenu({
             </div>
 
             <div className="mt-2 space-y-1">
-              <Link role="menuitem" to={profileTo} className="flex min-h-12 items-center gap-3 rounded-2xl px-4 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-50">
+              <Link role="menuitem" to={profileTo} onClick={() => setOpen(false)} className="flex min-h-12 items-center gap-3 rounded-2xl px-4 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-50">
                 <span className={`grid h-9 w-9 place-items-center rounded-xl ${tone.icon}`}><UserRound size={17} /></span>
                 Profil Saya
               </Link>
               {accountTo && (
-                <Link role="menuitem" to={accountTo} className="flex min-h-12 items-center gap-3 rounded-2xl px-4 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-50">
+                <Link role="menuitem" to={accountTo} onClick={() => setOpen(false)} className="flex min-h-12 items-center gap-3 rounded-2xl px-4 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-50">
                   <span className="grid h-9 w-9 place-items-center rounded-xl bg-slate-100 text-slate-600"><Settings size={17} /></span>
                   Pengaturan
                 </Link>
               )}
               {helpTo && (
-                <Link role="menuitem" to={helpTo} className="flex min-h-12 items-center gap-3 rounded-2xl px-4 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-50">
+                <Link role="menuitem" to={helpTo} onClick={() => setOpen(false)} className="flex min-h-12 items-center gap-3 rounded-2xl px-4 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-50">
                   <span className="grid h-9 w-9 place-items-center rounded-xl bg-emerald-50 text-emerald-700"><CircleHelp size={17} /></span>
                   Bantuan
                 </Link>

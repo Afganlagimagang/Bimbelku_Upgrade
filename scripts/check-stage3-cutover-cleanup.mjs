@@ -20,7 +20,7 @@ expect(!exists("src/pages/SearchPage.tsx"), "SearchPage.tsx legacy masih ada");
 expect(!app.includes("SearchPage"), "App masih mereferensikan SearchPage");
 expect(app.includes('<Route path="/search" element={<LegacyPackageRedirect />} />'), "/search tidak lagi diarahkan ke Paket Belajar");
 expect(app.includes('<Route path="/student/find" element={<LegacyPackageRedirect />} />'), "/student/find tidak lagi diarahkan ke Paket Belajar");
-expect(app.includes('exactPath("/student/packages/new", "/search", "/student/find")'), "preload alias Paket Belajar hilang");
+expect(app.includes('exactPath("/student/packages/new", "/search", "/student/find", "/pesan")'), "preload alias Paket Belajar hilang");
 expect(stage2Checker.includes('file: "src/pages/students/PackageBuilder.tsx"'), "checker Tahap 2 belum dipindahkan ke PackageBuilder");
 expect(!stage2Checker.includes('file: "src/pages/SearchPage.tsx"'), "checker Tahap 2 masih bergantung pada SearchPage");
 
@@ -45,7 +45,7 @@ expect(packageBuilder.includes("Pencarian tutor baru dimulai setelah pembayaran 
 expect(terms.includes("Versi 15 Agustus 2026"), "versi Syarat & Ketentuan belum diperbarui");
 expect(terms.includes("Pencarian tutor untuk Paket Belajar baru dimulai setelah pembayaran dinyatakan diterima oleh sistem") && terms.includes("Bagian pembayaran melalui transfer diperiksa admin"), "Terms belum mengikuti flow payment-before-matching");
 expect(terms.includes("Jalur pembuatan booking lama tidak lagi menjadi jalur pemesanan baru bagi murid"), "Terms belum menjelaskan cutover booking legacy");
-expect(terms.includes('title: "Kelas Kelompok"'), "Terms belum mengganti aturan kelompok legacy dengan Kelas Kelompok");
+expect(terms.includes('title: "Kelas Bersama"'), "Terms belum memakai identitas Kelas Bersama");
 expect(!terms.includes("Profil tutor ditampilkan setelah tutor menerima permintaan dan sebelum murid membayar"), "Terms masih memuat urutan pembayaran legacy");
 expect(privacy.includes("Versi 15 Agustus 2026"), "versi Kebijakan Privasi belum diperbarui");
 expect(privacy.includes("pencocokan tutor setelah pembayaran Paket Belajar dinyatakan diterima"), "Privacy belum mengikuti flow Paket Belajar baru");

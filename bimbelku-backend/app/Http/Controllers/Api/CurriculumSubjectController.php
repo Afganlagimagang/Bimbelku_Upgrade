@@ -7,6 +7,7 @@ use App\Models\CurriculumSubject;
 use App\Support\EducationCatalog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -42,6 +43,7 @@ class CurriculumSubjectController extends Controller
             ->first();
 
         if ($existing) {
+            $this->rememberGroup((string) $existing->group_name);
             if (!$existing->is_active || !$this->hasValidScope($existing)) {
                 $updates = ['is_active' => true];
                 if (!$this->hasValidScope($existing)) {
@@ -69,6 +71,7 @@ class CurriculumSubjectController extends Controller
             'grades' => $validated['grades'] ?? $this->gradesForLevels($levels),
             'source_url' => $validated['source_url'] ?? 'https://buku.kemendikdasmen.go.id/',
         ]);
+        $this->rememberGroup((string) $subject->group_name);
         Cache::forget('learning_catalog.payload');
 
         return response()->json([
@@ -91,6 +94,7 @@ class CurriculumSubjectController extends Controller
             'name' => $name,
             'normalized_name' => $this->normalize($name),
         ]);
+        $this->rememberGroup((string) $curriculumSubject->group_name);
         Cache::forget('learning_catalog.payload');
 
         return response()->json([
@@ -174,6 +178,20 @@ class CurriculumSubjectController extends Controller
     private function normalize(string $value): string
     {
         return Str::lower(preg_replace('/\s+/u', ' ', trim($value)) ?? trim($value));
+    }
+
+    private function rememberGroup(string $name): void
+    {
+        $name = preg_replace('/\s+/u', ' ', trim($name)) ?? trim($name);
+        if ($name === '') return;
+
+        $now = now();
+        DB::table('curriculum_subject_groups')->insertOrIgnore([
+            'name' => $name,
+            'normalized_name' => Str::lower($name),
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
     }
 
     private function displayName(string $value): string

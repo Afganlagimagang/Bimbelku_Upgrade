@@ -12,6 +12,9 @@ export type AttentionNotification = {
   id: number;
   is_read: boolean;
   target_url?: string | null;
+  attention_key?: string | null;
+  entity_type?: string | null;
+  entity_id?: number | null;
 };
 
 type PageGroup = {
@@ -23,7 +26,8 @@ type PageGroup = {
 const STUDENT_GROUPS: PageGroup[] = [
   { key: "student-dashboard", paths: ["/student/dashboard"], mobileKey: "home" },
   { key: "student-search", paths: ["/student/packages/new", "/student/find", "/search"], mobileKey: "search" },
-  { key: "student-classes", paths: ["/student/my-classes", "/student/packages", "/payment"], mobileKey: "classes" },
+  { key: "student-process", paths: ["/student/packages", "/payment"], mobileKey: "classes" },
+  { key: "student-classes", paths: ["/student/my-classes"], mobileKey: "classes" },
   { key: "student-progress", paths: ["/student/progress"], mobileKey: "classes" },
   { key: "student-messages", paths: ["/student/messages"], mobileKey: "messages" },
   { key: "student-account", paths: ["/student/account"], mobileKey: "account" },
@@ -42,8 +46,7 @@ const TEACHER_GROUPS: PageGroup[] = [
   { key: "teacher-messages", paths: ["/guru/pesan"], mobileKey: "messages" },
   { key: "teacher-account", paths: ["/guru/saya"], mobileKey: "account" },
   { key: "teacher-profile", paths: ["/guru/profil"], mobileKey: "account" },
-  { key: "teacher-bank", paths: ["/guru/rekening"], mobileKey: "account" },
-  { key: "teacher-salary", paths: ["/guru/gaji"], mobileKey: "account" },
+  { key: "teacher-wallet", paths: ["/guru/dompet", "/guru/rekening", "/guru/pencairan/rekening", "/guru/gaji"], mobileKey: "account" },
   { key: "teacher-performance", paths: ["/guru/performa"], mobileKey: "account" },
   { key: "teacher-notifications", paths: ["/guru/notifikasi"], mobileKey: "account" },
   { key: "teacher-help", paths: ["/guru/bantuan"], mobileKey: "account" },
@@ -61,7 +64,6 @@ const ADMIN_GROUPS: PageGroup[] = [
   { key: "admin-payment-settings", paths: ["/admin/settings-payment"] },
   { key: "admin-teachers", paths: ["/admin/guru"], mobileKey: "teachers" },
   { key: "admin-users", paths: ["/admin/users"] },
-  { key: "admin-messages", paths: ["/admin/pesan"], mobileKey: "messages" },
   { key: "admin-send-notification", paths: ["/admin/notifikasi"] },
   { key: "admin-subjects", paths: ["/admin/subjects"] },
   { key: "admin-topics", paths: ["/admin/chapters"] },
@@ -103,6 +105,29 @@ export const pageGroupForPath = (role: AttentionRole, value?: string | null): Pa
   return candidates.find(({ path }) => pathMatches(pathname, path))?.group ?? null;
 };
 
+const ATTENTION_GROUPS: Partial<Record<AttentionRole, Record<string, string>>> = {
+  student: {
+    student_order_status_changed: "student-process",
+    student_payment_required: "student-process",
+    student_matching_result: "student-process",
+    student_refund_status_changed: "student-history",
+  },
+  teacher: {
+    teacher_new_offer: "teacher-offers",
+    teacher_payout_changed: "teacher-wallet",
+    teacher_payout_failed: "teacher-wallet",
+  },
+  admin: {
+    admin_refund_exception: "admin-payouts",
+  },
+};
+
+const notificationGroup = (role: AttentionRole, notification: AttentionNotification): PageGroup | null => {
+  const key = notification.attention_key ? ATTENTION_GROUPS[role]?.[notification.attention_key] : undefined;
+  return (key ? groupsFor(role).find((group) => group.key === key) : null)
+    ?? pageGroupForPath(role, notification.target_url);
+};
+
 export const notificationTargetsCurrentPage = (
   role: AttentionRole,
   currentPath: string,
@@ -110,8 +135,29 @@ export const notificationTargetsCurrentPage = (
 ): boolean => {
   if (notification.is_read || !notification.target_url) return false;
   const currentGroup = pageGroupForPath(role, currentPath);
-  const targetGroup = pageGroupForPath(role, notification.target_url);
-  return Boolean(currentGroup && targetGroup && currentGroup.key === targetGroup.key);
+  const targetGroup = notificationGroup(role, notification);
+  if (!currentGroup || !targetGroup || currentGroup.key !== targetGroup.key) return false;
+
+  const current = attentionUrl(currentPath);
+  const target = attentionUrl(notification.target_url);
+  if (!current || !target) return false;
+
+  const defaults = (url: URL) => {
+    const path = normalizeAttentionPath(url.pathname);
+    return {
+      tab: pathMatches(path, "/student/my-classes") ? "schedule" : "",
+      scope: pathMatches(path, "/student/packages") || pathMatches(path, "/guru/kelas") || pathMatches(path, "/guru/permintaan") ? "active" : "",
+      class_kind: "",
+    };
+  };
+  const currentDefaults = defaults(current);
+  const targetDefaults = defaults(target);
+
+  return (["tab", "scope", "class_kind"] as const).every((key) => {
+    const currentValue = current.searchParams.get(key) ?? currentDefaults[key];
+    const targetValue = target.searchParams.get(key) ?? targetDefaults[key];
+    return currentValue === targetValue;
+  });
 };
 
 export const unreadIdsForCurrentPage = (
@@ -132,19 +178,14 @@ export const hasSidebarAttention = (
 
   return notifications.some((notification) => {
     if (notification.is_read) return false;
-    if (!notification.target_url) {
-      // Notifikasi umum tanpa target tetap harus punya rumah yang jelas.
-      // Murid melihatnya di Pusat Notifikasi dalam menu Saya, sedangkan tutor
-      // memakai halaman Notifikasi khusus mereka.
-      if (role === "student") return navGroup.mobileKey === "account";
-      return role === "teacher" && navGroup.key === "teacher-notifications";
-    }
-    const targetGroup = pageGroupForPath(role, notification.target_url);
+    if (!notification.target_url) return false;
+    const targetGroup = notificationGroup(role, notification);
     if (!targetGroup) return false;
 
     // Sidebar murid memang hanya memiliki lima menu besar. Karena itu indikator
     // mengikuti kelompok bottom-nav, sedangkan tutor/admin mengikuti halaman nyata.
-    if (role === "student") return targetGroup.mobileKey === navGroup.mobileKey;
+    // Sidebar desktop memisahkan Proses Pesanan dan Jadwal Belajar.
+    // Pengelompokan mobile hanya dipakai oleh hasMobileAttention.
     return targetGroup.key === navGroup.key;
   });
 };
@@ -155,8 +196,8 @@ export const hasMobileAttention = (
   notifications: AttentionNotification[],
 ): boolean => notifications.some((notification) => {
   if (notification.is_read) return false;
-  if (!notification.target_url) return mobileKey === "account";
-  return pageGroupForPath(role, notification.target_url)?.mobileKey === mobileKey;
+  if (!notification.target_url) return false;
+  return notificationGroup(role, notification)?.mobileKey === mobileKey;
 });
 
 export type StudentClassAttentionTab = "process" | "schedule" | "history";
@@ -212,8 +253,8 @@ export const attentionTargetLabel = (
   if (!path) return "Informasi saja";
 
   if (role === "student") {
-    if (pathMatches(path, "/student/packages")) return "Kelas Saya · Proses";
-    if (pathMatches(path, "/student/my-classes")) return "Kelas Saya";
+    if (pathMatches(path, "/student/packages")) return "Proses Pesanan";
+    if (pathMatches(path, "/student/my-classes")) return "Jadwal Belajar";
     if (pathMatches(path, "/student/progress")) return "Perkembangan Belajar";
     if (pathMatches(path, "/student/messages")) return "Pesan";
     if (pathMatches(path, "/student/history") || pathMatches(path, "/payment")) return "Pembayaran & Riwayat";
@@ -229,8 +270,7 @@ export const attentionTargetLabel = (
     if (pathMatches(path, "/guru/kelas")) return "Kelas Saya";
     if (pathMatches(path, "/guru/jadwal")) return "Jadwal";
     if (pathMatches(path, "/guru/pesan")) return "Pesan";
-    if (pathMatches(path, "/guru/rekening")) return "Rekening";
-    if (pathMatches(path, "/guru/gaji")) return "Dompet & Gaji";
+    if (pathMatches(path, "/guru/dompet") || pathMatches(path, "/guru/rekening") || pathMatches(path, "/guru/gaji")) return "Dompet Tutor";
     if (pathMatches(path, "/guru/performa")) return "Performa & Banding";
     if (pathMatches(path, "/guru/bantuan")) return "Pusat Bantuan";
     if (pathMatches(path, "/guru/profil")) return "Profil";
@@ -245,7 +285,6 @@ const ADMIN_MOBILE_ROUTES: Record<string, string> = {
   "/admin": "home",
   "/admin/guru": "teachers",
   "/admin/pembayaran": "payments",
-  "/admin/pesan": "messages",
 };
 
 export const adminMobileKeyForRoute = (route: string): string | null => ADMIN_MOBILE_ROUTES[route] ?? null;
@@ -255,7 +294,7 @@ export const hasAdminMobileMenuAttention = (
   notifications: AttentionNotification[],
 ): boolean => notifications.some((notification) => {
   if (notification.is_read || !notification.target_url) return false;
-  const targetGroup = pageGroupForPath("admin", notification.target_url);
+  const targetGroup = notificationGroup("admin", notification);
   if (!targetGroup) return false;
   return !visibleMobileRoutes.some((route) => {
     const mobileGroup = pageGroupForPath("admin", route);

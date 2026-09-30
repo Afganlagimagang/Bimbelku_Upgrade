@@ -32,7 +32,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import http, { getApiError, getCached } from "@/lib/http";
+import http, { clearApiCache, getApiError, getCached } from "@/lib/http";
 import { publicMediaUrl } from "@/lib/apiBase";
 import {
   isValidPersonName,
@@ -67,10 +67,12 @@ interface ProfileState {
   longitude: string;
   max_travel_km: string;
   is_accepting_requests: boolean;
+  public_profile_enabled: boolean;
+  public_credentials: string;
+  public_degree: string;
   photo: string;
   photoFile: File | null;
   profileCover: string;
-  profileCoverFile: File | null;
   userStatus: string;
   documentUrls: Record<string, string>;
   documentFiles: Record<string, File | null>;
@@ -89,10 +91,12 @@ const initialState: ProfileState = {
   longitude: "",
   max_travel_km: "12",
   is_accepting_requests: true,
+  public_profile_enabled: false,
+  public_credentials: "",
+  public_degree: "",
   photo: "",
   photoFile: null,
   profileCover: "",
-  profileCoverFile: null,
   userStatus: "",
   documentUrls: {},
   documentFiles: {},
@@ -105,11 +109,13 @@ export default function TeacherProfile() {
   const [profile, setProfile] = useState<ProfileState>(initialState);
   const [loading, setLoading] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [savingCover, setSavingCover] = useState(false);
   const [savingSubject, setSavingSubject] = useState(false);
   const [locating, setLocating] = useState(false);
   const [subjectOptions, setSubjectOptions] = useState<SubjectOption[]>([]);
   const photoPreviewUrlRef = useRef<string | null>(null);
   const coverPreviewUrlRef = useRef<string | null>(null);
+  const coverInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     void loadProfile();
@@ -123,8 +129,8 @@ export default function TeacherProfile() {
     setLoading(true);
     try {
       const [response, coverResponse, catalogResponse] = await Promise.all([
-        getCached("/teacher/profile", { maxAgeMs: 60_000 }),
-        getCached("/settings/teacher-cover", { maxAgeMs: 5 * 60_000 }).catch(() => null),
+        getCached("/teacher/profile", { force: true }),
+        getCached("/settings/teacher-cover", { force: true }).catch(() => null),
         getCached<{ subject_options?: SubjectOption[] }>("/learning-catalog", {
           params: { compact: 1 },
           maxAgeMs: 5 * 60_000,
@@ -154,10 +160,12 @@ export default function TeacherProfile() {
         longitude: teacherProfile.longitude?.toString() || "",
         max_travel_km: teacherProfile.max_travel_km?.toString() || "12",
         is_accepting_requests: teacherProfile.is_accepting_requests ?? true,
+        public_profile_enabled: teacherProfile.public_profile_enabled ?? false,
+        public_credentials: teacherProfile.public_credentials || "",
+        public_degree: teacherProfile.public_degree || "",
         photo: publicMediaUrl(teacherProfile.photo) || "",
         photoFile: null,
         profileCover: teacherProfile.profile_cover_url || coverResponse?.data?.url || "",
-        profileCoverFile: null,
         userStatus: user.status || "",
         documentUrls: {
           identity_document: teacherProfile.identity_document_url || "",
@@ -192,7 +200,7 @@ export default function TeacherProfile() {
     setProfile((current) => ({ ...current, photoFile: file, photo: previewUrl }));
   };
 
-  const handleCover = (file?: File) => {
+  const handleCover = async (file?: File) => {
     if (!file) return;
     const error = validateUpload(file, {
       label: "Sampul profil",
@@ -203,14 +211,27 @@ export default function TeacherProfile() {
       notify.error(error);
       return;
     }
+    const previousCover = profile.profileCover;
     if (coverPreviewUrlRef.current) URL.revokeObjectURL(coverPreviewUrlRef.current);
     const previewUrl = URL.createObjectURL(file);
     coverPreviewUrlRef.current = previewUrl;
-    setProfile((current) => ({
-      ...current,
-      profileCoverFile: file,
-      profileCover: previewUrl,
-    }));
+    setProfile((current) => ({ ...current, profileCover: previewUrl }));
+    setSavingCover(true);
+    try {
+      const formData = new FormData();
+      formData.append("profile_cover", file);
+      const response = await http.post<{ message: string; profile_cover_url: string }>("/teacher/profile/cover", formData);
+      clearApiCache("/teacher/profile");
+      setProfile((current) => ({ ...current, profileCover: response.data.profile_cover_url }));
+      notify.success(response.data.message);
+    } catch (error) {
+      setProfile((current) => ({ ...current, profileCover: previousCover }));
+      notify.error(getApiError(error, "Sampul gagal disimpan. Coba lagi."));
+    } finally {
+      URL.revokeObjectURL(previewUrl);
+      if (coverPreviewUrlRef.current === previewUrl) coverPreviewUrlRef.current = null;
+      setSavingCover(false);
+    }
   };
 
   const setDocument = (
@@ -260,8 +281,10 @@ export default function TeacherProfile() {
       if (profile.longitude) formData.append("longitude", profile.longitude);
       formData.append("max_travel_km", profile.max_travel_km);
       formData.append("is_accepting_requests", profile.is_accepting_requests ? "1" : "0");
+      formData.append("public_profile_enabled", profile.public_profile_enabled ? "1" : "0");
+      formData.append("public_credentials", profile.public_credentials);
+      formData.append("public_degree", profile.public_degree);
       if (profile.photoFile) formData.append("photo", profile.photoFile);
-      if (profile.profileCoverFile) formData.append("profile_cover", profile.profileCoverFile);
       Object.entries(profile.documentFiles).forEach(([key, file]) => {
         if (file) formData.append(key, file);
       });
@@ -282,6 +305,7 @@ export default function TeacherProfile() {
         URL.revokeObjectURL(coverPreviewUrlRef.current);
         coverPreviewUrlRef.current = null;
       }
+      clearApiCache("/teacher/profile");
       await loadProfile();
     } catch (error) {
       notify.error(getApiError(error, "Profil gagal disimpan."));
@@ -439,16 +463,11 @@ export default function TeacherProfile() {
           } : undefined}
         >
           <div className="absolute -right-16 -top-20 h-64 w-64 rounded-full bg-indigo-400/20 blur-3xl" />
-          <label className="absolute right-5 top-5 z-20 inline-flex cursor-pointer items-center gap-2 rounded-xl border border-white/20 bg-slate-950/55 px-3 py-2 text-xs font-bold text-white shadow-lg backdrop-blur transition hover:bg-slate-950/75">
-            <ImagePlus size={15} />
-            Ubah sampul
-            <input
-              type="file"
-              accept=".jpg,.jpeg,.png,.webp"
-              className="hidden"
-              onChange={(event) => handleCover(event.target.files?.[0])}
-            />
-          </label>
+          <button type="button" disabled={savingCover} onClick={() => coverInputRef.current?.click()} className={`absolute right-5 top-5 z-20 inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/20 bg-slate-950/75 px-3 py-2 text-xs font-bold text-white shadow-lg backdrop-blur transition hover:bg-slate-950 ${savingCover ? "cursor-wait opacity-70" : "cursor-pointer"}`}>
+            {savingCover ? <Loader2 size={15} className="animate-spin" /> : <ImagePlus size={15} />}
+            {savingCover ? "Menyimpan sampul…" : "Ubah sampul"}
+          </button>
+          <input ref={coverInputRef} type="file" accept=".jpg,.jpeg,.png,.webp" disabled={savingCover} className="sr-only" onChange={(event) => { void handleCover(event.target.files?.[0]); event.target.value = ""; }} />
           <div className="relative flex flex-col gap-6 md:flex-row md:items-end">
             <label className="group relative h-28 w-28 shrink-0 cursor-pointer overflow-hidden rounded-[2rem] border-4 border-white/15 bg-white/10 shadow-xl">
               {profile.photo ? <img src={profile.photo} alt={profile.name} loading="lazy" decoding="async" className="h-full w-full object-cover" /> : <div className="h-full w-full flex items-center justify-center"><User size={38} className="text-indigo-200" /></div>}
@@ -474,6 +493,7 @@ export default function TeacherProfile() {
               <Field label="Nama lengkap"><Input value={profile.name} onChange={(event) => setProfile((current) => ({ ...current, name: sanitizePersonName(event.target.value) }))} className="h-12 rounded-xl" required /></Field>
               <Field label="Email"><Input value={profile.email} className="h-12 rounded-xl bg-slate-50" disabled /></Field>
               <Field label="Judul profil"><Input value={profile.title} onChange={(event) => setProfile((current) => ({ ...current, title: event.target.value }))} className="h-12 rounded-xl" placeholder="Contoh: Tutor Matematika" /></Field>
+              <Field label="Gelar atau pendidikan terakhir"><Input value={profile.public_degree} onChange={(event) => setProfile((current) => ({ ...current, public_degree: event.target.value }))} maxLength={120} className="h-12 rounded-xl" placeholder="Contoh: S.Pd. / Mahasiswa S1 Pendidikan Matematika" /></Field>
               <Field label="Pengalaman"><Input value={profile.experience} onChange={(event) => setProfile((current) => ({ ...current, experience: event.target.value }))} className="h-12 rounded-xl" placeholder="Contoh: 4 tahun" /></Field>
               <div className="md:col-span-2"><Field label="Nomor WhatsApp/telepon"><Input required inputMode="tel" autoComplete="tel" maxLength={16} value={profile.whatsapp_number} onChange={(event) => setProfile((current) => ({ ...current, whatsapp_number: sanitizePhoneInput(event.target.value) }))} className="h-12 rounded-xl" placeholder="Contoh: 0812 3456 7890" /></Field></div>
               <div className="md:col-span-2"><Field label="Kota atau wilayah tinggal"><Input value={profile.location} onChange={(event) => setProfile((current) => ({ ...current, location: event.target.value }))} className="h-12 rounded-xl" placeholder="Contoh: Jakarta Selatan" /></Field></div>
@@ -503,6 +523,12 @@ export default function TeacherProfile() {
             </div>
 
             <div className="mt-5"><Field label="Tentang saya"><Textarea maxLength={3000} value={profile.bio} onChange={(event) => setProfile((current) => ({ ...current, bio: event.target.value }))} className="min-h-32 rounded-xl" placeholder="Jelaskan pendekatan mengajar secara ringkas." /></Field></div>
+
+            <div className="mt-6 rounded-2xl border border-teal-200 bg-teal-50 p-5">
+              <div className="flex items-start justify-between gap-4"><div><p className="font-black text-slate-900">Izin profil publik</p><p className="mt-1 text-xs leading-5 text-slate-600">Jika diaktifkan, nama, foto profil, judul, mapel, pengalaman, dan jejak pendidikan/karier di bawah dapat tampil di halaman Kenali Tutor dan mapel setelah akun lulus verifikasi serta disetujui admin. Nomor kontak, lokasi rinci, dan dokumen tidak pernah dipublikasikan.</p></div><Switch checked={profile.public_profile_enabled} onCheckedChange={(checked) => setProfile((current) => ({ ...current, public_profile_enabled: checked }))} /></div>
+              <div className="mt-4"><Field label="Jejak pendidikan, karier, atau prestasi publik"><Textarea maxLength={300} value={profile.public_credentials} onChange={(event) => setProfile((current) => ({ ...current, public_credentials: event.target.value }))} className="min-h-24 rounded-xl bg-white" placeholder="Contoh: Alumni Pendidikan Matematika UNY · Finalis Olimpiade Matematika 2024" /></Field></div>
+              <p className="mt-3 text-xs font-semibold leading-5 text-teal-900">Mengaktifkan pilihan ini memberi izin publikasi, bukan langsung menayangkan profil. Admin meninjau sebelum tampil. Perubahan informasi publik memerlukan persetujuan ulang, dan izin dapat dicabut kapan saja.</p>
+            </div>
 
             <div className="mt-6 rounded-2xl border border-slate-100 bg-slate-50 p-5">
               <div className="flex items-start gap-3"><FileCheck2 className="mt-0.5 shrink-0 text-indigo-600" /><div><p className="font-black text-slate-800">Dokumen verifikasi</p><p className="mt-1 text-xs leading-5 text-slate-500">Mengganti dokumen pada akun aktif memicu pemeriksaan ulang dan menutup sesi login setelah disimpan.</p></div></div>
@@ -567,7 +593,7 @@ export default function TeacherProfile() {
 
                   <div className="mt-4 space-y-3">
                     <ModeRow icon={BookOpen} title="Menerima Paket Privat" description="Tutor menerima permintaan bimbingan personal." checked={subject.is_private_active} onChange={(checked) => updateTeachingSubject(index, { is_private_active: checked })} />
-                    <ModeRow icon={BookOpen} title="Menerima Kelas Kelompok" description="Tutor menerima penugasan Kelas Kelompok." checked={subject.is_group_active} onChange={(checked) => updateTeachingSubject(index, { is_group_active: checked })} />
+                    <ModeRow icon={BookOpen} title="Menerima Kelas Bersama" description="Tutor menerima penugasan Kelas Bersama." checked={subject.is_group_active} onChange={(checked) => updateTeachingSubject(index, { is_group_active: checked })} />
                     <ModeRow icon={Monitor} title="Mengajar online" description="Kelas menggunakan ruang pertemuan daring." checked={subject.is_online} onChange={(checked) => updateTeachingSubject(index, { is_online: checked })} />
                     <ModeRow icon={Store} title="Mengajar offline" description="Tutor mendatangi alamat murid tanpa biaya perjalanan." checked={subject.is_offline} onChange={(checked) => updateTeachingSubject(index, { is_offline: checked })} />
                   </div>

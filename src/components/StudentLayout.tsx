@@ -1,12 +1,14 @@
+import DashboardBrand from "@/components/DashboardBrand";
 import { lazy, Suspense, useCallback, useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
 import ProfileQuickMenu from "@/components/ProfileQuickMenu";
 import { scheduleNonCriticalTask } from "@/lib/schedule";
 import { usePersistentSidebarScroll } from "@/hooks/usePersistentSidebarScroll";
-import { announceNavigationAttentionChanged, attentionTargetLabel, hasSidebarAttention, NAVIGATION_ATTENTION_CHANGED_EVENT, type AttentionNotification } from "@/lib/navigationAttention";
+import { announceNavigationAttentionChanged, attentionTargetLabel, hasSidebarAttention, NAVIGATION_ATTENTION_CHANGED_EVENT, unreadIdsForCurrentPage, type AttentionNotification } from "@/lib/navigationAttention";
 import {
   Bell,
   BookOpen,
+  ClipboardList,
   Home,
   Menu,
   MessageSquare,
@@ -58,7 +60,8 @@ export default function StudentLayout({ children, title, lockContentScroll = fal
     if (path === "/student/dashboard") return "home";
     if (path === "/student/packages/new") return "search";
     if (path === "/student/kelas-murah") return "cheap-classes";
-    if (path === "/student/packages" || path.startsWith("/student/packages/") || path === "/student/my-classes" || path.startsWith("/student/my-classes/") || path === "/student/progress" || path.startsWith("/student/progress/")) return "classes";
+    if (path === "/student/packages" || path.startsWith("/student/packages/")) return "process";
+    if (path === "/student/my-classes" || path.startsWith("/student/my-classes/") || path === "/student/progress" || path.startsWith("/student/progress/")) return "classes";
     if (path === "/student/messages" || path.startsWith("/student/messages/")) return "messages";
     if (path === "/student/history" || path.startsWith("/student/history/")) return "payments";
     if (["/student/account", "/student/profile", "/student/vouchers", "/student/offers", "/student/help", "/student/notifications"].some((route) => path === route || path.startsWith(`${route}/`))) return "account";
@@ -217,6 +220,20 @@ export default function StudentLayout({ children, title, lockContentScroll = fal
     onAttentionNotificationsChange?.(attentionNotifications);
   }, [attentionNotifications, onAttentionNotificationsChange]);
 
+  useEffect(() => {
+    const ids = unreadIdsForCurrentPage("student", `${location.pathname}${location.search}`, attentionNotifications);
+    if (!ids.length) return;
+
+    const idSet = new Set(ids);
+    setAttentionNotifications((current) => current.filter((item) => !idSet.has(item.id)));
+    setNotifications((current) => current.map((item) => idSet.has(item.id) ? { ...item, is_read: true } : item));
+    setUnreadCount((current) => Math.max(0, current - ids.length));
+    void import("@/lib/http")
+      .then(({ default: http }) => http.post("/notifications/read-batch", { ids }))
+      .then(announceNavigationAttentionChanged)
+      .catch(() => void fetchNotifications(true));
+  }, [attentionNotifications, fetchNotifications, location.pathname, location.search]);
+
   return (
     <div className="flex h-dvh min-h-screen w-full max-w-full overflow-hidden bg-[#F8FAFC] font-sans text-slate-800 selection:bg-blue-100 selection:text-blue-900">
       <a href="#main-content" className="skip-link">Lewati ke konten utama</a>
@@ -229,9 +246,7 @@ export default function StudentLayout({ children, title, lockContentScroll = fal
         {/* LOGO AREA */}
         <div className="h-24 flex items-center px-8">
             <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-600/20 text-white transform rotate-3 hover:rotate-0 transition-all duration-300">
-                  <span className="font-black text-xl">B</span>
-                </div>
+                <DashboardBrand />
                 <div>
                   <h1 className="text-xl font-black text-slate-900 tracking-tight leading-none">BimbelKu</h1>
                   <span className="text-[10px] font-bold text-blue-600 uppercase tracking-[0.2em] bg-blue-50 px-1.5 py-0.5 rounded mt-1 inline-block">Student</span>
@@ -248,8 +263,9 @@ export default function StudentLayout({ children, title, lockContentScroll = fal
               <div className="space-y-1">
                   <NavItem to="/student/dashboard" icon={Home} label="Beranda" active={activeMenu === "home"} tour="student-home" attention={hasSidebarAttention("student", "/student/dashboard", attentionNotifications)} />
                   <NavItem to="/student/packages/new" icon={Search} label="Cari Les" active={activeMenu === "search"} tour="student-cari-les" attention={hasSidebarAttention("student", "/student/packages/new", attentionNotifications)} />
-                  <NavItem to="/student/kelas-murah" icon={Users} label="Kelas Kelompok" active={activeMenu === "cheap-classes"} attention={hasSidebarAttention("student", "/student/kelas-murah", attentionNotifications)} />
-                  <NavItem to="/student/my-classes" icon={BookOpen} label="Kelas Saya" active={activeMenu === "classes"} tour="student-kelas" attention={hasSidebarAttention("student", "/student/my-classes", attentionNotifications)} />
+                  <NavItem to="/student/kelas-murah" icon={Users} label="Kelas Bersama" active={activeMenu === "cheap-classes"} attention={hasSidebarAttention("student", "/student/kelas-murah", attentionNotifications)} />
+                  <NavItem to="/student/packages" icon={ClipboardList} label="Proses Pesanan" active={activeMenu === "process"} attention={hasSidebarAttention("student", "/student/packages", attentionNotifications)} />
+                  <NavItem to="/student/my-classes" icon={BookOpen} label="Jadwal Belajar" active={activeMenu === "classes"} tour="student-kelas" attention={hasSidebarAttention("student", "/student/my-classes", attentionNotifications)} />
                   <NavItem to="/student/messages" icon={MessageSquare} label="Pesan" active={activeMenu === "messages"} tour="student-pesan" attention={hasSidebarAttention("student", "/student/messages", attentionNotifications)} />
                   <NavItem to="/student/history" icon={CreditCard} label="Riwayat Pembayaran" active={activeMenu === "payments"} attention={hasSidebarAttention("student", "/student/history", attentionNotifications)} />
                   <NavItem to="/student/account" icon={User} label="Saya" active={activeMenu === "account"} tour="student-saya" attention={hasSidebarAttention("student", "/student/account", attentionNotifications)} />
@@ -285,7 +301,7 @@ export default function StudentLayout({ children, title, lockContentScroll = fal
                     aria-expanded={showNotifDropdown}
                     className="relative p-2.5 rounded-full text-slate-500 hover:bg-white hover:text-blue-600 hover-shadow-md transition-all duration-300 group"
                  >
-                    <Bell size={20} className={unreadCount > 0 ? 'animate-swing' : ''} />
+                    <Bell size={20} className={unreadCount > 0 ? 'animate-pulse' : ''} />
                     {unreadCount > 0 && (
                         <span className="absolute top-2.5 right-3 w-2.5 h-2.5 bg-rose-500 rounded-full ring-2 ring-white animate-pulse"></span>
                     )}
@@ -330,7 +346,7 @@ export default function StudentLayout({ children, title, lockContentScroll = fal
                  )}
              </div>
 
-             <ProfileQuickMenu
+              <ProfileQuickMenu
                user={userData}
                accent="student"
                roleLabel="Murid"
@@ -342,7 +358,7 @@ export default function StudentLayout({ children, title, lockContentScroll = fal
         </header>
 
         <div id="student-scroll-container" className={`mobile-app-content min-h-0 flex-1 basis-0 overflow-x-hidden scroll-smooth p-4 pb-[calc(7.25rem+env(safe-area-inset-bottom))] sm:p-6 sm:pb-24 xl:p-8 xl:pb-8 ${lockContentScroll ? "overflow-y-hidden" : "overflow-y-auto"}`}>
-          <div className={`mx-auto w-full min-w-0 max-w-7xl pb-6 sm:pb-10 ${lockContentScroll ? "flex h-full min-h-0 flex-col" : ""}`}>{children}</div>
+          <div className={`mx-auto w-full min-w-0 max-w-7xl pb-20 sm:pb-24 xl:pb-16 ${lockContentScroll ? "flex h-full min-h-0 flex-col" : ""}`}>{children}</div>
         </div>
         {!isDesktop && !sidebarOpen && (
           <Suspense fallback={null}>

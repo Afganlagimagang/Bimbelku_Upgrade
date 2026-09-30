@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ComponentType } from "react"
 import { BookOpenCheck, CalendarCheck2, ChartNoAxesColumnIncreasing, CheckCircle2, MapPinned, ReceiptText, ShieldCheck, Star } from "lucide-react";
 
 import Reveal from "@/components/Reveal";
+import LandingAmbientOrbit from "@/components/LandingAmbientOrbit";
 import { useWebsiteContent } from "@/components/WebsiteContentProvider";
 import type { WebsiteTrustItem } from "@/lib/websiteContent";
 
@@ -78,8 +79,9 @@ export default function TrustSection() {
   if (!trustItems.length) return null;
 
   return (
-    <section ref={rootRef} className="border-y border-teal-100 bg-teal-50 py-20 sm:py-24">
-      <div className="mx-auto max-w-[1200px] px-5 sm:px-8">
+    <section ref={rootRef} className="relative overflow-hidden border-y border-teal-100 bg-teal-50 py-20 sm:py-24">
+      <LandingAmbientOrbit variant="spark" color="#147D7E" style={{ width: 232, height: 232, top: 12, left: 14, opacity: 0.75 }} />
+      <div className="relative mx-auto max-w-[1200px] px-5 sm:px-8">
         <Reveal width="100%">
           <div className="grid gap-6 lg:grid-cols-3 lg:items-end">
             <div className="lg:col-span-2">
@@ -94,7 +96,7 @@ export default function TrustSection() {
           </div>
         </Reveal>
 
-        <div className="mt-9 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="mt-9 grid grid-cols-2 gap-3 lg:grid-cols-5">
           {trustItems.slice(0, 5).map((item, index) => (
             <TrustCard key={`${item.id}-${item.title}`} item={item} index={index} inView={inView} animationsEnabled={settings.animations_enabled} />
           ))}

@@ -15,6 +15,7 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->prependToGroup('api', \App\Http\Middleware\AuthenticateFromSessionCookie::class);
         $middleware->append(\App\Http\Middleware\ApplySecurityHeaders::class);
 
         $middleware->alias([
@@ -25,6 +26,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin.permission' => \App\Http\Middleware\EnsureAdminPermission::class,
             'admin.audit' => \App\Http\Middleware\AuditAdminAction::class,
             'feature' => \App\Http\Middleware\EnsureFeatureEnabled::class,
+            'persistent.session' => \App\Http\Middleware\RefreshPersistentSession::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

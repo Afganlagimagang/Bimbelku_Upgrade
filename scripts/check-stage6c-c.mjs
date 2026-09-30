@@ -14,6 +14,7 @@ const migration = read("bimbelku-backend/database/migrations/2026_08_01_000500_b
 const walletMigration = read("bimbelku-backend/database/migrations/2026_08_15_000220_harden_customer_wallet_and_enable_store_credit.php");
 const studentRefund = read("bimbelku-backend/app/Http/Controllers/Api/StudentRefundController.php");
 const paymentPage = read("src/pages/admin/PaymentVerification.tsx");
+const financeCenter = read("src/pages/admin/FinanceCenter.tsx");
 const payoutPage = read("src/pages/admin/FinanceReport.tsx");
 const refundPage = read("src/pages/admin/RefundManagement.tsx");
 const studentHistory = read("src/pages/students/TransactionHistory.tsx");
@@ -27,7 +28,8 @@ for (const endpoint of [
 
 expect(controller.includes("pending_amount") && controller.includes("accepted_30_days"), "monitoring pembayaran memiliki ringkasan khusus uang masuk");
 expect(controller.includes("wallet_liability") && controller.includes("wallet_credited_30_days"), "monitoring refund memiliki ringkasan saldo");
-expect(paymentPage.includes("Pembayaran murid") && paymentPage.includes("refund dan pencairan tutor"), "halaman pembayaran dipisahkan secara eksplisit");
+expect(financeCenter.includes("PaymentVerification") && financeCenter.includes("RefundManagement") && financeCenter.includes("FinanceReport"), "pusat keuangan memuat pembayaran, refund, dan pencairan sebagai tab satu halaman");
+expect(paymentPage.includes("Pembayaran murid"), "tab pembayaran tetap memiliki identitas yang jelas");
 expect(payoutPage.includes("Pencairan tutor") && payoutPage.includes("ready_amount") && payoutPage.includes("requested_amount"), "halaman pencairan hanya memakai metrik pencairan");
 expect(refundPage.includes("Pilihan murid") && refundPage.includes("Admin tidak dapat mengganti tujuan refund"), "admin hanya mengeksekusi tujuan refund milik murid");
 expect(studentHistory.includes("Pilih tujuan refund") && studentHistory.includes("Rekening / e-wallet") && studentHistory.includes("Saldo BimbelKu"), "murid dapat memilih dua tujuan refund");

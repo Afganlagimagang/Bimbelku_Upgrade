@@ -27,6 +27,7 @@ import { getApiError, getCached } from "@/lib/http";
 type Subject = {
   id: number;
   name: string;
+  status: string;
   allocated_sessions: number;
   teacher?: { name: string; avatar_url?: string | null } | null;
   sessions: Array<{ start_at: string; status: string }>;
@@ -190,6 +191,17 @@ export default function Dashboard() {
 
         <DynamicBannerCarousel audience="student" />
 
+        <section aria-label="Akses cepat murid" className="rounded-[1.5rem] border border-slate-100 bg-white p-3 shadow-sm xl:hidden">
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              { label: "Pesanan", to: "/student/packages", icon: BookOpenCheck, tone: "bg-orange-50 text-orange-700" },
+              { label: "Kelas Bersama", to: "/student/kelas-murah", icon: Users, tone: "bg-violet-50 text-violet-700" },
+              { label: "Riwayat", to: "/student/history", icon: CreditCard, tone: "bg-rose-50 text-rose-700" },
+              { label: "Voucher", to: "/student/vouchers", icon: Tag, tone: "bg-amber-50 text-amber-700" },
+            ].map(({ label, to, icon: Icon, tone }) => <Link key={to} to={to} className="group flex min-w-0 flex-col items-center gap-2 rounded-2xl px-1 py-2 text-center transition active:scale-95"><span className={`grid h-12 w-12 place-items-center rounded-2xl ${tone}`}><Icon size={20} /></span><span className="line-clamp-2 w-full text-[10px] font-black leading-4 text-slate-700">{label}</span></Link>)}
+          </div>
+        </section>
+
         {loading ? (
           <DashboardSkeleton />
         ) : error ? (
@@ -199,7 +211,7 @@ export default function Dashboard() {
             <AdaptiveCard packageData={activePackage} nextSession={data.next_session} />
 
             <Link to="/student/kelas-murah" className="group flex min-w-0 items-center justify-between gap-4 overflow-hidden rounded-[1.5rem] border border-violet-100 bg-gradient-to-br from-white via-violet-50 to-fuchsia-50 p-5 shadow-sm transition hover-rise-half hover-shadow-lg sm:rounded-[2rem]">
-              <div className="flex min-w-0 items-center gap-4"><span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white shadow-lg"><Users size={21} /></span><div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-widest text-violet-600">Kelas online bersama</p><h2 className="mt-1 text-lg font-black text-slate-900">Kelas Kelompok</h2><p className="mt-1 text-sm text-slate-600">Lihat kelas yang dibuat admin dengan kuota dan harga hemat.</p></div></div><ArrowRight className="shrink-0 text-violet-600 transition group-hover:translate-x-1" size={20} /></Link>
+              <div className="flex min-w-0 items-center gap-4"><span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white shadow-lg"><Users size={21} /></span><div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-widest text-violet-600">Kelas online bersama</p><h2 className="mt-1 text-lg font-black text-slate-900">Kelas Bersama</h2><p className="mt-1 text-sm text-slate-600">Lihat kelas yang dibuat admin dengan kuota dan harga hemat.</p></div></div><ArrowRight className="shrink-0 text-violet-600 transition group-hover:translate-x-1" size={20} /></Link>
 
             {activePackage && (
               <section className="grid grid-cols-3 gap-2 sm:gap-3">
@@ -280,7 +292,7 @@ export default function Dashboard() {
               <section className="render-auto w-full min-w-0 overflow-hidden rounded-[1.5rem] border border-slate-100 bg-white p-4 shadow-sm sm:rounded-[2rem] sm:p-6">
                 <div className="flex min-w-0 items-start justify-between gap-3">
                   <div className="min-w-0"><h2 className="break-words text-lg font-black text-slate-900 sm:text-xl">Mata pelajaran saya</h2><p className="mt-1 break-words text-xs leading-5 text-slate-500 sm:text-sm">Tutor dan progres dipisahkan untuk setiap mapel.</p></div>
-                  <Link to="/student/my-classes?tab=process" className="shrink-0 pt-0.5 text-xs font-black text-indigo-600 sm:text-sm">Detail</Link>
+                  <Link to="/student/packages" className="shrink-0 pt-0.5 text-xs font-black text-indigo-600 sm:text-sm">Detail</Link>
                 </div>
                 <div className="mt-5 grid gap-3 lg:grid-cols-2">
                   {activePackage.subjects.map((subject) => {
@@ -370,10 +382,13 @@ function AdaptiveCard({ packageData, nextSession }: { packageData?: PackageData;
   }
   if (["matching", "teacher_pending"].includes(packageData.status)) {
     const accepted = packageData.subjects.filter((item) => item.teacher).length;
-    return <ActionCard icon={Radar} eyebrow="Radar aktif" title="Pencarian Tutor Berlangsung" description={`${accepted} dari ${packageData.subjects.length} tutor mapel sudah menerima.`} to="/student/my-classes?tab=process" action="Lihat Progres" pulse />;
+    const missing = packageData.subjects.filter((item) => item.status === "no_teacher").length;
+    return <ActionCard icon={Radar} eyebrow="Radar aktif" title={accepted > 0 && missing > 0 ? `${accepted} tutor siap, ${missing} belum ditemukan` : "Pencarian Tutor Berlangsung"} description={`${accepted} dari ${packageData.subjects.length} tutor mapel sudah menerima. ${missing > 0 ? "Cari lagi, ubah jadwal mapel yang belum terisi, atau batalkan paket." : "Kelas dimulai setelah semua tutor lengkap."}`} to="/student/packages" action="Lihat Pilihan" pulse />;
   }
   if (packageData.status === "no_teacher") {
-    return <ActionCard icon={Radar} eyebrow="Pencarian dijeda" title="Tutor Belum Tersedia" description="Perluas pencarian atau batalkan paket tanpa kehilangan voucher." to="/student/my-classes?tab=process" action="Atur Pencarian" />;
+    const accepted = packageData.subjects.filter((item) => item.teacher).length;
+    const missing = packageData.subjects.filter((item) => item.status === "no_teacher").length;
+    return <ActionCard icon={Radar} eyebrow="Pencarian perlu keputusan" title={accepted > 0 && missing > 0 ? `${accepted} tutor siap, ${missing} belum ditemukan` : "Tutor Belum Tersedia"} description="Cari lagi bila masih tersedia, ubah jadwal mapel yang belum terisi, atau batalkan seluruh paket. Kelas belum aktif." to="/student/packages" action="Lihat Pilihan" />;
   }
   if (["awaiting_payment", "payment_rejected", "partially_paid"].includes(packageData.status) && packageData.latest_order) {
     return <ActionCard icon={CreditCard} eyebrow={packageData.status === "partially_paid" ? "Pembayaran masih kurang" : packageData.status === "payment_rejected" ? "Bukti perlu diperbaiki" : "Pesanan sudah diperiksa"} title={packageData.status === "partially_paid" ? "Lunasi Sisa Pembayaran" : "Selesaikan Pembayaran"} description="Pencarian tutor dimulai setelah pembayaran dinyatakan lunas oleh sistem." to="/payment" action={packageData.status === "partially_paid" ? "Bayar Kekurangan" : "Bayar Sekarang"} />;

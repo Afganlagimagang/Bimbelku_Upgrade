@@ -18,7 +18,7 @@ const requirements = [
   [guard, 'return "/student/dashboard"', "dashboard siswa belum diarahkan dengan benar"],
   [cta, 'StudentPackageLink to={primaryUrl}', "CTA utama dinamis belum memakai penjaga alur paket untuk pengunjung/login"],
   [footer, 'StudentPackageLink to="/student/packages/new?subject_name=', "link program footer belum memakai penjaga alur paket"],
-  [footer, 'mengikuti tes/screening', "link daftar tutor footer belum diarahkan ke screening WhatsApp"],
+  [footer, 'to="/jadi-tutor"', "link daftar tutor footer belum menuju alur tutor khusus"],
 ];
 
 const failures = requirements

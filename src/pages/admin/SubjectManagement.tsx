@@ -1,7 +1,9 @@
 import { notify } from "@/lib/notify";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { BookOpen, CheckCircle2, Loader2, Pencil, Plus, Power, Search, Trash2 } from "lucide-react";
 import AdminLayout from "@/components/AdminLayout";
+import LearningProgramPanel from "./LearningProgramPanel";
 import { useConfirmDialog } from "@/components/ConfirmDialogProvider";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -28,11 +30,17 @@ interface Subject {
   chapters_count?: number;
 }
 
+interface SubjectGroup {
+  id: number;
+  name: string;
+  subject_count: number;
+}
+
 const levels = [...EDUCATION_LEVELS];
 const gradesByLevel = GRADES_BY_EDUCATION_LEVEL;
 const emptyForm = {
   name: "",
-  group_name: "Tambahan admin",
+  group_name: "",
   education_levels: ["SD"] as string[],
   is_elective: false,
   is_active: true,
@@ -41,6 +49,11 @@ const emptyForm = {
 export default function SubjectManagement() {
   const confirm = useConfirmDialog();
   const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [groups, setGroups] = useState<SubjectGroup[]>([]);
+  const [groupDialogOpen, setGroupDialogOpen] = useState(false);
+  const [editingGroup, setEditingGroup] = useState<SubjectGroup | null>(null);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [creatingGroup, setCreatingGroup] = useState(false);
   const [search, setSearch] = useState("");
   const [showInactive, setShowInactive] = useState(false);
   const [editing, setEditing] = useState<Subject | null | undefined>(undefined);
@@ -51,10 +64,14 @@ export default function SubjectManagement() {
   const load = async () => {
     setLoading(true);
     try {
-      const response = await http.get<Subject[]>("/admin/subjects?all=1");
-      setSubjects(response.data || []);
-    } catch (error) {
-      notify.error(getApiError(error, "Daftar mata pelajaran gagal dimuat."));
+      const [subjectResult, groupResult] = await Promise.allSettled([
+        http.get<Subject[]>("/admin/subjects?all=1"),
+        http.get<SubjectGroup[]>("/admin/subject-groups"),
+      ]);
+      if (subjectResult.status === "fulfilled") setSubjects(subjectResult.value.data || []);
+      else notify.error(getApiError(subjectResult.reason, "Daftar mata pelajaran gagal dimuat."));
+      if (groupResult.status === "fulfilled") setGroups(groupResult.value.data || []);
+      else notify.error(getApiError(groupResult.reason, "Daftar kelompok mapel gagal dimuat."));
     } finally {
       setLoading(false);
     }
@@ -67,12 +84,71 @@ export default function SubjectManagement() {
     const haystack = `${subject.name} ${subject.group_name} ${subject.education_levels.join(" ")}`.toLocaleLowerCase("id-ID");
     return haystack.includes(search.toLocaleLowerCase("id-ID"));
   }), [search, showInactive, subjects]);
+  const groupOptions = useMemo(() => [...new Set([
+    ...groups.map((group) => group.name),
+    ...subjects.map((subject) => subject.group_name?.trim()).filter((group): group is string => Boolean(group)),
+  ])].sort((left, right) => left.localeCompare(right, "id-ID")), [groups, subjects]);
+
+  const resetGroupForm = () => {
+    setEditingGroup(null);
+    setNewGroupName("");
+  };
+
+  const saveGroup = async (event: FormEvent) => {
+    event.preventDefault();
+    const name = newGroupName.trim().replace(/\s+/g, " ");
+    if (groupOptions.some((group) =>
+      group.toLocaleLowerCase("id-ID") === name.toLocaleLowerCase("id-ID")
+      && group.toLocaleLowerCase("id-ID") !== editingGroup?.name.toLocaleLowerCase("id-ID"))) {
+      notify.error("Kelompok mapel ini sudah ada dalam daftar.");
+      return;
+    }
+    setCreatingGroup(true);
+    try {
+      const response = editingGroup
+        ? await http.put<{ message: string; data: SubjectGroup }>(`/admin/subject-groups/${editingGroup.id}`, { name })
+        : await http.post<{ message: string; data: SubjectGroup }>("/admin/subject-groups", { name });
+      setGroups((current) => editingGroup
+        ? current.map((group) => group.id === editingGroup.id ? response.data.data : group)
+        : [...current, response.data.data]);
+      if (editingGroup) {
+        setSubjects((current) => current.map((subject) => subject.group_name === editingGroup.name
+          ? { ...subject, group_name: response.data.data.name }
+          : subject));
+      }
+      resetGroupForm();
+      notify.success(response.data.message);
+    } catch (error) {
+      notify.error(getApiError(error, "Kelompok mapel gagal disimpan."));
+    } finally {
+      setCreatingGroup(false);
+    }
+  };
+
+  const deleteGroup = async (group: SubjectGroup) => {
+    if (group.subject_count > 0) return;
+    const approved = await confirm({
+      title: `Hapus kelompok ${group.name}?`,
+      description: "Kelompok kosong ini akan dihapus dari pilihan mapel. Mapel dan Program lain tidak berubah.",
+      confirmText: "Hapus kelompok",
+      tone: "danger",
+    });
+    if (!approved) return;
+    try {
+      const response = await http.delete<{ message: string }>(`/admin/subject-groups/${group.id}`);
+      setGroups((current) => current.filter((item) => item.id !== group.id));
+      if (editingGroup?.id === group.id) resetGroupForm();
+      notify.success(response.data.message);
+    } catch (error) {
+      notify.error(getApiError(error, "Kelompok mapel gagal dihapus."));
+    }
+  };
 
   const openForm = (subject?: Subject) => {
     setEditing(subject || null);
     setForm(subject ? {
       name: subject.name,
-      group_name: subject.group_name || "Umum",
+      group_name: subject.group_name || "",
       education_levels: subject.education_levels,
       is_elective: subject.is_elective,
       is_active: subject.is_active,
@@ -90,6 +166,10 @@ export default function SubjectManagement() {
 
   const save = async (event: FormEvent) => {
     event.preventDefault();
+    if (!groupOptions.includes(form.group_name)) {
+      notify.error("Pilih kelompok mapel dari daftar.");
+      return;
+    }
     if (!form.education_levels.length) {
       notify.error("Pilih minimal satu jenjang.");
       return;
@@ -162,10 +242,15 @@ export default function SubjectManagement() {
           <div>
             <p className="text-xs font-black uppercase tracking-[.2em] text-indigo-200">Katalog pusat</p>
             <h1 className="mt-3 text-2xl font-black sm:text-3xl">Satu daftar mapel untuk seluruh alur</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-indigo-100/75">Tarif, materi, profil tutor, dan pemesanan menggunakan nama yang sama. Mapel yang sudah dipakai hanya dapat dinonaktifkan.</p>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-indigo-100/75">Kelola kategori katalog, mapel, dan program belajar dalam satu tempat. Program seperti TKA mengikat beberapa mapel dalam satu pesanan.</p>
           </div>
-          <Button onClick={() => openForm()} className="rounded-xl bg-orange-500 font-bold hover:bg-orange-600"><Plus size={16} className="mr-2" />Tambah mapel</Button>
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+            <Button variant="outline" onClick={() => setGroupDialogOpen(true)} className="min-h-11 rounded-xl border-white/30 bg-white/10 font-bold text-white hover:bg-white/20 hover:text-white"><Plus size={16} className="mr-1" />Tambah kategori</Button>
+            <Button onClick={() => openForm()} className="min-h-11 rounded-xl bg-orange-500 font-bold hover:bg-orange-600"><Plus size={16} className="mr-1" />Tambah mapel</Button>
+          </div>
         </section>
+
+        <LearningProgramPanel categories={groups} />
 
         <section className="grid gap-3 rounded-2xl border border-slate-100 bg-white p-4 sm:grid-cols-[1fr_auto] sm:items-center">
           <div className="relative"><Search className="absolute left-3 top-3.5 text-slate-400" size={17} /><Input value={search} onChange={(event) => setSearch(event.target.value)} className="h-11 rounded-xl pl-10" placeholder="Cari nama, kelompok, atau jenjang" /></div>
@@ -189,7 +274,8 @@ export default function SubjectManagement() {
                       <p className="mt-1 text-xs font-bold text-indigo-600">{subject.chapters_count || 0} bab tersedia</p>
                     </div>
                   </div>
-                  <div className="grid grid-cols-3 gap-2 sm:flex">
+                  <div className="grid grid-cols-2 gap-2 sm:flex">
+                    <Link to={`/admin/subjects/${subject.id}/page`} className="inline-flex min-h-10 min-w-0 items-center justify-center rounded-xl border border-orange-200 px-3 text-xs font-black text-orange-700">Halaman</Link>
                     <Button variant="outline" className="rounded-xl px-3" onClick={() => toggleActive(subject)} aria-label={subject.is_active ? "Nonaktifkan" : "Aktifkan"}><Power size={16} className="sm:mr-2" /><span className="hidden sm:inline">{subject.is_active ? "Nonaktifkan" : "Aktifkan"}</span></Button>
                     <Button variant="outline" className="rounded-xl px-3" onClick={() => openForm(subject)} aria-label="Ubah mapel"><Pencil size={16} /></Button>
                     <Button variant="ghost" className="rounded-xl px-3 text-rose-600 hover:bg-rose-50" onClick={() => remove(subject)} aria-label="Hapus mapel"><Trash2 size={16} /></Button>
@@ -201,15 +287,52 @@ export default function SubjectManagement() {
         </section>
       </div>
 
+      <Dialog open={groupDialogOpen} onOpenChange={(open) => { setGroupDialogOpen(open); if (!open) resetGroupForm(); }}>
+        <DialogContent className="flex max-h-[calc(100dvh-1rem)] min-w-0 flex-col rounded-[2rem] sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Kategori katalog</DialogTitle>
+            <DialogDescription>Kategori katalog seperti Seni, Agama, Wajib, atau Les Anak. Perubahan nama ikut memperbarui mapel yang memakainya.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={saveGroup} className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="min-w-0 flex-1">
+              <Label htmlFor="new-subject-group">{editingGroup ? "Ubah nama kategori" : "Nama kategori baru"}</Label>
+              <Input id="new-subject-group" required minLength={2} maxLength={80} value={newGroupName} onChange={(event) => setNewGroupName(event.target.value)} placeholder="Contoh: Olahraga" className="mt-2 h-11 rounded-xl" />
+            </div>
+            <Button type="submit" disabled={creatingGroup} className="min-h-11 w-full min-w-0 rounded-xl bg-orange-500 font-bold hover:bg-orange-600 sm:w-auto">{creatingGroup ? <Loader2 size={16} className="mr-1 animate-spin" /> : <Plus size={16} className="mr-1" />}{editingGroup ? "Simpan nama" : "Tambah kategori"}</Button>
+          </form>
+          {editingGroup && <button type="button" onClick={resetGroupForm} className="self-start text-xs font-bold text-slate-600 underline underline-offset-2">Batal mengubah</button>}
+          <div className="min-h-0 overflow-y-auto overscroll-contain rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            <p className="mb-3 px-1 text-xs font-black uppercase tracking-wider text-slate-500">Daftar kelompok ({groups.length})</p>
+            <ul className="grid gap-2 sm:grid-cols-2">
+              {groups.map((group) => <li key={group.id} className="min-w-0 space-y-2 rounded-xl border border-slate-200 bg-white p-3 text-sm font-semibold text-slate-800">
+                <div className="flex min-w-0 flex-wrap items-start justify-between gap-2"><span className="min-w-0 break-words">{group.name}</span><span className="shrink-0 rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-black text-indigo-700">{group.subject_count} mapel</span></div>
+                <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-2">
+                  <button type="button" onClick={() => { setEditingGroup(group); setNewGroupName(group.name); }} className="min-h-10 rounded-lg border border-slate-200 px-3 text-xs font-bold text-slate-700">Ubah</button>
+                  <button type="button" disabled={group.subject_count > 0} title={group.subject_count > 0 ? "Pindahkan mapel ke kelompok lain sebelum menghapus." : undefined} onClick={() => void deleteGroup(group)} className="min-h-10 rounded-lg border border-rose-200 px-3 text-xs font-bold text-rose-700 disabled:cursor-not-allowed disabled:opacity-40">Hapus</button>
+                </div>
+              </li>)}
+            </ul>
+            <p className="mt-3 text-xs leading-5 text-slate-500">Kelompok yang masih berisi mapel tidak bisa dihapus. Ubah kelompok pada mapelnya dahulu.</p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={editing !== undefined} onOpenChange={(open) => !open && setEditing(undefined)}>
         <DialogContent className="rounded-[2rem] sm:max-w-xl">
-          <form onSubmit={save} className="space-y-5">
+          <form onSubmit={save} className="max-h-[calc(100dvh-5rem)] space-y-5 overflow-y-auto overscroll-contain pr-1">
             <DialogHeader>
               <DialogTitle>{editing ? "Ubah mata pelajaran" : "Tambah mata pelajaran"}</DialogTitle>
               <DialogDescription>Nama yang disimpan langsung tersedia pada dropdown tarif, tutor, materi, dan pemesanan.</DialogDescription>
             </DialogHeader>
             <div><Label>Nama mapel</Label><Input required minLength={2} className="mt-2 h-11 rounded-xl" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} placeholder="Contoh: Antropologi" /></div>
-            <div><Label>Kelompok</Label><Input required className="mt-2 h-11 rounded-xl" value={form.group_name} onChange={(event) => setForm((current) => ({ ...current, group_name: event.target.value }))} placeholder="Contoh: Pilihan SMA" /></div>
+            <div>
+              <Label htmlFor="subject-group-name">Kategori katalog</Label>
+              <select id="subject-group-name" aria-describedby="subject-group-help" required className="mt-2 h-11 w-full rounded-xl border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" value={form.group_name} onChange={(event) => setForm((current) => ({ ...current, group_name: event.target.value }))}>
+                <option value="" disabled>Pilih kelompok mapel</option>
+                {groupOptions.map((group) => <option key={group} value={group}>{group}</option>)}
+              </select>
+              <p id="subject-group-help" className="mt-2 text-xs leading-5 text-slate-600">Kategori mengelompokkan mapel di katalog. Program belajar seperti TKA dibuat terpisah di bagian atas halaman ini dan boleh memakai beberapa mapel dari kategori yang berbeda.</p>
+            </div>
             <div>
               <Label>Jenjang yang menggunakan mapel ini</Label>
               <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">

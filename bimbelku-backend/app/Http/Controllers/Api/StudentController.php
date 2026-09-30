@@ -76,6 +76,9 @@ class StudentController extends Controller
             'payment_reconciliation_status' => $order->payment_reconciliation_status,
             'top_up_due_at' => $order->top_up_due_at,
             'payment_provider' => $order->payment_provider,
+            'gateway_status' => $order->gateway_status,
+            'gateway_session_id' => $order->gateway_session_id,
+            'gateway_expires_at' => $order->gateway_expires_at,
             'refund' => $order->refund,
         ]);
     }
@@ -84,9 +87,18 @@ class StudentController extends Controller
     {
         $studentId = $request->user()->id;
         $bookings = Booking::query()
-            ->whereHas('participants', fn ($query) => $query
-                ->where('student_id', $studentId)
-                ->whereNotIn('status', ['cancelled', 'teacher_rejected', 'payment_expired']))
+            ->where(function ($query) use ($studentId) {
+                $query->whereHas('participants', fn ($participants) => $participants
+                    ->where('student_id', $studentId)
+                    ->whereNotIn('status', ['cancelled', 'teacher_rejected', 'payment_expired']))
+                    ->orWhere(fn ($guest) => $guest
+                        ->whereHas('order', fn ($order) => $order->where('status', 'paid'))
+                        ->whereHas('packageSession.subject.package', fn ($package) => $package
+                            ->whereIn('status', ['active', 'completed'])
+                            ->whereHas('classJoins', fn ($joins) => $joins
+                                ->where('student_id', $studentId)
+                                ->where('status', 'approved'))));
+            })
             ->with([
                 'teacher.teacherProfile',
                 'bookingRequest',
@@ -119,6 +131,7 @@ class StudentController extends Controller
 
         $data = $bookings->map(function (Booking $booking) use ($ratedBookingIds) {
             $participant = $booking->participants->first();
+            $isJoinedGuest = !$participant;
             $learningRequest = $participant?->bookingRequest ?? $booking->bookingRequest;
             $profile = $booking->teacher?->teacherProfile;
             $hasSessionAccess = $participant?->order?->status === 'paid';
@@ -136,7 +149,7 @@ class StudentController extends Controller
                     'button_label' => 'Cek Sesi',
                     'target_url' => "/student/my-classes?session={$booking->id}&session_action=review",
                 ]
-                : ($booking->tutor_ready_at && !$booking->student_confirmed_at && $booking->status === 'confirmed' ? [
+                : ($participant && $booking->tutor_ready_at && !$booking->student_confirmed_at && $booking->status === 'confirmed' ? [
                     'kind' => 'presence',
                     'title' => 'Tutor sudah siap',
                     'message' => 'Konfirmasi kehadiranmu dengan satu tap agar sesi dapat dimulai.',
@@ -146,6 +159,7 @@ class StudentController extends Controller
 
             return [
                 'id' => $booking->id,
+                'viewer_only' => $isJoinedGuest,
                 'request_id' => $learningRequest?->id,
                 'package_subject_id' => $learningRequest?->package_subject_id,
                 'title' => ($learningRequest?->subject_name ?? 'Bimbingan')
@@ -167,20 +181,20 @@ class StudentController extends Controller
                 'actual_duration_minutes' => $latestReport?->actual_duration_minutes,
                 'scheduled_duration_minutes' => max(1, (int) $booking->duration_hours * 60),
                 'session_focus_note' => $booking->session_focus_note,
-                'participant_status' => $participant?->status,
+                'participant_status' => $participant?->status ?? ($isJoinedGuest ? 'joined' : null),
                 'start_at' => $booking->start_at,
                 'end_at' => $booking->end_at,
                 'payment_due_at' => $booking->payment_due_at,
-                'address' => $hasSessionAccess && $booking->learning_mode === 'offline'
+                'address' => ($hasSessionAccess || $isJoinedGuest) && $booking->learning_mode === 'offline'
                     ? $booking->address
                     : null,
-                'maps_link' => $hasSessionAccess && $booking->learning_mode === 'offline'
+                'maps_link' => ($hasSessionAccess || $isJoinedGuest) && $booking->learning_mode === 'offline'
                     ? $booking->maps_link
                     : null,
-                'meeting_link' => $hasSessionAccess && $booking->learning_mode === 'online'
+                'meeting_link' => ($hasSessionAccess || $isJoinedGuest) && $booking->learning_mode === 'online'
                     ? $booking->meeting_link
                     : null,
-                'amount' => (float) ($participant?->amount ?? $booking->total_amount),
+                'amount' => $isJoinedGuest ? 0 : (float) ($participant?->amount ?? $booking->total_amount),
                 'completion_notes' => $booking->completion_notes,
                 'completion_submitted_at' => $booking->completion_submitted_at,
                 'objection_deadline' => $booking->objection_deadline,
@@ -200,7 +214,7 @@ class StudentController extends Controller
                     && now()->gte($booking->start_at->copy()->addMinutes(15)),
                 'workspace' => [
                     'can_open' => $hasSessionAccess,
-                    'latest_message' => $booking->latestClassroomMessage ? [
+                    'latest_message' => !$isJoinedGuest && $booking->latestClassroomMessage ? [
                         'body' => $booking->latestClassroomMessage->body,
                         'sender_name' => $booking->latestClassroomMessage->sender?->name ?? 'Pengguna BimbelKu',
                         'created_at' => $booking->latestClassroomMessage->created_at,

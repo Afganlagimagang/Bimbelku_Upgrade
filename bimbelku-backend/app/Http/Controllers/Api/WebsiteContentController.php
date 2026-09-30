@@ -57,6 +57,74 @@ class WebsiteContentController extends Controller
         return response()->json($this->payload(true));
     }
 
+    public function media()
+    {
+        return response()->json(['media' => $this->mediaPayload()]);
+    }
+
+    public function updateMedia(Request $request)
+    {
+        $request->validate([
+            'logo' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:2048'],
+            'logo_light' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:2048'],
+            'logo_dark' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:2048'],
+            'favicon' => ['nullable', 'file', 'mimes:png,ico', 'max:512'],
+            'social_share_image' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:3072'],
+            'hero_desktop_image' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:3072'],
+            'hero_mobile_image' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:3072'],
+            'trust_image_1' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:3072'],
+            'trust_image_2' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:3072'],
+            'trust_image_3' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:3072'],
+            'trust_image_4' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:3072'],
+            'trust_image_5' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:3072'],
+            'trust_image_6' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:3072'],
+        ]);
+
+        abort_unless(collect(array_keys(self::MEDIA_FIELDS))->contains(fn (string $key) => $request->hasFile($key)),
+            422, 'Pilih setidaknya satu gambar untuk disimpan.');
+
+        $settings = WebsiteSetting::query()->firstOrCreate(['singleton_key' => 1]);
+        $request->attributes->set('admin_audit_target_override', $settings);
+        $newPaths = [];
+        $oldPaths = [];
+
+        try {
+            foreach (self::MEDIA_FIELDS as $input => $column) {
+                if (! $request->hasFile($input)) continue;
+                $file = $request->file($input);
+                $extension = strtolower($file->getClientOriginalExtension() ?: $file->extension());
+                $newPaths[$column] = $file->storeAs('website', $input.'_'.Str::uuid().'.'.$extension, 'public');
+            }
+
+            DB::transaction(function () use ($settings, $newPaths, &$oldPaths): void {
+                $locked = WebsiteSetting::query()->lockForUpdate()->findOrFail($settings->id);
+                foreach ($newPaths as $column => $path) $oldPaths[] = $locked->{$column};
+                $locked->forceFill($newPaths)->save();
+            }, 3);
+        } catch (\Throwable $exception) {
+            Storage::disk('public')->delete(array_values($newPaths));
+            throw $exception;
+        }
+
+        Storage::disk('public')->delete(array_values(array_filter($oldPaths,
+            fn ($path) => is_string($path) && str_starts_with($path, 'website/'))));
+        Cache::forget(self::CACHE_KEY);
+
+        return response()->json([
+            'message' => 'Gambar website berhasil diperbarui.',
+            'media' => $this->mediaPayload(),
+        ]);
+    }
+
+    private function mediaPayload(): array
+    {
+        $settings = WebsiteSetting::query()->firstOrCreate(['singleton_key' => 1]);
+
+        return collect(self::MEDIA_FIELDS)->mapWithKeys(fn (string $column) => [
+            str_replace('_path', '_url', $column) => $this->mediaUrl($settings->{$column}),
+        ])->all();
+    }
+
     public function testimonials()
     {
         return response()->json(
@@ -64,6 +132,64 @@ class WebsiteContentController extends Controller
                 fn (WebsiteTestimonial $testimonial) => $this->testimonialPayload($testimonial, false)
             )
         );
+    }
+
+    public function tutors(Request $request)
+    {
+        $data = $request->validate(['limit' => ['nullable', 'integer', 'min:1', 'max:20']]);
+        $profiles = TeacherProfile::query()
+            ->with(['user:id,name,status', 'subjects' => fn ($query) => $query->where('is_active', true)->orderBy('name')])
+            ->whereNotNull('verified_at')
+            ->where('public_profile_enabled', true)
+            ->whereNotNull('public_profile_consent_at')
+            ->whereNotNull('public_directory_approved_at')
+            ->whereHas('user', fn ($query) => $query->where('role', 'teacher')
+                ->where('status', 'active')
+                ->where(fn ($users) => $users->whereNull('policy_version')->orWhere('policy_version', '!=', 'demo-local')))
+            ->orderByDesc('verified_at');
+        if (isset($data['limit'])) {
+            $profiles->limit((int) $data['limit']);
+        }
+        $profiles = $profiles->get();
+
+        $ratingStats = Rating::query()
+            ->whereIn('teacher_id', $profiles->pluck('user_id'))
+            ->selectRaw('teacher_id, COUNT(*) as rating_count, AVG(rating) as rating_average')
+            ->groupBy('teacher_id')
+            ->get()
+            ->keyBy('teacher_id');
+
+        $catalogSubjects = CurriculumSubject::query()->where('is_active', true)
+            ->get(['id', 'name', 'group_name']);
+        $groupById = $catalogSubjects->mapWithKeys(fn (CurriculumSubject $subject) => [
+            $subject->id => trim((string) $subject->group_name) ?: 'Bidang lainnya',
+        ]);
+        $groupByName = $catalogSubjects->mapWithKeys(fn (CurriculumSubject $subject) => [
+            mb_strtolower(trim((string) $subject->name)) => trim((string) $subject->group_name) ?: 'Bidang lainnya',
+        ]);
+
+        return response()->json($profiles->map(function (TeacherProfile $profile) use ($ratingStats, $groupById, $groupByName) {
+            $rating = $ratingStats->get($profile->user_id);
+            $groups = $profile->subjects->map(function ($subject) use ($groupById, $groupByName) {
+                return $groupById->get($subject->curriculum_subject_id)
+                    ?? $groupByName->get(mb_strtolower(trim((string) $subject->name)))
+                    ?? 'Bidang lainnya';
+            })->unique()->values();
+            return [
+                'id' => $profile->id,
+                'name' => $profile->public_display_name ?: $profile->user?->name,
+                'degree' => $profile->public_degree,
+                'title' => $profile->title,
+                'credentials' => $profile->public_credentials,
+                'experience' => $profile->experience,
+                'bio' => $profile->bio,
+                'photo_url' => $this->mediaUrl($profile->photo),
+                'subjects' => $profile->subjects->pluck('name')->filter()->unique()->values(),
+                'groups' => $groups->isNotEmpty() ? $groups : ['Bidang lainnya'],
+                'rating_average' => $rating ? round((float) $rating->rating_average, 1) : null,
+                'rating_count' => $rating ? (int) $rating->rating_count : 0,
+            ];
+        })->values());
     }
 
     public function update(Request $request)
@@ -121,6 +247,7 @@ class WebsiteContentController extends Controller
             'testimonials' => ['sometimes', 'array'],
             'testimonials.*.id' => ['nullable', 'integer', 'exists:website_testimonials,id'],
             'testimonials.*.rating_id' => ['nullable', 'integer', 'exists:ratings,id'],
+            'testimonials.*.curriculum_subject_id' => ['nullable', 'integer', 'exists:curriculum_subjects,id'],
             'testimonials.*.display_name' => ['required', 'string', 'max:100'],
             'testimonials.*.audience_role' => ['nullable', 'string', 'max:120'],
             'testimonials.*.quote' => ['required', 'string', 'max:1000'],
@@ -180,6 +307,16 @@ class WebsiteContentController extends Controller
             if (($testimonial['is_visible'] ?? false) && ! ($testimonial['verified'] ?? false)) {
                 return response()->json(['message' => 'Testimoni ke-'.($index + 1).' harus diverifikasi sebelum ditampilkan.'], 422);
             }
+            if (($testimonial['is_visible'] ?? false) && blank($testimonial['rating_id'] ?? null)) {
+                return response()->json(['message' => 'Pilih rating murid nyata untuk testimoni publik ke-'.($index + 1).'.'], 422);
+            }
+            if (($testimonial['is_visible'] ?? false)) {
+                $rating = Rating::query()->whereKey($testimonial['rating_id'])
+                    ->whereHas('student', fn ($query) => $query->where('role', 'student'))->first();
+                if (! $rating || blank($rating->review) || trim((string) $testimonial['quote']) !== trim((string) $rating->review)) {
+                    return response()->json(['message' => 'Kutipan testimoni ke-'.($index + 1).' harus berasal dari ulasan rating murid yang dipilih.'], 422);
+                }
+            }
             $storedTestimonial = filled($testimonial['id'] ?? null)
                 ? WebsiteTestimonial::query()->find($testimonial['id'])
                 : null;
@@ -188,11 +325,10 @@ class WebsiteContentController extends Controller
                 && blank($storedTestimonial?->photo_path)) {
                 return response()->json(['message' => 'Foto asli wajib diunggah untuk testimoni publik ke-'.($index + 1).'.'], 422);
             }
-            if (filled($testimonial['outcome'] ?? null)
-                && ($testimonial['verified'] ?? false)
+            if (($testimonial['is_visible'] ?? false)
                 && ! $request->hasFile("testimonials.$index.proof")
                 && blank($storedTestimonial?->proof_path)) {
-                return response()->json(['message' => 'Bukti privat wajib diunggah sebelum hasil testimoni ke-'.($index + 1).' diverifikasi.'], 422);
+                return response()->json(['message' => 'Bukti privat wajib diunggah sebelum testimoni ke-'.($index + 1).' ditampilkan.'], 422);
             }
         }
 
@@ -258,6 +394,8 @@ class WebsiteContentController extends Controller
                         ? ($testimonial->consent_at ?: now()) : null;
                     $attributes['verified_at'] = ($testimonialData['verified'] ?? false)
                         ? ($testimonial->verified_at ?: now()) : null;
+                    $attributes['verified_by'] = ($testimonialData['verified'] ?? false)
+                        ? ($testimonial->verified_by ?: $request->user()->id) : null;
 
                     if ($request->hasFile("testimonials.$index.photo")) {
                         $oldPaths[] = $testimonial->photo_path;
@@ -368,10 +506,14 @@ class WebsiteContentController extends Controller
     private function publicTestimonials()
     {
         return WebsiteTestimonial::query()
+            ->with(['rating:id,rating', 'verifier:id,name'])
             ->where('is_visible', true)
             ->whereNotNull('consent_at')
             ->whereNotNull('verified_at')
+            ->whereNotNull('verified_by')
+            ->whereNotNull('rating_id')
             ->whereNotNull('photo_path')
+            ->whereNotNull('proof_path')
             ->orderByDesc('is_featured')
             ->orderBy('sort_order')
             ->orderByDesc('id');
@@ -380,15 +522,16 @@ class WebsiteContentController extends Controller
     private function testimonialPayload(WebsiteTestimonial $testimonial, bool $admin): array
     {
         $payload = $testimonial->only([
-            'id', 'rating_id', 'display_name', 'audience_role', 'quote', 'program_name',
+            'id', 'rating_id', 'curriculum_subject_id', 'display_name', 'audience_role', 'quote', 'program_name',
             'outcome', 'institution', 'major', 'achievement_year', 'is_featured',
             'is_visible', 'sort_order', 'created_at',
         ]);
         $payload['photo_url'] = $this->mediaUrl($testimonial->photo_path);
-        $payload['rating'] = $testimonial->rating_id
-            ? Rating::query()->whereKey($testimonial->rating_id)->value('rating')
-            : null;
+        $payload['rating'] = $testimonial->rating?->rating;
         $payload['is_verified'] = $testimonial->verified_at !== null;
+        $payload['consent_at'] = $testimonial->consent_at?->toDateString();
+        $payload['verified_at'] = $testimonial->verified_at?->toDateString();
+        $payload['verified_by_name'] = $testimonial->verifier?->name;
 
         if ($admin) {
             $payload['consent_confirmed'] = $testimonial->consent_at !== null;
@@ -437,7 +580,12 @@ class WebsiteContentController extends Controller
     {
         return match ($key) {
             'active_programs' => $this->formattedCount(CurriculumSubject::query()->where('is_active', true)->count()),
-            'verified_tutors' => $this->formattedCount(TeacherProfile::query()->whereNotNull('verified_at')->count()),
+            'verified_tutors' => $this->formattedCount(TeacherProfile::query()
+                ->whereNotNull('verified_at')
+                ->whereHas('user', fn ($users) => $users->where('role', 'teacher')
+                    ->where('status', 'active')
+                    ->where(fn ($query) => $query->whereNull('policy_version')->orWhere('policy_version', '!=', 'demo-local')))
+                ->count()),
             'completed_sessions' => $this->formattedCount(PackageSession::query()->where('status', 'completed')->count()),
             'average_rating' => $this->ratingValue(),
             'service_area' => 'Yogyakarta',

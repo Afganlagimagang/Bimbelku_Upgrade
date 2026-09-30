@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { notify } from "@/lib/notify";
+import { storeBrowserSession, usesCookieSession } from "@/lib/session";
 
 export const SESSION_EXPIRED_EVENT = "bimbelku:session-expired";
 
@@ -38,6 +39,24 @@ export default function SessionLifecycle() {
       window.removeEventListener("online", handleOnline);
     };
   }, [navigate]);
+
+  useEffect(() => {
+    if (!usesCookieSession()) return;
+
+    let active = true;
+    void import("@/lib/http")
+      .then(({ default: http }) => http.get("/user"))
+      .then((response) => {
+        if (active && response.data) storeBrowserSession(response.data);
+      })
+      .catch(() => {
+        // Interceptor global menangani sesi yang sudah berakhir.
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   if (!offline) return null;
 

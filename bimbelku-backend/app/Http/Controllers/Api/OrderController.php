@@ -31,6 +31,14 @@ class OrderController extends Controller
         CustomerWalletService $wallets,
         PaymentReconciliationService $reconciliation
     ) {
+        if ((bool) config('xendit.enabled')) {
+            return $this->paymentError(
+                'Pembayaran manual sudah dinonaktifkan. Gunakan pembayaran otomatis.',
+                410,
+                'manual_payment_retired'
+            );
+        }
+
         $walletInput = $request->validate([
             'use_wallet' => ['sometimes', 'boolean'],
             'wallet_expected_amount' => ['nullable', 'numeric', 'min:0'],
@@ -279,6 +287,13 @@ class OrderController extends Controller
                 $query->whereNotNull('learning_package_id')
                     ->orWhereNotNull('cheap_class_enrollment_id');
             })
+            // Paket sumber demo adalah riwayat belajar buatan, bukan transaksi
+            // yang dibayar murid. Simpan untuk alur renewal, tetapi jangan
+            // tampilkan sebagai pembayaran kedua di riwayat murid.
+            ->where(function ($query) {
+                $query->whereNull('order_id')
+                    ->orWhere('order_id', 'not like', 'DEMO-RENEW-OLD-%');
+            })
             ->with(['refund', 'learningPackage.plan', 'cheapClassEnrollment.cheapClass'])
             ->latest()
             ->paginate(20);
@@ -319,6 +334,7 @@ class OrderController extends Controller
                 'payment_due_at' => $order->learningPackage?->payment_due_at ?? $order->cheapClassEnrollment?->seat_expires_at,
                 'booking_id' => $order->booking_id,
                 'learning_package_id' => $order->learning_package_id,
+                'renewal_of_id' => $order->learningPackage?->renewal_of_id,
                 'package_name' => $order->learningPackage?->plan?->name,
                 'order_kind' => $orderKind,
                 'duration_hours' => (int) ($details['duration_hours'] ?? $order->learningPackage?->duration_hours ?? 1),
@@ -328,7 +344,10 @@ class OrderController extends Controller
                 'wallet_reserved_amount' => (float) $order->wallet_reserved_amount,
                 'wallet_applied_amount' => (float) $order->wallet_applied_amount,
                 'external_payment_amount' => round(max(0, (float) $order->amount - (float) ($order->status === 'submitted' ? $order->wallet_reserved_amount : $order->wallet_applied_amount)), 2),
-                'payment_provider' => $order->payment_provider,
+            'payment_provider' => $order->payment_provider,
+            'gateway_status' => $order->gateway_status,
+            'gateway_session_id' => $order->gateway_session_id,
+            'gateway_expires_at' => $order->gateway_expires_at,
                 'enrollment_status' => $cheapEnrollment?->status,
                 'cheap_class_status' => $cheapClass?->status,
                 'cheap_class_cancellation_reason' => $cheapClass?->cancellation_reason,
@@ -556,7 +575,7 @@ class OrderController extends Controller
                 'title' => 'Bukti pembayaran paket',
                 'message' => "Tagihan {$order->order_id} menunggu pemeriksaan.",
                 'type' => 'info',
-                'target_url' => '/admin/pembayaran',
+                'target_url' => '/admin/finance?tab=payments',
             ])
         );
 

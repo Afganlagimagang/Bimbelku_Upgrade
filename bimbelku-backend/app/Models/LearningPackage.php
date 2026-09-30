@@ -8,8 +8,14 @@ class LearningPackage extends Model
 {
     protected $guarded = ['id'];
 
+    protected $hidden = ['class_join_code'];
+
     protected $casts = [
         'total_sessions' => 'integer',
+        'participant_count' => 'integer',
+        'purchaser_participates' => 'boolean',
+        'participant_names' => 'array',
+        'participant_details' => 'array',
         'used_sessions' => 'integer',
         'duration_hours' => 'integer',
         'subtotal_amount' => 'decimal:2',
@@ -31,6 +37,11 @@ class LearningPackage extends Model
         return $this->belongsTo(PackagePlan::class, 'package_plan_id');
     }
 
+    public function learningProgram()
+    {
+        return $this->belongsTo(LearningProgram::class, 'learning_program_id');
+    }
+
     public function promotion()
     {
         return $this->belongsTo(Promotion::class);
@@ -49,6 +60,11 @@ class LearningPackage extends Model
     public function orders()
     {
         return $this->hasMany(Order::class);
+    }
+
+    public function classJoins()
+    {
+        return $this->hasMany(PrivateClassJoin::class);
     }
 
     public function promotionClaims()

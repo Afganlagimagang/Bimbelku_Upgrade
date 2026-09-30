@@ -269,7 +269,7 @@ function CheapClassProgressDetail({ item }: { item: CheapClassProgress }) {
   const sessions = item.sessions || [];
   return (
     <div className="w-full space-y-6 pb-10">
-      <ProgressHeader type="Kelas Kelompok" title={item.subject_name} subtitle={[item.education_level, item.grade, item.package_code].filter(Boolean).join(" · ")} percent={stats.percent} accent="brand" />
+      <ProgressHeader type="Kelas Bersama" title={item.subject_name} subtitle={[item.education_level, item.grade, item.package_code].filter(Boolean).join(" · ")} percent={stats.percent} accent="brand" />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <SummaryCard label="Bab selesai" value={`${stats.completed}/${stats.total}`} icon={CheckCircle2} />
@@ -282,7 +282,7 @@ function CheapClassProgressDetail({ item }: { item: CheapClassProgress }) {
 
       {tab === "material" ? (
         <section className="rounded-[1.75rem] border border-indigo-100 bg-gradient-to-br from-white via-indigo-50/35 to-blue-50/45 p-4 shadow-[0_14px_36px_rgba(30,64,175,0.07)] sm:p-6">
-          <div className="flex items-start gap-3"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-indigo-100 text-indigo-700"><Users size={20} /></span><div><h2 className="text-lg font-black text-slate-900">Progress per bab</h2><p className="mt-1 text-sm leading-6 text-slate-500">Progress dicatat per Bab dan berlaku sama untuk seluruh peserta Kelas Kelompok.</p></div></div>
+          <div className="flex items-start gap-3"><span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-indigo-100 text-indigo-700"><Users size={20} /></span><div><h2 className="text-lg font-black text-slate-900">Progress per bab</h2><p className="mt-1 text-sm leading-6 text-slate-500">Progress dicatat per Bab dan berlaku sama untuk seluruh peserta Kelas Bersama.</p></div></div>
           <div className="mt-5 space-y-3">
             {(item.subjects || []).map((chapter, index) => <CheapChapterRow key={`${chapter.subject_name}-${chapter.chapter}-${index}`} chapter={chapter} />)}
             {(item.subjects || []).length === 0 && <div className="rounded-2xl bg-slate-50 p-5 text-sm text-slate-500">Bab belum tersedia pada kelas ini.</div>}

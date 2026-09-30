@@ -43,7 +43,7 @@ expect(
 );
 expect(account.includes("Lihat progress per paket") && !account.includes("Catatan tutor\", description"), "halaman Saya masih memakai struktur Progress lama/duplikat");
 
-expect(landing.includes('import Reveal from "@/components/Reveal"') && landing.includes("Paket Belajar menunjukkan progress per Bab") && landing.includes("Kelas Kelompok cukup menunjukkan progress per Bab") && landing.includes("Progress materi tidak disamakan dengan jumlah sesi"), "landing belum menjelaskan rancangan Progress Bab-only dengan animasi Reveal");
+expect(how.includes('import Reveal from "@/components/Reveal"') && how.includes("Bab yang dipelajari") && how.includes("Progress materi diperbarui per Bab"), "landing belum menjelaskan progress per Bab dengan animasi Reveal");
 expect(how.includes("Bab yang dipelajari") && how.includes("Progress materi diperbarui per Bab"), "Cara Kerja landing belum menjelaskan pencatatan progress per Bab");
 
 expect(cheapController.includes("$progressScope") && cheapController.includes("whereHas('order', fn ($orders) => $orders->where('status', 'paid'))"), "scope progress Kelas Kelompok belum dibatasi untuk peserta terverifikasi");

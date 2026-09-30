@@ -21,7 +21,7 @@ type NavItem = {
 const studentItems: NavItem[] = [
   { key: "home", to: "/student/dashboard", label: "Beranda", icon: Home, tour: "student-home" },
   { key: "search", to: "/student/packages/new", label: "Cari Les", icon: Search, tour: "student-cari-les" },
-  { key: "classes", to: "/student/my-classes", label: "Kelas Saya", icon: BookOpen, tour: "student-kelas" },
+  { key: "classes", to: "/student/my-classes", label: "Jadwal", icon: BookOpen, tour: "student-kelas" },
   { key: "messages", to: "/student/messages", label: "Pesan", icon: MessageSquare, tour: "student-pesan" },
   { key: "account", to: "/student/account", label: "Saya", icon: User, tour: "student-saya" },
 ];

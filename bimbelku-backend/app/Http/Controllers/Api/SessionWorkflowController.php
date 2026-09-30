@@ -17,6 +17,8 @@ use App\Models\SessionReport;
 use App\Models\TeacherReplacementRequest;
 use App\Services\CustomerWalletService;
 use App\Services\PartialPackageRefundService;
+use App\Services\RefundSettlementService;
+use App\Services\XenditMoneyMovementService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -793,8 +795,27 @@ class SessionWorkflowController extends Controller
         Request $request,
         Refund $refund,
         CustomerWalletService $wallets,
-        PartialPackageRefundService $partialPackageRefunds
+        PartialPackageRefundService $partialPackageRefunds,
+        XenditMoneyMovementService $xendit,
+        RefundSettlementService $settlement
     ) {
+        $refund->refresh()->loadMissing('order');
+        $breakdown = $refund->tenderBreakdown();
+        if ($refund->order?->payment_provider === 'xendit' && $breakdown['external_funded_amount'] > 0.009) {
+            abort_unless($refund->status === 'pending', 422, 'Refund ini sudah diproses.');
+            try {
+                $data = $xendit->createRefund($refund);
+                return response()->json([
+                    'message' => 'Refund sedang diproses. Status akhir akan diperbarui secara otomatis.',
+                    'data' => $data,
+                    'wallet_funded_amount' => $breakdown['wallet_funded_amount'],
+                    'external_funded_amount' => $breakdown['external_funded_amount'],
+                ], 202);
+            } catch (\RuntimeException $exception) {
+                return response()->json(['message' => $exception->getMessage()], 502);
+            }
+        }
+
         $validated = $request->validate([
             'proof' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'notes' => ['nullable', 'string', 'max:1000'],

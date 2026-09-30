@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
-import { getCached } from "@/lib/http";
+import { API_BASE_URL } from "@/lib/apiBase";
 import {
   defaultWebsiteContent,
   type WebsiteContentPayload,
@@ -16,14 +16,24 @@ type WebsiteContentContextValue = WebsiteContentPayload & {
 const WebsiteContentContext = createContext<WebsiteContentContextValue | null>(null);
 
 export function WebsiteContentProvider({ children }: { children: React.ReactNode }) {
-  const [content, setContent] = useState<WebsiteContentPayload>(defaultWebsiteContent);
-  const [loading, setLoading] = useState(true);
-  const [loadedFromApi, setLoadedFromApi] = useState(false);
+  const [content, setContent] = useState<WebsiteContentPayload>(() => window.__bimbelkuWebsiteContentValue ?? defaultWebsiteContent);
+  const [loading, setLoading] = useState(() => !window.__bimbelkuWebsiteContentValue);
+  const [loadedFromApi, setLoadedFromApi] = useState(() => Boolean(window.__bimbelkuWebsiteContentValue));
 
   useEffect(() => {
     let active = true;
-    const load = (force = false) => getCached<WebsiteContentPayload>("/website-content", { maxAgeMs: 5 * 60_000, force })
-      .then(({ data }) => {
+    const fetchContent = () => fetch(`${API_BASE_URL}/website-content`, {
+      credentials: "include",
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(10_000),
+    }).then((response) => {
+      if (!response.ok) throw new Error("Konten publik belum tersedia.");
+      return response.json() as Promise<WebsiteContentPayload>;
+    });
+    const load = (force = false) => (force || !window.__bimbelkuWebsiteContent
+      ? fetchContent()
+      : window.__bimbelkuWebsiteContent.then((data) => data ?? fetchContent()))
+      .then((data) => {
         if (!active) return;
         setContent({
           settings: { ...defaultWebsiteContent.settings, ...data.settings },
@@ -51,13 +61,6 @@ export function WebsiteContentProvider({ children }: { children: React.ReactNode
 
   useEffect(() => {
     document.documentElement.dataset.siteAnimations = content.settings.animations_enabled ? "on" : "off";
-    document.title = `${content.settings.brand_name} — Tutor tepat untuk kebutuhan belajarmu`;
-    const description = content.settings.brand_description?.trim();
-    if (description) {
-      document.querySelector<HTMLMetaElement>('meta[name="description"]')?.setAttribute("content", description);
-      document.querySelector<HTMLMetaElement>('meta[property="og:description"]')?.setAttribute("content", description);
-    }
-    document.querySelector<HTMLMetaElement>('meta[property="og:title"]')?.setAttribute("content", content.settings.brand_name);
     if (content.settings.favicon_url) {
       document.querySelector<HTMLLinkElement>('link[rel~="icon"]')?.setAttribute("href", content.settings.favicon_url);
     }

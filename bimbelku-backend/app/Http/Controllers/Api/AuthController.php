@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Storage;
 use Carbon\Carbon;
 use Laravel\Sanctum\PersonalAccessToken;
 use App\Services\OneTimeCodeService;
+use App\Services\PersistentLoginService;
 
 class AuthController extends Controller
 {
@@ -52,21 +53,25 @@ class AuthController extends Controller
             'maps_link'=> 'nullable|string|url:http,https|max:500',
             'cv_file'  => 'nullable|file|mimes:pdf|max:5120',
             'expertise' => 'required_if:role,teacher|nullable|string|max:120',
+            'public_degree' => 'required_if:role,teacher|nullable|string|max:120',
             'levels' => 'required_if:role,teacher|nullable|array|min:1',
             'levels.*' => ['required', \Illuminate\Validation\Rule::in(EducationCatalog::LEVELS)],
             'teaching_method' => 'required_if:role,teacher|nullable|in:online,offline,hybrid',
+            'public_profile_consent' => ['nullable', 'boolean'],
             'linkedin' => 'nullable|url:http,https|max:500',
             'identity_document' => 'required_if:role,teacher|nullable|file|mimes:jpg,jpeg,png,webp,pdf|max:5120',
             'live_selfie' => 'required_if:role,teacher|nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
             'qualification_document' => 'required_if:role,teacher|nullable|file|mimes:jpg,jpeg,png,webp,pdf|max:5120',
             'certification_document' => 'nullable|file|mimes:jpg,jpeg,png,webp,pdf|max:5120',
         ], [
+            'email.unique' => 'Email ini sudah terdaftar. Silakan masuk dengan akun tersebut atau gunakan email lain.',
             'name.regex' => 'Nama lengkap wajib mengandung huruf.',
             'name.not_regex' => 'Nama lengkap tidak boleh memuat angka.',
             'phone.regex' => 'Nomor WhatsApp/telepon harus berisi 8–15 angka.',
             'guardian_name.regex' => 'Nama orang tua atau wali wajib mengandung huruf.',
             'guardian_name.not_regex' => 'Nama orang tua atau wali tidak boleh memuat angka.',
             'guardian_phone.regex' => 'Nomor orang tua atau wali harus berisi 8–15 angka.',
+            'public_degree.required_if' => 'Gelar atau pendidikan terakhir wajib diisi untuk pendaftaran tutor.',
         ]);
 
         if ($validator->fails()) {
@@ -204,6 +209,7 @@ class AuthController extends Controller
                 $profile = TeacherProfile::create([
                     'user_id' => $user->id,
                     'expertise' => $request->expertise,
+                    'public_degree' => trim((string) $request->public_degree),
                     'linkedin' => $request->linkedin,
                     'teaching_method' => $request->teaching_method,
                     'whatsapp_number' => trim((string) $request->phone),
@@ -213,6 +219,8 @@ class AuthController extends Controller
                     'qualification_document' => $storedFiles['qualification_document'] ?? null,
                     'certification_document' => $storedFiles['certification_document'] ?? null,
                     'is_accepting_requests' => false,
+                    'public_profile_enabled' => $request->boolean('public_profile_consent'),
+                    'public_profile_consent_at' => $request->boolean('public_profile_consent') ? now() : null,
                 ]);
 
                 TeacherSubject::create([
@@ -246,7 +254,7 @@ class AuthController extends Controller
                     [
                         'user_id' => $adminId,
                         'title' => 'Pendaftaran tutor baru',
-                        'message' => "{$user->name} menunggu verifikasi dokumen serta seleksi dan tes melalui WhatsApp.",
+                        'message' => "{$user->name} telah mengirim data lengkap dan akan melanjutkan seleksi serta tes melalui WhatsApp.",
                         'type' => 'info',
                         'target_url' => '/admin/guru',
                         'is_read' => false,
@@ -266,7 +274,7 @@ class AuthController extends Controller
             'message' => $emailDeliveryFailed
                 ? 'Akun berhasil dibuat, tetapi kode belum dapat dikirim. Coba kirim ulang kode verifikasi.'
                 : ($user->role === 'teacher'
-                    ? 'Pendaftaran tutor tersimpan. Verifikasi email, lalu admin akan menghubungi WhatsApp Anda untuk seleksi dan tes.'
+                    ? 'Pendaftaran tutor tersimpan. Lanjutkan ke WhatsApp untuk seleksi dan tes; kode verifikasi email juga telah dikirim.'
                     : 'Akun berhasil dibuat. Masukkan kode OTP yang dikirim ke email Anda.'),
             'requires_email_verification' => true,
             'email_delivery_failed' => $emailDeliveryFailed,
@@ -277,17 +285,30 @@ class AuthController extends Controller
     }
 
     // --- FITUR LOGIN ---
-    public function login(Request $request)
+    public function login(Request $request, PersistentLoginService $sessions)
     {
         $request->validate([
             'email' => 'required|email',
             'password' => 'required',
+            'remember_device' => ['sometimes', 'boolean'],
+            'login_portal' => ['sometimes', 'in:user,admin'],
         ]);
 
         $user = User::where('email', mb_strtolower(trim((string) $request->email)))->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
             return response()->json(['message' => 'Email atau password salah.'], 401);
+        }
+
+        $loginPortal = (string) $request->input('login_portal', '');
+        if ($loginPortal === 'admin' && $user->role !== 'admin') {
+            return response()->json(['message' => 'Halaman ini khusus untuk akun administrator.'], 403);
+        }
+        if ($loginPortal === 'user' && $user->role === 'admin') {
+            return response()->json([
+                'message' => 'Akun admin masuk melalui halaman login administrator.',
+                'error_code' => 'admin_portal_required',
+            ], 403);
         }
 
         if ($user->email_verification_required_at && !$user->email_verified_at) {
@@ -329,25 +350,24 @@ class AuthController extends Controller
             return response()->json(['message' => 'Akun Anda sedang tidak aktif.'], 403);
         }
 
-        if ($user->role === 'admin' && !$user->isPrimaryAdmin()) {
-            $user->tokens()->delete();
-
-            return response()->json([
-                'message' => 'Project ini hanya menggunakan satu akun admin utama.',
-            ], 403);
-        }
-
-        $token = $user->createToken('auth_token')->plainTextToken;
+        $session = $sessions->issue(
+            $user,
+            $request->boolean('remember_device'),
+            'password'
+        );
 
         return response()->json([
             'message' => 'Login berhasil',
-            'access_token' => $token,
+            'access_token' => $session['access_token'],
             'token_type' => 'Bearer',
-            'user' => $user
-        ]);
+            'session_transport' => 'http_only_cookie',
+            'session_expires_at' => $session['expires_at']->toIso8601String(),
+            'remember_device' => $session['remembered'],
+            'user' => [...$user->toArray(), 'is_primary_admin' => $user->role === 'admin' && $user->isPrimaryAdmin()]
+        ])->withCookie($session['cookie']);
     }
 
-    public function logout(Request $request)
+    public function logout(Request $request, PersistentLoginService $sessions)
     {
         $user = $request->user();
         $plainTextToken = trim((string) $request->bearerToken());
@@ -388,6 +408,18 @@ class AuthController extends Controller
         Auth::forgetGuards();
         $request->setUserResolver(static fn () => null);
 
-        return response()->json(['message' => 'Sesi berhasil ditutup.']);
+        return response()->json(['message' => 'Sesi berhasil ditutup.'])
+            ->withCookie($sessions->forgetCookie());
+    }
+
+    public function logoutAll(Request $request, PersistentLoginService $sessions)
+    {
+        $request->user()?->tokens()->delete();
+        Auth::guard('sanctum')->forgetUser();
+        Auth::forgetGuards();
+        $request->setUserResolver(static fn () => null);
+
+        return response()->json(['message' => 'Semua sesi akun berhasil ditutup.'])
+            ->withCookie($sessions->forgetCookie());
     }
 }

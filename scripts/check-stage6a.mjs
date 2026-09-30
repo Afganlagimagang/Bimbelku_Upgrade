@@ -30,13 +30,15 @@ const durationMigration = read("bimbelku-backend/database/migrations/2026_08_01_
 const tutorialSeeder = read("bimbelku-backend/database/seeders/StageFiveExperienceSeeder.php");
 const packageTest = read("bimbelku-backend/tests/Feature/StageFivePackageExperienceTest.php");
 
-for (const label of ["Beranda", "Cari Les", "Kelas Saya", "Pesan", "Saya"]) {
+for (const label of ["Beranda", "Cari Les", "Pesan", "Saya"]) {
   expect(layout.includes(`label=\"${label}\"`), `sidebar murid memuat ${label}`);
   expect(mobile.includes(`label: \"${label}\"`), `navigasi HP memuat ${label}`);
 }
+expect(layout.includes('label="Proses Pesanan"') && layout.includes('label="Jadwal Belajar"'), "sidebar memisahkan proses pesanan dan jadwal belajar");
+expect(mobile.includes('label: "Jadwal"'), "navigasi HP memuat Jadwal");
 expect(!layout.includes('label="Voucher"') && !layout.includes('label="Seluruh Sesi"'), "menu lama dipindahkan dari sidebar");
 expect(layout.includes('path === "/student/packages/new"'), "Cari Les memiliki aturan aktif tersendiri");
-expect(layout.includes('path === "/student/packages"'), "Kelas Saya memiliki aturan aktif tersendiri");
+expect(layout.includes('path === "/student/packages"') && layout.includes('path === "/student/my-classes"'), "Proses Pesanan dan Jadwal memiliki aturan aktif tersendiri");
 expect(layout.includes('to="/student/messages"') && mobile.includes('to: "/student/messages"'), "menu Pesan menuju halaman percakapan khusus");
 expect(layout.includes("env(safe-area-inset-bottom)") && mobile.includes("env(safe-area-inset-bottom)"), "konten dan navigasi HP menghormati area aman perangkat");
 expect(layout.includes("xl:grid") && layout.includes("hidden h-14 w-14"), "tombol pesan mengambang tidak menduplikasi navigasi HP");
@@ -83,7 +85,7 @@ expect(progressPage.includes('"/student/packages"') && progressPage.includes('sc
 expect(progressDetail.includes('initialTab="progress"') && progressDetail.includes("package_subject_id"), "detail Progress dapat membuka laporan tutor yang sesuai paket");
 expect(studentClassesController.includes("'latest_message'") && studentClassesController.includes("'latest_report'") && studentClassesController.includes("'package_subject_id'"), "daftar kelas menyediakan ringkasan laporan dan pengikat ke paket");
 expect(learningHub.includes('initialTab = "session"') && learningHub.includes("setTab(initialTab)"), "ruang belajar menerima tab awal dari halaman pemanggil");
-for (const item of ["Proses Pesanan Privat", "Kelas Saya", "Voucher Saya", "Riwayat Pembayaran", "Perkembangan Belajar", "Tutorial penggunaan", "Pusat Bantuan"]) {
+for (const item of ["Proses Pesanan", "Jadwal Belajar", "Voucher Saya", "Riwayat Pembayaran", "Perkembangan Belajar", "Tutorial penggunaan", "Pusat Bantuan"]) {
   expect(account.includes(item), `halaman Saya memuat ${item}`);
 }
 expect(account.includes('to: "/student/progress"'), "tautan perkembangan tidak kembali ke daftar kelas umum");

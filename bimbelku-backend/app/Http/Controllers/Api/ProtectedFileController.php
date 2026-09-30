@@ -11,7 +11,6 @@ use App\Models\Payout;
 use App\Models\Refund;
 use App\Models\SessionReport;
 use App\Models\TeacherReplacementRequest;
-use App\Models\TicketReply;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
@@ -94,17 +93,6 @@ class ProtectedFileController extends Controller
         );
 
         return $this->respond($refund->proof);
-    }
-
-    public function ticketAttachment(Request $request, TicketReply $ticketReply)
-    {
-        abort_unless(
-            $request->user()->role === 'admin'
-            || (int) $ticketReply->ticket?->user_id === (int) $request->user()->id,
-            403
-        );
-
-        return $this->respond($ticketReply->attachment);
     }
 
     private function authorizeOrder(Request $request, Order $order): void

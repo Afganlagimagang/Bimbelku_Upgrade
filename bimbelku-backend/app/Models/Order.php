@@ -28,6 +28,8 @@ class Order extends Model
         'subtotal_amount' => 'decimal:2',
         'discount_amount' => 'decimal:2',
         'top_up_due_at' => 'datetime',
+        'gateway_expires_at' => 'datetime',
+        'gateway_paid_at' => 'datetime',
     ];
 
     protected function automaticPublicCodeColumn(): string

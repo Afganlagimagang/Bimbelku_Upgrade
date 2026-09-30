@@ -387,7 +387,7 @@ class AdminMatchingController extends Controller
             'status' => $bookingRequest->status,
             'status_label' => $this->statusLabel($bookingRequest->status),
             'status_description' => $this->statusDescription($bookingRequest),
-            'search_radius_km' => (int) $bookingRequest->search_radius_km,
+            'search_radius_km' => $bookingRequest->learning_mode === 'offline' ? (int) $bookingRequest->search_radius_km : null,
             'matching_attempts' => (int) $bookingRequest->matching_attempts,
             'search_started_at' => $startedAt?->toIso8601String(),
             'search_expires_at' => $bookingRequest->search_expires_at?->toIso8601String(),
@@ -470,7 +470,9 @@ class AdminMatchingController extends Controller
     private function attentionReason(BookingRequest $bookingRequest, ?TeacherOffer $activeOffer): ?string
     {
         if ($bookingRequest->status === 'no_teacher') {
-            return "Belum ada tutor yang cocok pada radius {$bookingRequest->search_radius_km} km.";
+            return $bookingRequest->learning_mode === 'offline'
+                ? "Belum ada tutor yang cocok pada radius {$bookingRequest->search_radius_km} km."
+                : 'Belum ada tutor online yang cocok pada jadwal dan kebutuhan ini.';
         }
 
         if ($bookingRequest->status === 'expired') {

@@ -44,7 +44,7 @@ for (const permission of [
 expect(permissionMiddleware.includes("Rute admin ini belum memiliki kebijakan akses"), "rute admin tanpa aturan ditolak fail-closed");
 expect(permissionMiddleware.includes("required_admin_permission"), "kode akses diteruskan ke audit");
 expect(userModel.includes("isPrimaryAdmin") && userModel.includes("primary_admin_email"), "model menentukan satu admin utama");
-expect(userModel.includes("return $this->isPrimaryAdmin();"), "seluruh akses admin mengikuti akun utama");
+expect(userModel.includes("return $this->role === 'admin' && $this->status === 'active';"), "admin aktif memiliki akses modul operasional");
 
 expect(auditMiddleware.includes("DB::transaction") && auditMiddleware.includes("$next($request)"), "mutasi admin dan audit berada dalam transaksi");
 expect(auditMiddleware.includes("in_array($request->method(), ['GET', 'HEAD', 'OPTIONS']"), "hanya mutasi yang membuat catatan perubahan");
@@ -57,7 +57,7 @@ expect(migration.includes("entry_hash") && migration.includes("previous_hash"), 
 expect(!app.includes('lazy(() => import("./pages/admin/AdminAccessControl"))'), "halaman pengelolaan admin tidak dimuat");
 expect(app.includes('<Route path="/admin/access-control" element={<Navigate to="/admin" replace />} />'), "alamat lama diarahkan ke dashboard");
 expect(!layout.includes("Kontrol akses admin"), "menu pengelolaan admin disembunyikan");
-expect(layout.includes('const adminLabel = "Admin utama"'), "identitas sidebar memakai admin utama");
+expect(layout.includes('admin.is_primary_admin') && layout.includes('? "Admin utama" : "Admin"'), "identitas sidebar membedakan admin utama dan admin biasa");
 expect(privateRoute.includes("permissionForAdminPath") && privateRoute.includes("canAdmin"), "rute frontend tetap memeriksa role admin");
 expect(frontendPermissions.includes(') => user?.role === "admin";'), "frontend memberi seluruh menu hanya kepada role admin");
 expect(
@@ -86,4 +86,4 @@ for (const scenario of [
   "test_hash_chain_reports_direct_database_tampering",
 ]) expect(test.includes(scenario), `tes admin tunggal memuat ${scenario}`);
 
-console.log("Kontrak Tahap 6C-D lulus (admin tunggal, semua akses, pengelolaan admin ditutup, audit tetap aktif).");
+console.log("Kontrak Tahap 6C-D lulus (admin utama dan admin biasa, akses operasional, serta audit tetap aktif).");

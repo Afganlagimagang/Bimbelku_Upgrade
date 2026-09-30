@@ -1,23 +1,29 @@
 <?php
 
 use App\Http\Controllers\Api\AdminAccessController;
+use App\Http\Controllers\Api\AdminAccountController;
 use App\Http\Controllers\Api\AdminCheapClassController;
 use App\Http\Controllers\Api\AdminClassController;
 use App\Http\Controllers\Api\AdminController;
 use App\Http\Controllers\Api\AdminFinanceOperationsController;
+use App\Http\Controllers\Api\AdminFinanceReportController;
 use App\Http\Controllers\Api\AdminMatchingController;
+use App\Http\Controllers\Api\AdminPublicTutorController;
 use App\Http\Controllers\Api\AdminRatingController;
 use App\Http\Controllers\Api\AdminSettingController;
 use App\Http\Controllers\Api\AdminStageFiveController;
+use App\Http\Controllers\Api\AdminTeacherScheduleController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CheapClassController;
 use App\Http\Controllers\Api\ClassroomController;
 use App\Http\Controllers\Api\CurriculumChapterController;
 use App\Http\Controllers\Api\CurriculumSubjectController;
+use App\Http\Controllers\Api\CurriculumSubjectGroupController;
 use App\Http\Controllers\Api\CustomerWalletController;
 use App\Http\Controllers\Api\EmailVerificationController;
 use App\Http\Controllers\Api\HourlyRateController;
 use App\Http\Controllers\Api\GoogleAuthController;
+use App\Http\Controllers\Api\GuestPackageOrderController;
 use App\Http\Controllers\Api\LearningCatalogController;
 use App\Http\Controllers\Api\LearningSessionController;
 use App\Http\Controllers\Api\NoteController;
@@ -27,6 +33,9 @@ use App\Http\Controllers\Api\PasswordResetController;
 use App\Http\Controllers\Api\PaymentPinController;
 use App\Http\Controllers\Api\ProtectedFileController;
 use App\Http\Controllers\Api\PublicController;
+use App\Http\Controllers\Api\ProgramController;
+use App\Http\Controllers\Api\PrivateParticipantPricingController;
+use App\Http\Controllers\Api\PrivateClassJoinController;
 use App\Http\Controllers\Api\PublicMediaController;
 use App\Http\Controllers\Api\RatingController;
 use App\Http\Controllers\Api\ScheduleChangeController;
@@ -35,6 +44,7 @@ use App\Http\Controllers\Api\SessionWorkflowController;
 use App\Http\Controllers\Api\StageFiveContentController;
 use App\Http\Controllers\Api\StudentController;
 use App\Http\Controllers\Api\StudentPackageController;
+use App\Http\Controllers\Api\SubjectPageContentController;
 use App\Http\Controllers\Api\StudentRefundController;
 use App\Http\Controllers\Api\TeacherCheapClassController;
 use App\Http\Controllers\Api\TeacherController;
@@ -43,10 +53,11 @@ use App\Http\Controllers\Api\TeacherOfferController;
 use App\Http\Controllers\Api\TeacherOperationsController;
 use App\Http\Controllers\Api\TeacherReplacementController;
 use App\Http\Controllers\Api\TeacherScheduleController;
-use App\Http\Controllers\Api\TicketController;
 use App\Http\Controllers\Api\TutorAvailabilityController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\WebsiteContentController;
+use App\Http\Controllers\Api\WebsiteTutorGalleryController;
+use App\Http\Controllers\Api\XenditPaymentController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:auth-register');
@@ -61,24 +72,37 @@ Route::post('/reset-password', [PasswordResetController::class, 'reset'])->middl
 Route::post('/email/verification/resend', [EmailVerificationController::class, 'resend'])->middleware('throttle:auth-email-verification-resend');
 Route::post('/email/verification/verify', [EmailVerificationController::class, 'verify'])->middleware('throttle:auth-email-verification-verify');
 
-Route::get('/learning-catalog', [LearningCatalogController::class, 'index']);
-Route::get('/settings/footer', [PublicController::class, 'getFooterSettings']);
-Route::get('/socials', [AdminController::class, 'getSocials']);
-Route::get('/settings/teacher-cover', [AdminSettingController::class, 'getTeacherCover']);
-Route::get('/package-plans', [StudentPackageController::class, 'plans']);
-Route::get('/learning-time-slots', [StudentPackageController::class, 'timeSlots']);
-Route::get('/package-booking-rules', [StudentPackageController::class, 'bookingRules']);
-Route::get('/content/banners', [StageFiveContentController::class, 'banners']);
-Route::get('/content/tutorials', [StageFiveContentController::class, 'tutorials']);
-Route::get('/content/promotions', [StageFiveContentController::class, 'promotions']);
-Route::get('/content/promotions/{promotion}', [StageFiveContentController::class, 'promotion']);
-Route::get('/website-content', [WebsiteContentController::class, 'show']);
-Route::get('/testimonials', [WebsiteContentController::class, 'testimonials']);
+Route::get('/learning-catalog', [LearningCatalogController::class, 'index'])->middleware('throttle:public-read');
+Route::get('/program-groups', [ProgramController::class, 'index'])->middleware('throttle:public-read');
+Route::get('/learning-programs', [\App\Http\Controllers\Api\LearningProgramController::class, 'index'])->middleware('throttle:public-read');
+Route::get('/public-tutors', [WebsiteContentController::class, 'tutors'])->middleware('throttle:public-read');
+Route::get('/website-tutor-gallery', [WebsiteTutorGalleryController::class, 'publicIndex'])->middleware('throttle:public-read');
+Route::get('/subject-pages/{curriculumSubject}', [SubjectPageContentController::class, 'show'])->whereNumber('curriculumSubject')->middleware('throttle:public-read');
+Route::get('/settings/footer', [PublicController::class, 'getFooterSettings'])->middleware('throttle:public-read');
+Route::get('/socials', [AdminController::class, 'getSocials'])->middleware('throttle:public-read');
+Route::get('/settings/teacher-cover', [AdminSettingController::class, 'getTeacherCover'])->middleware('throttle:public-read');
+Route::get('/package-plans', [StudentPackageController::class, 'plans'])->middleware('throttle:public-read');
+Route::get('/learning-time-slots', [StudentPackageController::class, 'timeSlots'])->middleware('throttle:public-read');
+Route::get('/package-booking-rules', [StudentPackageController::class, 'bookingRules'])->middleware('throttle:public-read');
+Route::get('/private-participant-pricing', [PrivateParticipantPricingController::class, 'show'])->middleware('throttle:public-read');
+Route::post('/guest/packages/quote', [StudentPackageController::class, 'previewPromotion'])->middleware('throttle:guest-package-quote');
+Route::post('/guest/packages', [GuestPackageOrderController::class, 'store'])->middleware('throttle:guest-package-create');
+Route::get('/guest/packages/{code}', [GuestPackageOrderController::class, 'show'])->middleware('throttle:guest-package-status');
+Route::get('/content/banners', [StageFiveContentController::class, 'banners'])->middleware('throttle:public-read');
+Route::get('/content/tutorials', [StageFiveContentController::class, 'tutorials'])->middleware('throttle:public-read');
+Route::get('/content/promotions', [StageFiveContentController::class, 'promotions'])->middleware('throttle:public-read');
+Route::get('/content/promotions/{promotion}', [StageFiveContentController::class, 'promotion'])->middleware('throttle:public-read');
+Route::get('/website-content', [WebsiteContentController::class, 'show'])->middleware('throttle:public-read');
+Route::get('/testimonials', [WebsiteContentController::class, 'testimonials'])->middleware('throttle:public-read');
 Route::get('/public-media/{path}', PublicMediaController::class)
-    ->where('path', '.*');
+    ->where('path', '.*')
+    ->middleware('throttle:public-media');
+Route::post('/webhooks/xendit', [XenditPaymentController::class, 'webhook']);
 
-Route::middleware(['auth:sanctum', 'active.account'])->group(function () {
+Route::middleware(['auth:sanctum', 'active.account', 'persistent.session'])->group(function () {
     Route::get('/user', [UserController::class, 'show']);
+    Route::post('/guest/packages/{code}/claim', [GuestPackageOrderController::class, 'claim'])->middleware(['role:student', 'throttle:guest-package-claim']);
+    Route::get('/student/guest-packages/pending', [GuestPackageOrderController::class, 'pendingForUser'])->middleware('role:student');
     Route::put('/user', [UserController::class, 'update']);
     // Multipart FormData memakai POST + _method=PUT pada frontend agar unggahan
     // berkas tetap terbaca konsisten oleh PHP.
@@ -86,12 +110,8 @@ Route::middleware(['auth:sanctum', 'active.account'])->group(function () {
     Route::put('/user/password', [UserController::class, 'updatePassword'])
         ->middleware('throttle:account-password-change');
     Route::post('/logout', [AuthController::class, 'logout']);
+    Route::post('/logout-all', [AuthController::class, 'logoutAll'])->middleware('throttle:account-password-change');
 
-    Route::get('/tickets/my', [TicketController::class, 'myTickets']);
-    Route::post('/tickets', [TicketController::class, 'store'])->middleware('throttle:support-ticket-create');
-    Route::get('/tickets/{id}', [TicketController::class, 'show']);
-    Route::post('/tickets/{id}/reply', [TicketController::class, 'reply'])->middleware('throttle:support-ticket-reply');
-    Route::post('/tickets/{id}/close', [TicketController::class, 'close']);
 
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::post('/notifications/read-batch', [NotificationController::class, 'markManyAsRead']);
@@ -105,7 +125,6 @@ Route::middleware(['auth:sanctum', 'active.account'])->group(function () {
     Route::get('/disputes/{bookingDispute}/evidence', [ProtectedFileController::class, 'disputeEvidence']);
     Route::get('/payouts/{payout}/proof', [ProtectedFileController::class, 'payoutProof']);
     Route::get('/refunds/{refund}/proof', [ProtectedFileController::class, 'refundProof']);
-    Route::get('/ticket-replies/{ticketReply}/attachment', [ProtectedFileController::class, 'ticketAttachment']);
     Route::get('/bookings/{booking}/learning-session', [LearningSessionController::class, 'show']);
     Route::get('/session-action/next', [LearningSessionController::class, 'nextAction'])
         ->middleware('throttle:session-action-poll');
@@ -149,10 +168,21 @@ Route::middleware(['auth:sanctum', 'active.account'])->group(function () {
         Route::post('/student/payment-pin/reset', [PaymentPinController::class, 'reset'])->middleware('throttle:student-payment-pin-reset');
         Route::post('/student/refunds/{refund}/destination', [StudentRefundController::class, 'selectDestination'])
             ->middleware(['throttle:student-refund-destination', 'idempotency', 'finance.audit:refund_destination_select']);
+        Route::post('/student/refunds/{refund}/sync', [StudentRefundController::class, 'sync'])
+            ->middleware('throttle:student-refund-sync');
         Route::get('/student/orders/{order}/wallet-quote', [CustomerWalletController::class, 'quote']);
         Route::get('/student/classes', [StudentController::class, 'getMyClasses']);
+        Route::get('/student/class-joins', [PrivateClassJoinController::class, 'mine']);
+        Route::post('/student/class-joins', [PrivateClassJoinController::class, 'requestJoin'])->middleware('throttle:student-class-join-request');
+        Route::get('/student/packages/{learningPackage}/class-joins', [PrivateClassJoinController::class, 'ownerIndex']);
+        Route::post('/student/packages/{learningPackage}/class-code', [PrivateClassJoinController::class, 'createCode'])->middleware('throttle:student-class-code-create');
+        Route::post('/student/packages/{learningPackage}/class-joins/{classJoin}/decision', [PrivateClassJoinController::class, 'decide'])->middleware('throttle:student-class-join-decision');
         Route::post('/orders/{id}/pay', [OrderController::class, 'pay'])
             ->middleware(['throttle:student-payment-submit', 'idempotency', 'finance.audit:student_payment_submit']);
+        Route::post('/orders/{order}/xendit-session', [XenditPaymentController::class, 'createSession'])
+            ->middleware(['throttle:student-payment-submit', 'idempotency', 'finance.audit:student_payment_submit']);
+        Route::post('/orders/{order}/payment-status-sync', [XenditPaymentController::class, 'sync'])
+            ->middleware('throttle:student-payment-status-sync');
         Route::get('/active-order', [OrderController::class, 'getActiveOrder']);
         Route::post('/orders/{id}/cancel', [OrderController::class, 'cancelOrder']);
         Route::get('/orders', [OrderController::class, 'index']);
@@ -207,6 +237,7 @@ Route::middleware(['auth:sanctum', 'active.account'])->group(function () {
         Route::get('/dashboard-v2', [TeacherOperationsController::class, 'dashboard']);
         Route::get('/profile', [TeacherController::class, 'getProfile']);
         Route::post('/profile', [TeacherController::class, 'updateProfile']);
+        Route::post('/profile/cover', [TeacherController::class, 'updateProfileCover']);
         Route::post('/subjects', [TeacherController::class, 'syncSubjects']);
         Route::post('/bank', [TeacherController::class, 'updateBank'])
             ->middleware(['throttle:teacher-bank-change', 'idempotency', 'finance.audit:teacher_bank_change']);
@@ -235,6 +266,8 @@ Route::middleware(['auth:sanctum', 'active.account'])->group(function () {
     Route::prefix('admin')->middleware(['role:admin', 'admin.audit', 'admin.permission'])->group(function () {
         Route::get('/website-settings', [WebsiteContentController::class, 'adminShow']);
         Route::post('/website-settings', [WebsiteContentController::class, 'update']);
+        Route::get('/website-media', [WebsiteContentController::class, 'media']);
+        Route::post('/website-media', [WebsiteContentController::class, 'updateMedia']);
         Route::get('/cheap-class-templates/form', [AdminCheapClassController::class, 'form']);
         Route::get('/cheap-class-templates/recurring', [AdminCheapClassController::class, 'recurringTemplates']);
         Route::get('/cheap-class-templates', [AdminCheapClassController::class, 'index']);
@@ -253,6 +286,11 @@ Route::middleware(['auth:sanctum', 'active.account'])->group(function () {
             ->middleware(['throttle:admin-cheap-class-session-review', 'idempotency']);
         Route::post('/cheap-classes/{cheapClass}/sessions/{session}/request-revision', [AdminCheapClassController::class, 'requestSessionReportRevision'])
             ->middleware(['throttle:admin-cheap-class-session-review', 'idempotency']);
+        Route::get('/accounts', [AdminAccountController::class, 'index']);
+        Route::post('/accounts', [AdminAccountController::class, 'store']);
+        Route::put('/accounts/{admin}', [AdminAccountController::class, 'update']);
+        Route::delete('/accounts/{admin}', [AdminAccountController::class, 'destroy']);
+        Route::patch('/accounts/{admin}/status', [AdminAccountController::class, 'updateStatus']);
         Route::get('/audit-log', [AdminAccessController::class, 'audit']);
         Route::get('/audit-log/integrity', [AdminAccessController::class, 'auditIntegrity']);
         Route::get('/audit-log/{adminAuditLog}', [AdminAccessController::class, 'auditDetail'])
@@ -261,28 +299,44 @@ Route::middleware(['auth:sanctum', 'active.account'])->group(function () {
         Route::get('/notifications/recipients', [NotificationController::class, 'recipients']);
         Route::post('/notifications/send', [NotificationController::class, 'send']);
 
+        Route::get('/private-participant-pricing', [PrivateParticipantPricingController::class, 'adminShow']);
+        Route::put('/private-participant-pricing', [PrivateParticipantPricingController::class, 'update']);
         Route::get('/hourly-rates', [HourlyRateController::class, 'index']);
         Route::post('/hourly-rates', [HourlyRateController::class, 'store']);
         Route::post('/hourly-rates/defaults', [HourlyRateController::class, 'updateDefaults']);
         Route::delete('/hourly-rates/{hourlyRate}', [HourlyRateController::class, 'destroy']);
 
         Route::get('/pending-teachers', [AdminController::class, 'getPendingTeachers']);
+        Route::get('/public-tutors', [AdminPublicTutorController::class, 'index']);
+        Route::get('/website-tutor-gallery', [WebsiteTutorGalleryController::class, 'adminIndex']);
+        Route::get('/website-tutor-gallery/candidates', [WebsiteTutorGalleryController::class, 'candidates']);
+        Route::post('/website-tutor-gallery/import-legacy', [WebsiteTutorGalleryController::class, 'importLegacy']);
+        Route::post('/website-tutor-gallery', [WebsiteTutorGalleryController::class, 'store']);
+        Route::post('/website-tutor-gallery/{entry}', [WebsiteTutorGalleryController::class, 'update'])->whereNumber('entry');
+        Route::delete('/website-tutor-gallery/{entry}', [WebsiteTutorGalleryController::class, 'destroy'])->whereNumber('entry');
+        Route::patch('/public-tutors/{teacherProfile}', [AdminPublicTutorController::class, 'update'])->whereNumber('teacherProfile');
+        Route::post('/public-tutors/{teacherProfile}/photo', [AdminPublicTutorController::class, 'updatePhoto'])->whereNumber('teacherProfile');
+        Route::patch('/public-tutors/{teacherProfile}/identity', [AdminPublicTutorController::class, 'updateIdentity'])->whereNumber('teacherProfile');
         Route::get('/history-teachers', [AdminController::class, 'getHistoryTeachers']);
         Route::post('/verify-teacher', [AdminController::class, 'verifyTeacher']);
+        Route::patch('/teachers/{teacher}/verification-stage', [AdminController::class, 'updateTeacherVerificationStage']);
         Route::get('/users', [AdminController::class, 'getUsers']);
+        Route::post('/users/{id}/profile-cover', [AdminController::class, 'updateTeacherProfileCover'])->whereNumber('id');
+        Route::delete('/users/{id}/profile-cover', [AdminController::class, 'resetTeacherProfileCover'])->whereNumber('id');
+        Route::post('/users/{id}/profile-cover/restore', [AdminController::class, 'restoreTeacherProfileCover'])->whereNumber('id');
+        Route::get('/teachers/{teacher}/schedule', [AdminTeacherScheduleController::class, 'show']);
         Route::post('/users/status', [AdminController::class, 'updateUserStatus']);
         Route::get('/orders', [AdminController::class, 'getOrders']);
         Route::get('/pending-payments', [AdminController::class, 'getPendingPayments']);
         Route::get('/finance/payments', [AdminFinanceOperationsController::class, 'payments']);
+        Route::get('/finance/report', [AdminFinanceReportController::class, 'index']);
+        Route::get('/finance/report.pdf', [AdminFinanceReportController::class, 'pdf']);
         Route::get('/finance/refunds', [AdminFinanceOperationsController::class, 'refunds']);
         Route::post('/verify-payment', [AdminController::class, 'verifyPayment'])
             ->middleware(['idempotency', 'finance.audit:payment_verification']);
-        Route::get('/payment-settings', [AdminController::class, 'getPaymentSettings']);
-        Route::post('/payment-settings', [AdminController::class, 'updatePaymentSettings'])
-            ->middleware(['idempotency', 'finance.audit:payment_destination_change']);
+
         Route::get('/finance', [AdminController::class, 'getFinanceData']);
-        Route::post('/payout', [AdminController::class, 'processPayout'])
-            ->middleware(['idempotency', 'finance.audit:payout_complete']);
+
         Route::get('/commission-setting', [AdminController::class, 'getCommissionSetting']);
         Route::post('/commission-setting', [AdminController::class, 'updateCommissionSetting'])
             ->middleware(['idempotency', 'finance.audit:commission_change']);
@@ -310,8 +364,11 @@ Route::middleware(['auth:sanctum', 'active.account'])->group(function () {
         Route::post('/bookings/{booking}/completion-review', [SessionWorkflowController::class, 'resolveCompletionReview']);
         Route::post('/refunds/{refund}/complete', [SessionWorkflowController::class, 'completeRefund'])
             ->middleware(['idempotency', 'finance.audit:refund_complete']);
+        Route::post('/refunds/{refund}/reconcile', [AdminFinanceOperationsController::class, 'reconcileRefund'])
+            ->middleware(['throttle:admin-refund-reconcile', 'finance.audit:refund_reconcile']);
+        Route::post('/refunds/{refund}/retry', [AdminFinanceOperationsController::class, 'retryRefund'])
+            ->middleware(['throttle:admin-refund-retry', 'idempotency', 'finance.audit:refund_retry']);
 
-        Route::get('/tickets', [TicketController::class, 'index']);
         Route::post('/settings/footer', [AdminController::class, 'updateFooterSettings']);
         Route::get('/admin-socials', [AdminController::class, 'getAdminSocials']);
         Route::post('/socials', [AdminController::class, 'storeSocial']);
@@ -321,6 +378,8 @@ Route::middleware(['auth:sanctum', 'active.account'])->group(function () {
         Route::get('/classes', [AdminClassController::class, 'index']);
         Route::get('/classes/{id}', [AdminClassController::class, 'show']);
         Route::post('/settings/teacher-cover', [AdminSettingController::class, 'updateTeacherCover']);
+        Route::get('/settings/teacher-cover/status', [AdminSettingController::class, 'teacherCoverStatus']);
+        Route::post('/settings/teacher-cover/apply-default', [AdminSettingController::class, 'applyDefaultTeacherCover']);
         Route::get('/ratings', [AdminRatingController::class, 'index']);
         Route::delete('/ratings/{id}', [AdminRatingController::class, 'destroy']);
 
@@ -328,6 +387,22 @@ Route::middleware(['auth:sanctum', 'active.account'])->group(function () {
         Route::post('/notes', [NoteController::class, 'store']);
         Route::put('/notes/{id}', [NoteController::class, 'update']);
         Route::delete('/notes/{id}', [NoteController::class, 'destroy']);
+        Route::get('/program-groups', [ProgramController::class, 'adminIndex']);
+        Route::get('/learning-programs', [\App\Http\Controllers\Api\LearningProgramController::class, 'adminIndex']);
+        Route::post('/learning-programs', [\App\Http\Controllers\Api\LearningProgramController::class, 'store']);
+        Route::put('/learning-programs/{learningProgram}', [\App\Http\Controllers\Api\LearningProgramController::class, 'update']);
+        Route::delete('/learning-programs/{learningProgram}', [\App\Http\Controllers\Api\LearningProgramController::class, 'deactivate']);
+        Route::post('/program-groups', [ProgramController::class, 'store']);
+        Route::put('/program-groups/{program}', [ProgramController::class, 'update']);
+        Route::delete('/program-groups/{program}', [ProgramController::class, 'deactivate']);
+        Route::get('/subjects/{curriculumSubject}/page', [SubjectPageContentController::class, 'adminShow']);
+        Route::put('/subjects/{curriculumSubject}/page', [SubjectPageContentController::class, 'update']);
+        Route::post('/subjects/{curriculumSubject}/page/hero', [SubjectPageContentController::class, 'updateHero']);
+        Route::delete('/subjects/{curriculumSubject}/page/hero', [SubjectPageContentController::class, 'removeHero']);
+        Route::get('/subject-groups', [CurriculumSubjectGroupController::class, 'index']);
+        Route::post('/subject-groups', [CurriculumSubjectGroupController::class, 'store']);
+        Route::put('/subject-groups/{id}', [CurriculumSubjectGroupController::class, 'update'])->whereNumber('id');
+        Route::delete('/subject-groups/{id}', [CurriculumSubjectGroupController::class, 'destroy'])->whereNumber('id');
         Route::get('/subjects', [CurriculumSubjectController::class, 'index']);
         Route::post('/subjects', [CurriculumSubjectController::class, 'store']);
         Route::put('/subjects/{curriculumSubject}', [CurriculumSubjectController::class, 'update']);

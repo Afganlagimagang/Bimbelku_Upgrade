@@ -76,6 +76,19 @@ export default function TeacherDashboard() {
       <div className="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between"><div><span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-indigo-100"><ShieldCheck size={13} />{data?.rating.count ? data.rating.average.toFixed(1) + " ★ · " + data.rating.count + " ulasan" : "Belum ada rating"} · {data?.teacher.is_accepting_requests ? "menerima permintaan" : "permintaan dijeda"}</span><h1 className="mt-4 text-2xl font-black sm:text-4xl">Halo, {data?.teacher.name?.split(" ")[0] || "Tutor"}</h1><p className="mt-2 max-w-xl text-sm leading-6 text-indigo-100/75">Selesaikan pekerjaan mendesak lebih dahulu, lalu lanjutkan sesi mengajar dan pencairan.</p></div><Button onClick={() => void load(true)} variant="outline" className="h-11 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"><RefreshCw size={16} className="mr-2" />Muat ulang</Button></div>
     </section>
 
+    <section aria-label="Menu cepat tutor" className="grid grid-cols-4 gap-2 rounded-[1.5rem] border border-slate-100 bg-white p-3 shadow-sm xl:hidden">
+      {[
+        { label: "Permintaan", to: "/guru/permintaan", icon: ClipboardCheck, tone: "bg-amber-50 text-amber-700" },
+        { label: "Kelas", to: "/guru/kelas", icon: BookOpen, tone: "bg-indigo-50 text-indigo-700" },
+        { label: "Jadwal", to: "/guru/jadwal", icon: CalendarClock, tone: "bg-violet-50 text-violet-700" },
+        { label: "Pesan", to: "/guru/pesan", icon: MessageSquare, tone: "bg-sky-50 text-sky-700" },
+        { label: "Gaji", to: "/guru/gaji", icon: Banknote, tone: "bg-emerald-50 text-emerald-700" },
+        { label: "Rekening", to: "/guru/rekening", icon: ShieldCheck, tone: "bg-teal-50 text-teal-700" },
+        { label: "Performa", to: "/guru/performa", icon: Star, tone: "bg-orange-50 text-orange-700" },
+        { label: "Akun", to: "/guru/saya", icon: Users, tone: "bg-slate-100 text-slate-700" },
+      ].map(({ label, to, icon: Icon, tone }) => <Link key={to} to={to} className="group flex min-w-0 flex-col items-center gap-2 rounded-2xl px-1 py-2 text-center transition active:scale-95"><span className={`grid h-11 w-11 place-items-center rounded-2xl ${tone}`}><Icon size={19} /></span><span className="w-full truncate text-[10px] font-black leading-4 text-slate-700">{label}</span></Link>)}
+    </section>
+
     <DynamicBannerCarousel audience="teacher" />
 
     {loading ? <div className="grid min-h-72 place-items-center rounded-[2rem] bg-white"><Loader2 className="animate-spin text-indigo-600" size={30} /></div> : failed || !data ? <div className="rounded-[2rem] border border-rose-100 bg-white p-12 text-center"><AlertCircle className="mx-auto text-rose-400" /><p className="mt-3 font-black">Dashboard belum dapat dimuat</p><Button onClick={() => void load(true)} className="mt-4 rounded-xl bg-indigo-600">Coba lagi</Button></div> : <>

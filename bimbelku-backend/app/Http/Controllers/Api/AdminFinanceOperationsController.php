@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\CustomerWallet;
 use App\Models\Order;
 use App\Models\Refund;
+use App\Services\RefundSettlementService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -154,6 +155,13 @@ class AdminFinanceOperationsController extends Controller
                 'external_funded_amount' => $breakdown['external_funded_amount'],
                 'reason' => $refund->reason,
                 'status' => $refund->status,
+                'payment_provider' => $refund->payment_provider,
+                'gateway_status' => $refund->gateway_status,
+                'gateway_failure_code' => $refund->gateway_failure_code,
+                'gateway_refund_id' => $refund->gateway_refund_id,
+                'gateway_submitted_at' => $refund->gateway_submitted_at,
+                'gateway_processed_at' => $refund->gateway_processed_at,
+                'last_reconciled_at' => $refund->last_reconciled_at,
                 'destination_method' => $refund->destination_method,
                 'destination_selected_at' => $refund->destination_selected_at,
                 'destination_selection_version' => (int) $refund->destination_selection_version,
@@ -174,6 +182,7 @@ class AdminFinanceOperationsController extends Controller
                 ] : null,
                 'processed_at' => $refund->processed_at,
                 'created_at' => $refund->created_at,
+                'updated_at' => $refund->updated_at,
             ];
         })->values();
 
@@ -183,7 +192,7 @@ class AdminFinanceOperationsController extends Controller
             ->where('processed_at', '>=', now()->subDays(30))
             ->get();
         $bankPaid30Days = round((float) $recentPaidRefunds
-            ->where('destination_method', 'bank_transfer')
+            ->whereIn('destination_method', ['bank_transfer', 'xendit_original'])
             ->sum(fn (Refund $recentRefund) => $recentRefund->tenderBreakdown()['external_funded_amount']), 2);
         $walletCredited30Days = round((float) $recentPaidRefunds
             ->sum(function (Refund $recentRefund) {
@@ -204,6 +213,35 @@ class AdminFinanceOperationsController extends Controller
             'pending' => $refunds->where('status', 'pending')->values(),
             'history' => $refunds->where('status', '!=', 'pending')->values(),
             'generated_at' => now()->toIso8601String(),
+        ]);
+    }
+
+    public function reconcileRefund(Refund $refund, RefundSettlementService $settlement)
+    {
+        abort_unless($refund->status === 'pending' && $refund->destination_method === 'xendit_original', 422, 'Refund ini tidak memerlukan rekonsiliasi otomatis.');
+        $settlement->reconcile($refund);
+
+        return response()->json([
+            'message' => 'Status refund sudah diperiksa ulang.',
+            'refund' => $refund->fresh(),
+        ]);
+    }
+
+    public function retryRefund(Refund $refund, RefundSettlementService $settlement)
+    {
+        abort_unless(
+            $refund->status === 'pending'
+                && $refund->destination_method === 'xendit_original'
+                && $settlement->isAutomatic($refund)
+                && in_array($refund->gateway_status, ['FAILED', 'REJECTED', 'SUBMITTING'], true),
+            422,
+            'Refund ini tidak dapat dicoba ulang.'
+        );
+        $settlement->startAutomatic($refund);
+
+        return response()->json([
+            'message' => 'Percobaan refund sudah dikirim dengan referensi yang sama.',
+            'refund' => $refund->fresh(),
         ]);
     }
 

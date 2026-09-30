@@ -108,16 +108,6 @@ export default {
           "0%, 100%": { opacity: "1" },
           "50%": { opacity: "0.5" },
         },
-        "spin-slow": {
-          to: { transform: "rotate(360deg)" },
-        },
-        swing: {
-          "0%, 100%": { transform: "rotate(0deg)" },
-          "20%": { transform: "rotate(16deg)" },
-          "40%": { transform: "rotate(-12deg)" },
-          "60%": { transform: "rotate(8deg)" },
-          "80%": { transform: "rotate(-4deg)" },
-        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -127,8 +117,6 @@ export default {
         "slide-in-right": "slide-in-right 0.5s ease-out forwards",
         float: "float 3s ease-in-out infinite",
         pulse: "pulse 2s ease-in-out infinite",
-        "spin-slow": "spin-slow 3s linear infinite",
-        swing: "swing 0.8s ease-in-out",
       },
       boxShadow: {
         card: "var(--shadow-card)",
@@ -136,5 +124,5 @@ export default {
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [],
 } satisfies Config;

@@ -1,6 +1,7 @@
 import { ChevronDown, MessageCircle } from "lucide-react";
 
 import Reveal from "@/components/Reveal";
+import LandingAmbientOrbit from "@/components/LandingAmbientOrbit";
 import { useWebsiteContent } from "@/components/WebsiteContentProvider";
 import { whatsappHref } from "@/lib/websiteContent";
 
@@ -19,8 +20,9 @@ export default function FaqSection() {
   const consultationUrl = settings.whatsapp_enabled ? whatsappHref(settings.whatsapp_number, settings.whatsapp_default_message) : null;
 
   return (
-    <section className="bg-[#F7F1E8] py-20 sm:py-24 lg:py-28">
-      <div className="mx-auto max-w-[1100px] px-5 sm:px-8">
+    <section className="relative overflow-hidden bg-[#F7F1E8] py-20 sm:py-24 lg:py-28">
+      <LandingAmbientOrbit variant="spark" color="#147D7E" style={{ width: 238, height: 238, bottom: 10, right: 18, opacity: 0.84 }} />
+      <div className="relative mx-auto max-w-[1100px] px-5 sm:px-8">
         <Reveal width="100%">
           <div className="mx-auto max-w-3xl text-center">
             <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-orange-700">{cms?.eyebrow || "Sebelum kamu memesan"}</p>

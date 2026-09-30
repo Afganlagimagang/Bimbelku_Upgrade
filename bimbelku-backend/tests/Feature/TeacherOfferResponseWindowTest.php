@@ -290,7 +290,7 @@ class TeacherOfferResponseWindowTest extends TestCase
             'latitude' => $mode === 'offline' ? -7.795580 : null,
             'longitude' => $mode === 'offline' ? 110.369490 : null,
             'status' => 'matching',
-            'search_radius_km' => $mode === 'offline' ? 3 : 12,
+            'search_radius_km' => $mode === 'offline' ? 3 : null,
             'search_started_at' => now(),
             'search_expires_at' => now()->addHours(48),
         ]);

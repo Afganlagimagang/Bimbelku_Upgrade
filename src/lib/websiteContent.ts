@@ -96,6 +96,9 @@ export type WebsiteTestimonial = {
   photo_url: string | null;
   rating: number | null;
   is_verified: boolean;
+  consent_at: string | null;
+  verified_at: string | null;
+  verified_by_name: string | null;
   is_featured: boolean;
   is_visible: boolean;
   sort_order: number;
@@ -166,9 +169,9 @@ export const defaultWebsiteContent: WebsiteContentPayload = {
       id: 0,
       section_key: "hero",
       label: "Hero",
-      eyebrow: "Bimbingan belajar SD–SMA di Yogyakarta",
-      title: "Belajar lebih pas, mulai dari tutor yang tepat.",
-      description: "Pilih mata pelajaran, materi, jadwal, dan mode belajar. Harga terlihat sejak awal, lalu matching dimulai setelah pembayaran terverifikasi.",
+      eyebrow: "Bimbel privat SD–SMA di Yogyakarta",
+      title: "Bimbel privat yang dimulai dari kebutuhan belajar anak.",
+      description: "Pilih mata pelajaran, Bab, jadwal, serta mode online atau tatap muka. Harga terlihat sejak awal, lalu pencarian tutor dimulai setelah pembayaran terverifikasi.",
       content: {
         secondary_cta_label: "Konsultasi WhatsApp",
         trust_points: ["Harga terlihat sebelum membayar", "Tutor diperiksa admin", "Progress tercatat"],
@@ -348,4 +351,18 @@ export const whatsappHref = (
   if (normalized.length < 8) return null;
   const query = message?.trim() ? `?text=${encodeURIComponent(message.trim())}` : "";
   return `https://wa.me/${normalized}${query}`;
+};
+
+export const whatsappMessageForPath = (pathname: string, fallback?: string | null) => {
+  if (pathname.startsWith("/program/")) {
+    const program = decodeURIComponent(pathname.split("/").filter(Boolean).at(-1) || "program ini").replace(/-/g, " ");
+    return `Halo BimbelKu, saya ingin bertanya tentang program ${program}.`;
+  }
+  if (pathname === "/program") return "Halo BimbelKu, saya ingin dibantu memilih program belajar.";
+  if (pathname === "/cara-belajar/privat-tatap-muka") return "Halo BimbelKu, saya ingin mengecek area layanan privat tatap muka.";
+  if (pathname === "/cara-belajar/privat-online") return "Halo BimbelKu, saya ingin berkonsultasi tentang kelas privat online.";
+  if (pathname === "/jadi-tutor") return "Halo BimbelKu, saya ingin bertanya tentang proses pendaftaran tutor.";
+  if (pathname === "/tutor") return "Halo BimbelKu, saya ingin dibantu memilih tutor yang sesuai.";
+  if (pathname.startsWith("/cara-belajar/")) return "Halo BimbelKu, saya ingin bertanya tentang alur belajar dan pemesanan.";
+  return fallback?.trim() || "Halo BimbelKu, saya ingin berkonsultasi mengenai kebutuhan belajar.";
 };

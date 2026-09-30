@@ -22,6 +22,7 @@ import {
 import axios from "axios";
 
 import OrderProgress from "@/components/OrderProgress";
+import PrivateClassJoinOwner from "@/components/PrivateClassJoinOwner";
 import { useConfirmDialog } from "@/components/ConfirmDialogProvider";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import http, { getApiError, getCached } from "@/lib/http";
@@ -34,6 +35,7 @@ type PackageData = {
   status: string;
   plan?: { name?: string; validity_days?: number } | null;
   total_sessions: number;
+  participant_count?: number;
   used_sessions: number;
   remaining_sessions: number;
   duration_hours: number;
@@ -228,9 +230,9 @@ export default function PackageProcessList({ scope }: { scope: PackageScope }) {
 
   const cancel = async (item: PackageData) => {
     const approved = await confirm({
-      title: "Hentikan pencarian tutor?",
-      description: "Penawaran tutor akan dihentikan dan pengembalian dana masuk antrean pemeriksaan admin.",
-      confirmText: "Hentikan & ajukan refund",
+      title: "Batalkan seluruh paket belajar?",
+      description: "Pencarian dan penerimaan tutor untuk semua mapel akan dibatalkan. Jika paket sudah dibayar, pengembalian dana penuh akan diproses dan statusnya dapat dipantau di akun.",
+      confirmText: "Batalkan seluruh paket",
       tone: "danger",
     });
     if (!approved) return;
@@ -378,6 +380,10 @@ export default function PackageProcessList({ scope }: { scope: PackageScope }) {
               const canRetry = retryableSubjects.length > 0;
               const canChangeSchedule = subjects.some((subject) => subject.status === "no_teacher" && subject.matching?.can_change_schedule);
               const retryLabel = retryableSubjects.length === 1 ? (retryableSubjects[0].matching?.retry_label || "Cari Lagi") : "Cari Lagi";
+              const readySubjects = subjects.filter((subject) => subject.status === "accepted" && subject.teacher);
+              const waitingSubjects = subjects.filter((subject) => subject.status !== "accepted");
+              const hasPartialTutorMatch = subjects.length > 1 && canCancelSearch && readySubjects.length > 0 && waitingSubjects.length > 0;
+              const missingSubjects = waitingSubjects.filter((subject) => subject.status === "no_teacher");
               const renewalSubject = item.can_renew ? subjects.find((subject) => Boolean(subject.teacher)) : undefined;
               const isCollapsed = scope === "history" && !expandedHistory.has(item.id);
               return (
@@ -399,7 +405,7 @@ export default function PackageProcessList({ scope }: { scope: PackageScope }) {
                     <div className="flex w-full flex-wrap gap-2 sm:w-auto">
                       {canRetry && (
                         <button type="button" disabled={processing === item.id} onClick={() => retry(item.id)} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-black text-white disabled:opacity-50 sm:flex-none">
-                          {processing === item.id ? <Loader2 className="animate-spin" size={17} /> : <Search size={17} />} {retryLabel}
+                          {processing === item.id ? <Loader2 className="animate-spin" size={17} /> : <Search size={17} />} Cari lagi{retryLabel.startsWith("Perluas") ? ` · ${retryLabel.toLowerCase()}` : ""}
                         </button>
                       )}
                       {needsPayment && (
@@ -436,6 +442,22 @@ export default function PackageProcessList({ scope }: { scope: PackageScope }) {
                       {scope === "history" && renewalSubject && <Link to={`/student/packages/new?renew=${item.id}&subject=${renewalSubject.id}`} className="inline-flex min-h-10 flex-1 items-center justify-center rounded-xl bg-indigo-600 px-3 py-2 text-xs font-black text-white hover:bg-indigo-700 sm:flex-none">Perpanjang dengan Tutor Ini</Link>}
                     </div>
                   </div>
+
+                  {hasPartialTutorMatch && (
+                    <div role="status" className="mx-4 mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950 sm:mx-6 sm:p-5">
+                      <p className="font-black">{readySubjects.length} tutor siap mengajar · {waitingSubjects.length} mapel masih menunggu tutor</p>
+                      <p className="mt-1">Siap: {readySubjects.map((subject) => `${subject.name} (${subject.teacher!.name})`).join(", ")}.</p>
+                      <p>Belum: {waitingSubjects.map((subject) => subject.name).join(", ")}.</p>
+                      <p className="mt-2 text-xs font-semibold leading-5 text-amber-900">Kelas baru aktif setelah tutor untuk semua mapel tersedia. Tutor yang sudah menerima tidak perlu dicari ulang.</p>
+                      {missingSubjects.length > 0 && (
+                        <p className="mt-2 text-xs font-semibold leading-5 text-amber-900">
+                          {canRetry ? "Untuk mapel yang belum mendapat tutor, pilih Cari lagi atau Ubah jadwal. Jika tidak ingin melanjutkan, Batalkan seluruh paket." : "Pencarian ulang pada jadwal ini sudah mencapai batas. Ubah jadwal mapel yang belum mendapat tutor atau batalkan seluruh paket."}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {item.status === "active" && Number(item.participant_count || 1) > 1 && <PrivateClassJoinOwner packageId={item.id} />}
 
                   <div className={isCollapsed ? "hidden" : "border-b border-slate-100 px-5 py-5 sm:px-6"}>
                     <OrderProgress status={item.status} />

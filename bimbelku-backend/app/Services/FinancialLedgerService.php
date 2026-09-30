@@ -149,6 +149,21 @@ class FinancialLedgerService
         );
     }
 
+    public function recordPayoutReversed(Payout $payout): FinancialJournal
+    {
+        return $this->record(
+            "payout:{$payout->id}:reversed",
+            'payout_reversed',
+            Payout::class,
+            $payout->id,
+            "Payout tutor {$payout->user_id} dikembalikan oleh bank",
+            [
+                ['account' => 'platform_cash', 'side' => 'debit', 'amount' => $payout->amount],
+                ['account' => 'tutor_payable', 'side' => 'credit', 'amount' => $payout->amount],
+            ]
+        );
+    }
+
     public function recordRefundPaid(Refund $refund): FinancialJournal
     {
         $refund->loadMissing('order');

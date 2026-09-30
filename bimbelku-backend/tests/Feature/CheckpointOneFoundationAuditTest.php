@@ -63,7 +63,7 @@ class CheckpointOneFoundationAuditTest extends TestCase
             ->assertJsonPath('message', 'Sesi tidak berlaku karena akun sedang tidak aktif.');
     }
 
-    public function test_secondary_admin_token_is_rejected_before_any_authenticated_feature_runs(): void
+    public function test_active_secondary_admin_token_can_use_authenticated_features(): void
     {
         User::factory()->create([
             'name' => 'Admin Utama',
@@ -80,11 +80,9 @@ class CheckpointOneFoundationAuditTest extends TestCase
         Sanctum::actingAs($secondary);
 
         $this->getJson('/api/user')
-            ->assertUnauthorized()
-            ->assertJsonPath(
-                'message',
-                'Sesi admin tidak berlaku. Project ini hanya menggunakan satu admin utama.'
-            );
+            ->assertOk()
+            ->assertJsonPath('email', 'admin-lama@example.com');
+        $this->getJson('/api/admin/accounts')->assertForbidden();
     }
 
     public function test_role_groups_cannot_be_crossed(): void

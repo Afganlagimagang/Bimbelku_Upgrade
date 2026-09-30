@@ -5,7 +5,6 @@ import {
   BookOpenCheck,
   CalendarPlus,
   Check,
-  ChevronDown,
   Clock3,
   FileCheck2,
   HelpCircle,
@@ -21,7 +20,10 @@ import {
   X,
 } from "lucide-react";
 
-import StudentLayout from "@/components/StudentLayout";
+import PackageBuilderShell from "@/components/PackageBuilderShell";
+import GuestOrderIdentity, { type GuestLocation } from "@/components/GuestOrderIdentity";
+import PrivateParticipantsPicker from "@/components/PrivateParticipantsPicker";
+import { emptyParticipantDetail, type PrivateParticipantDetail } from "@/lib/privateParticipants";
 import SubjectCombobox, { SubjectOption } from "@/components/SubjectCombobox";
 import { ResponsiveSelect } from "@/components/ResponsiveSelect";
 import { EDUCATION_LEVELS, GRADES_BY_EDUCATION_LEVEL } from "@/lib/educationCatalog";
@@ -35,6 +37,7 @@ type Plan = {
   validity_days: number;
   maximum_subjects: number;
 };
+type LearningProgram = { id: number; name: string; education_level: string; grade: string | null; subjects: Array<{ id: number; name: string }> };
 type TimeSlot = { id: number; start_time: string; label?: string | null };
 type BookingRules = {
   booking_lead_hours: number;
@@ -62,6 +65,7 @@ type Voucher = {
   promotion?: { id: number; title: string; discount_type: "percentage" | "fixed"; discount_value: number; ends_at?: string | null } | null;
 };
 type DurationHours = 1 | 2;
+type LearningPath = "program" | "subject";
 type DraftSubject = {
   key: string;
   curriculum_subject_id: number | "";
@@ -82,6 +86,8 @@ type Quote = {
   total_learning_hours: number;
   subtotal_amount: number;
   discount_amount: number;
+  group_discount_amount?: number;
+  participant_count?: number;
   total_amount: number;
   promotion?: { title: string } | null;
 };
@@ -104,6 +110,8 @@ type RenewalMaterialBaseline = {
 };
 type SavedDraft = {
   saved_at: string;
+  learning_path?: LearningPath;
+  learning_program_id?: number | null;
   plan_id: number | "";
   level: string;
   grade: string;
@@ -112,6 +120,9 @@ type SavedDraft = {
   subjects: DraftSubject[];
   promo_code: string;
   voucher_id: number | "";
+  participant_count?: number;
+  purchaser_participates?: boolean;
+  participant_details?: PrivateParticipantDetail[];
 };
 
 const DRAFT_KEY = "bimbelku.package-builder.stage-6a";
@@ -247,16 +258,12 @@ const rebalance = (items: DraftSubject[], total: number) => {
 
 function PackageBuilderIntro({ renewal }: { renewal: boolean }) {
   return (
-    <>
-      <section className="min-h-44 min-w-0 overflow-hidden rounded-[1.5rem] bg-gradient-to-br from-slate-950 via-indigo-950 to-blue-900 p-5 text-white sm:rounded-[2rem] sm:p-8">
-        <p className="text-xs font-black uppercase tracking-[.2em] text-indigo-100">{renewal ? "Tutor lama diprioritaskan" : "Langkah 1"}</p>
-        <h1 className="mt-3 break-words text-2xl font-black sm:text-3xl">Susun paket belajarmu</h1>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-indigo-50/90">{renewal ? "Lanjutkan dengan tutor yang sama. Materi lama tetap tersimpan sebagai riwayat; pilih materi yang belum selesai atau materi lanjutan untuk paket baru." : "Pilih jumlah sesi, durasi pertemuan, hari, dan jam mulai. Periksa ringkasan, bayar, lalu sistem mencari tutor."}</p>
-      </section>
-    </>
+    <header className="min-w-0 border-b border-slate-200 pb-5">
+      <h1 className="text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">{renewal ? "Lanjutkan paket belajarmu" : "Susun paket belajarmu"}</h1>
+      <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{renewal ? "Materi sebelumnya tersimpan. Pilih materi lanjutan dan jadwal paket baru." : "Pilih kebutuhan dan jadwalmu. Periksa biaya sebelum membayar; tutor dicari setelah pembayaran terkonfirmasi."}</p>
+    </header>
   );
 }
-
 function PackageBuilderSkeleton() {
   return (
     <div role="status" aria-live="polite" aria-label="Memuat formulir paket belajar" className="space-y-5 sm:space-y-6">
@@ -282,12 +289,20 @@ function PackageBuilderSkeleton() {
 
 export default function PackageBuilder() {
   const navigate = useNavigate();
+  const isGuest = !localStorage.getItem("token");
   const [searchParams] = useSearchParams();
   const renewalId = Number(searchParams.get("renew") || 0) || undefined;
   const renewalSubjectId = Number(searchParams.get("subject") || 0) || undefined;
+  const requestedLearningProgramId = Number(searchParams.get("learning_program") || 0) || undefined;
   const requestedSubjectName = (searchParams.get("subject_name") || "").trim();
   const requestedEducationLevel = (searchParams.get("education_level") || "").trim();
+  const requestedLearningMode = searchParams.get("mode") === "online" ? "online" : searchParams.get("mode") === "offline" ? "offline" : "";
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [learningPath, setLearningPath] = useState<LearningPath | "">(
+    renewalId || requestedSubjectName ? "subject" : requestedLearningProgramId ? "program" : "",
+  );
+  const [learningProgram, setLearningProgram] = useState<LearningProgram | null>(null);
+  const [learningPrograms, setLearningPrograms] = useState<LearningProgram[]>([]);
   const [catalog, setCatalog] = useState<SubjectOption[]>([]);
   const [materialCatalogs, setMaterialCatalogs] = useState<Record<number, MaterialCatalog>>({});
   const [materialsLoading, setMaterialsLoading] = useState<Record<number, boolean>>({});
@@ -304,17 +319,28 @@ export default function PackageBuilder() {
   const [planId, setPlanId] = useState<number | "">("");
   const [level, setLevel] = useState("");
   const [grade, setGrade] = useState("");
-  const [mode, setMode] = useState<"" | "online" | "offline">("");
+  const [mode, setMode] = useState<"" | "online" | "offline">(requestedLearningMode);
   const [durationHours, setDurationHours] = useState<DurationHours | "">("");
   const [subjects, setSubjects] = useState<DraftSubject[]>([createSubject(0)]);
   const [promoCode, setPromoCode] = useState("");
   const [voucherId, setVoucherId] = useState<number | "">("");
+  const [participantCount, setParticipantCount] = useState(1);
+  const [purchaserParticipates, setPurchaserParticipates] = useState(true);
+  const [participantDetails, setParticipantDetails] = useState<PrivateParticipantDetail[]>([]);
+  const [multiParticipantReady, setMultiParticipantReady] = useState(false);
+  const [maximumParticipants, setMaximumParticipants] = useState(8);
+  const [participantDiscounts, setParticipantDiscounts] = useState<Record<string, number>>({});
   const [quote, setQuote] = useState<Quote | null>(null);
   const [promoError, setPromoError] = useState<string | null>(null);
   const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(null);
+  const [guestName, setGuestName] = useState("");
+  const [guestEmail, setGuestEmail] = useState("");
+  const [guestPhone, setGuestPhone] = useState("");
+  const [guestLocation, setGuestLocation] = useState<GuestLocation>({ address: "", maps_link: "", latitude: null, longitude: null, location_consent: false });
   const [scheduleRecommendations, setScheduleRecommendations] = useState<Record<string, ScheduleRecommendationResponse>>({});
   const [recommendationLoading, setRecommendationLoading] = useState<Record<string, boolean>>({});
   const [summaryOpen, setSummaryOpen] = useState(false);
+  const [step, setStep] = useState(0);
   const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
   const [draftRestored, setDraftRestored] = useState(false);
   const [pendingDraft, setPendingDraft] = useState<SavedDraft | null>(null);
@@ -327,7 +353,24 @@ export default function PackageBuilder() {
   const [tutorialStatusLoaded, setTutorialStatusLoaded] = useState(false);
   const multiSubjectGuideOpened = useRef(false);
   const quoteRequestIdRef = useRef(0);
-  const draftStorageKey = useMemo(draftKeyForCurrentUser, []);
+  const draftStorageKey = useMemo(() => {
+    const base = draftKeyForCurrentUser();
+    return base && requestedLearningProgramId ? `${base}.program.${requestedLearningProgramId}` : base;
+  }, [requestedLearningProgramId]);
+
+  useEffect(() => {
+    void import("@/lib/http").then(({ getCached }) => getCached<{ multi_participant_ready: boolean; maximum_participants: number; tiers?: Record<string, { discount_percent?: number | null }> }>("/private-participant-pricing", { maxAgeMs: 60_000 })
+      .then(({ data }) => {
+        setMultiParticipantReady(Boolean(data.multi_participant_ready));
+        setMaximumParticipants(Math.max(2, Number(data.maximum_participants || 8)));
+        setParticipantDiscounts(Object.fromEntries(Object.entries(data.tiers || {}).map(([count, tier]) => [count, Number(tier?.discount_percent || 0)])));
+      })
+      .catch(() => {
+        setMultiParticipantReady(false);
+        setMaximumParticipants(8);
+        setParticipantDiscounts({});
+      }));
+  }, []);
 
   const plan = plans.find((item) => item.id === planId);
   const weekdayLimit = maxWeekdaysForSessions(Number(plan?.session_count || 0));
@@ -366,38 +409,54 @@ export default function PackageBuilder() {
     [catalog, grade, level],
   );
   const subjectsForPicker = (item: DraftSubject) => availableSubjects.filter((subject) =>
-    !subjects.some((other) => other.key !== item.key && other.curriculum_subject_id === subject.id),
+    (!learningProgram || learningProgram.subjects.some((allowed) => allowed.id === subject.id))
+    && !subjects.some((other) => other.key !== item.key && other.curriculum_subject_id === subject.id),
   );
+  const selectedLocation = isGuest ? guestLocation : studentProfile;
+  const expectedParticipantDetails = Math.max(0, participantCount - (purchaserParticipates ? 1 : 0));
+  const participantDetailsValid = participantDetails.slice(0, expectedParticipantDetails).length === expectedParticipantDetails
+    && participantDetails.slice(0, expectedParticipantDetails).every((detail) => detail.full_name.trim().length >= 2
+      && detail.nickname.trim().length >= 1
+      && Boolean(detail.birth_date)
+      && (detail.gender === "male" || detail.gender === "female"));
   const hasOfflineLocation = Boolean(
-    studentProfile?.address?.trim()
-    && studentProfile?.latitude !== null
-    && studentProfile?.latitude !== undefined
-    && String(studentProfile.latitude).trim() !== ""
-    && Number.isFinite(Number(studentProfile.latitude))
-    && studentProfile?.longitude !== null
-    && studentProfile?.longitude !== undefined
-    && String(studentProfile.longitude).trim() !== ""
-    && Number.isFinite(Number(studentProfile.longitude)),
+    selectedLocation?.address?.trim()
+    && selectedLocation?.latitude !== null
+    && selectedLocation?.latitude !== undefined
+    && String(selectedLocation.latitude).trim() !== ""
+    && Number.isFinite(Number(selectedLocation.latitude))
+    && selectedLocation?.longitude !== null
+    && selectedLocation?.longitude !== undefined
+    && String(selectedLocation.longitude).trim() !== ""
+    && Number.isFinite(Number(selectedLocation.longitude)),
   );
   const draftValid = Boolean(
-    plan
+    learningPath
+    && (learningPath === "subject" || learningProgram)
+    && plan
     && level
     && grade
     && durationHours
+    && (participantCount === 1 || multiParticipantReady) && participantDetailsValid
     && availableTimeSlots.length
     && selectedSessions === plan.session_count
+    && (!learningProgram || (level === learningProgram.education_level
+      && (!learningProgram.grade || grade === learningProgram.grade)
+      && subjects.length <= learningProgram.subjects.length
+      && selectedSubjectIds.every((selected) => learningProgram.subjects.some((allowed) => allowed.id === selected))))
     && subjectsAreUnique
     && schedulesDoNotOverlap
     && scheduleRangeDays <= plan.validity_days
     && (mode === "online" || hasOfflineLocation)
+    && (!isGuest || (guestName.trim().length >= 2 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail.trim()) && guestPhone.trim().length >= 8 && (mode !== "offline" || guestLocation.location_consent)))
     && packageWeekdays.size <= weekdayLimit
     && subjects.every((item) => item.curriculum_subject_id
       && item.subject_name
-      && item.curriculum_chapter_ids.length > 0
+      && (learningProgram || item.curriculum_chapter_ids.length > 0)
       && item.weekdays.length > 0
       && item.weekdays.length <= weekdayLimit
       && item.schedules.length === item.session_count
-      && item.schedules.every(Boolean)
+      && item.schedules.every((schedule) => availableTimeSlots.some((slot) => slot.start_time.slice(0, 5) === schedule.slice(11, 16)))
       && availableTimeSlots.some((slot) => slot.start_time.slice(0, 5) === item.schedule_time)),
   );
 
@@ -441,12 +500,13 @@ export default function PackageBuilder() {
       setTutorialStatusLoaded(false);
       try {
         const { default: http, getCached } = await import("@/lib/http");
-        const [plansResponse, catalogResponse, slotsResponse, rulesResponse, renewalResponse] = await Promise.all([
+        const [plansResponse, catalogResponse, slotsResponse, rulesResponse, renewalResponse, productsResponse] = await Promise.all([
           getCached<Plan[]>("/package-plans", { maxAgeMs: 5 * 60_000 }),
           getCached<{ subject_options: SubjectOption[] }>("/learning-catalog", { params: { compact: 1 }, maxAgeMs: 5 * 60_000 }),
           getCached<TimeSlot[]>("/learning-time-slots", { maxAgeMs: 5 * 60_000 }),
           getCached<BookingRules>("/package-booking-rules", { maxAgeMs: 5 * 60_000 }),
           renewalId ? http.get(`/student/packages/${renewalId}`) : Promise.resolve(null),
+          getCached<LearningProgram[]>("/learning-programs", { maxAgeMs: 60_000 }),
         ]);
         if (!active) return;
 
@@ -524,6 +584,17 @@ export default function PackageBuilder() {
             setRenewalBaselines(nextBaselines);
           }
         } else {
+          setLearningPrograms(productsResponse.data);
+          const requestedProgram = productsResponse.data.find((item) => item.id === requestedLearningProgramId);
+          if (requestedLearningProgramId && !requestedProgram) throw new Error("Program tidak tersedia.");
+          if (requestedProgram) {
+            setLearningPath("program");
+            setLearningProgram(requestedProgram);
+            setLevel(requestedProgram.education_level);
+            setGrade(requestedProgram.grade || "");
+            setSubjects([createSubject(0)]);
+          } else {
+          setLearningProgram(null);
           if (["SD", "SMP", "SMA"].includes(requestedEducationLevel)) {
             setLevel(requestedEducationLevel);
           }
@@ -531,18 +602,22 @@ export default function PackageBuilder() {
             (item) => item.name.trim().toLocaleLowerCase("id-ID") === requestedSubjectName.toLocaleLowerCase("id-ID"),
           );
           if (requestedSubject) {
+            setLearningPath("subject");
             setSubjects([{
               ...createSubject(0),
               curriculum_subject_id: requestedSubject.id,
               subject_name: requestedSubject.name,
             }]);
           }
+          }
           try {
             const raw = draftStorageKey ? localStorage.getItem(draftStorageKey) : null;
             const saved = raw ? JSON.parse(raw) as SavedDraft : null;
             const savedPlan = plansResponse.data.find((item) => item.id === saved?.plan_id);
-            if (saved && savedPlan && saved.subjects.length && saved.subjects.length <= savedPlan.maximum_subjects) {
+            if (!requestedProgram && saved && savedPlan && saved.subjects.length && saved.subjects.length <= savedPlan.maximum_subjects
+              && (!saved.learning_program_id || productsResponse.data.some((item) => item.id === saved.learning_program_id))) {
               setPendingDraft(saved);
+              if (!requestedSubjectName) setLearningPath(saved.learning_program_id ? "program" : saved.learning_path || "subject");
             }
           } catch {
             if (draftStorageKey) localStorage.removeItem(draftStorageKey);
@@ -550,7 +625,7 @@ export default function PackageBuilder() {
         }
 
         setLoading(false);
-        void loadSecondaryData();
+        if (!isGuest) void loadSecondaryData();
       } catch (err: unknown) {
         if (!active) return;
         const response = (err as { response?: { status?: number } } | null)?.response;
@@ -567,10 +642,11 @@ export default function PackageBuilder() {
     return () => {
       active = false;
     };
-  }, [draftStorageKey, renewalId, renewalSubjectId, requestedEducationLevel, requestedSubjectName, retryKey]);
+  }, [draftStorageKey, isGuest, renewalId, renewalSubjectId, requestedEducationLevel, requestedSubjectName, requestedLearningProgramId, retryKey]);
 
   const handleRetry = () => { setLoadError(null); setLoading(true); setRetryKey((k) => k + 1); };
   const openLocationSetup = () => {
+    if (isGuest) { document.getElementById("guest-location")?.scrollIntoView({ behavior: "smooth", block: "center" }); return; }
     const returnTo = `${window.location.pathname}${window.location.search}`;
     navigate(`/student/profile?section=location&returnTo=${encodeURIComponent(returnTo)}`);
   };
@@ -623,6 +699,8 @@ export default function PackageBuilder() {
       const savedAt = new Date().toISOString();
       const draft: SavedDraft = {
         saved_at: savedAt,
+        learning_path: learningPath || undefined,
+        learning_program_id: learningProgram?.id,
         plan_id: planId,
         level,
         grade,
@@ -631,17 +709,21 @@ export default function PackageBuilder() {
         subjects,
         promo_code: promoCode,
         voucher_id: voucherId,
+        participant_count: participantCount,
+        purchaser_participates: purchaserParticipates,
+        participant_details: participantDetails,
       };
       try {
         if (!draftStorageKey) return;
         localStorage.setItem(draftStorageKey, JSON.stringify(draft));
         setDraftSavedAt(savedAt);
+        setPendingDraft(null);
       } catch {
         // Form tetap dapat digunakan saat penyimpanan lokal tidak tersedia.
       }
     }, 600);
     return () => window.clearTimeout(timer);
-  }, [draftStorageKey, durationHours, effectiveDurationHours, grade, level, loading, mode, planId, promoCode, renewalId, subjects, voucherId]);
+  }, [draftStorageKey, durationHours, effectiveDurationHours, grade, level, learningPath, learningProgram, loading, mode, planId, promoCode, purchaserParticipates, renewalId, subjects, voucherId, participantCount, participantDetails]);
 
   const openMultiSubjectGuide = () => {
     window.dispatchEvent(new Event("bimbelku:open-tutorial"));
@@ -687,13 +769,14 @@ export default function PackageBuilder() {
       setQuoting(true);
       const { default: http, getApiError } = await import("@/lib/http");
       try {
-        const response = await http.post<Quote>("/student/packages/quote", {
+        const response = await http.post<Quote>(isGuest ? "/guest/packages/quote" : "/student/packages/quote", {
           package_plan_id: planId,
           education_level: level,
           learning_mode: mode,
           duration_hours: durationHours,
-          code: promoCode.trim() || undefined,
-          promotion_claim_id: voucherId || undefined,
+          participant_count: participantCount,
+          code: isGuest ? undefined : promoCode.trim() || undefined,
+          promotion_claim_id: isGuest ? undefined : voucherId || undefined,
           subjects: subjects.map((item) => ({
             curriculum_subject_id: item.curriculum_subject_id,
             session_count: item.session_count,
@@ -728,7 +811,7 @@ export default function PackageBuilder() {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [draftValid, durationHours, effectiveDurationHours, level, mode, planId, promoCode, subjects, voucherId]);
+  }, [draftValid, durationHours, effectiveDurationHours, isGuest, level, mode, planId, promoCode, subjects, voucherId, participantCount]);
 
   const changeDuration = (nextDuration: DurationHours) => {
     if (nextDuration === durationHours) return;
@@ -758,6 +841,25 @@ export default function PackageBuilder() {
         subject_name: first.subject_name,
       }];
     });
+    setQuote(null);
+  };
+  const chooseLearningPath = (next: LearningPath) => {
+    if (learningPath === next) return;
+    setLearningPath(next);
+    setLearningProgram(null);
+    setLevel("");
+    setGrade("");
+    setSubjects([createSubject(plan?.session_count || 0)]);
+    setMaterialCatalogs({});
+    setQuote(null);
+    setStep(0);
+  };
+  const chooseLearningProgram = (programId: string) => {
+    const next = learningPrograms.find((item) => item.id === Number(programId)) || null;
+    if (next && (next.education_level !== level || (next.grade && next.grade !== grade))) return;
+    setLearningProgram(next);
+    setSubjects([createSubject(plan?.session_count || 0)]);
+    setMaterialCatalogs({});
     setQuote(null);
   };
   const updateSubject = (key: string, patch: Partial<DraftSubject>) => {
@@ -822,11 +924,12 @@ export default function PackageBuilder() {
     setSubjects((current) => rebalance(current, plan.session_count));
   };
   const addSubject = () => {
-    if (!plan || subjects.length >= plan.maximum_subjects) return;
+    if (!plan || subjects.length >= plan.maximum_subjects || subjects.length >= plan.session_count
+      || (learningProgram && subjects.length >= learningProgram.subjects.length)) return;
     setSubjects((current) => rebalance([...current, createSubject(1, defaultSlotTime, current.length)], plan.session_count));
   };
   const removeSubject = (key: string) => {
-    if (!plan) return;
+    if (!plan || subjects.length <= 1) return;
     setSubjects((current) => rebalance(current.filter((item) => item.key !== key), plan.session_count));
   };
   const adjustAllocation = (key: string, delta: -1 | 1) => {
@@ -852,6 +955,8 @@ export default function PackageBuilder() {
       // Form tetap dapat direset pada state halaman.
     }
     setPlanId("");
+    setLearningPath(renewalId ? "subject" : "");
+    setLearningProgram(null);
     setSubjects([createSubject(0)]);
     setLevel("");
     setGrade("");
@@ -877,6 +982,9 @@ export default function PackageBuilder() {
     const restoredDuration = normalizeDurationHours(pendingDraft.duration_hours);
     const restoredDefaultTime = preferredSlotTime(timeSlots, restoredDuration);
     setPlanId(pendingDraft.plan_id);
+    const restoredProgram = learningPrograms.find((item) => item.id === pendingDraft.learning_program_id) || null;
+    setLearningPath(restoredProgram ? "program" : pendingDraft.learning_path || "subject");
+    setLearningProgram(restoredProgram);
     setLevel(pendingDraft.level);
     setGrade(pendingDraft.grade);
     setMode(pendingDraft.mode);
@@ -905,7 +1013,7 @@ export default function PackageBuilder() {
         && restored.schedules.every((schedule) => {
           const date = new Date(schedule);
           return Number.isFinite(date.getTime())
-            && schedule.slice(11, 16) === restoredTime
+            && timeSlots.some((slot) => slot.start_time.slice(0, 5) === schedule.slice(11, 16) && slotSupportsDuration(schedule.slice(11, 16), restoredDuration))
             && restored.weekdays.includes(isoWeekday(date));
         });
       return savedSchedulesAreValid
@@ -914,6 +1022,9 @@ export default function PackageBuilder() {
     }));
     setPromoCode(pendingDraft.promo_code || "");
     setVoucherId(pendingDraft.voucher_id || "");
+    setParticipantCount(multiParticipantReady && Number(pendingDraft.participant_count) >= 2 ? Math.min(maximumParticipants, Number(pendingDraft.participant_count)) : 1);
+    setPurchaserParticipates(pendingDraft.purchaser_participates !== false);
+    setParticipantDetails(Array.isArray(pendingDraft.participant_details) ? pendingDraft.participant_details : []);
     setDraftSavedAt(pendingDraft.saved_at);
     setDraftRestored(true);
     setPendingDraft(null);
@@ -927,18 +1038,35 @@ export default function PackageBuilder() {
     setSubmitting(true);
     const { default: http, getApiError } = await import("@/lib/http");
     try {
-      const response = await http.post("/student/packages", {
+      const response = await http.post(isGuest ? "/guest/packages" : "/student/packages", {
+        name: isGuest ? guestName.trim() : undefined,
+        email: isGuest ? guestEmail.trim().toLowerCase() : undefined,
+        phone: isGuest ? guestPhone.trim() : undefined,
+        address: isGuest && mode === "offline" ? guestLocation.address.trim() : undefined,
+        maps_link: isGuest && mode === "offline" ? guestLocation.maps_link : undefined,
+        latitude: isGuest && mode === "offline" ? guestLocation.latitude : undefined,
+        longitude: isGuest && mode === "offline" ? guestLocation.longitude : undefined,
+        location_consent: isGuest && mode === "offline" ? guestLocation.location_consent : undefined,
         package_plan_id: planId,
+        learning_program_id: learningProgram?.id,
         education_level: level,
         grade,
         learning_mode: mode,
         duration_hours: durationHours,
-        promotion_code: promoCode.trim() || undefined,
-        promotion_claim_id: voucherId || undefined,
+        participant_count: participantCount,
+        purchaser_participates: purchaserParticipates,
+        participant_details: participantDetails.slice(0, Math.max(0, participantCount - (purchaserParticipates ? 1 : 0))).map((detail) => ({
+          full_name: detail.full_name.trim(),
+          nickname: detail.nickname.trim(),
+          birth_date: detail.birth_date,
+          gender: detail.gender,
+        })),
+        promotion_code: isGuest ? undefined : promoCode.trim() || undefined,
+        promotion_claim_id: isGuest ? undefined : voucherId || undefined,
         renewal_of_id: renewalId,
         subjects: subjects.map((item) => ({
           curriculum_subject_id: item.curriculum_subject_id,
-          curriculum_chapter_ids: item.curriculum_chapter_ids,
+          curriculum_chapter_ids: learningProgram ? undefined : item.curriculum_chapter_ids,
           learning_goal: item.learning_goal || undefined,
           preferred_teacher_id: item.preferred_teacher_id,
           weekdays: item.weekdays,
@@ -946,6 +1074,10 @@ export default function PackageBuilder() {
         })),
       });
       notify.success(response.data.message);
+      if (isGuest) {
+        navigate("/pesanan/" + response.data.code, { replace: true, state: { email: guestEmail.trim().toLowerCase() } });
+        return;
+      }
       try {
         if (draftStorageKey) localStorage.removeItem(draftStorageKey);
       } catch {
@@ -979,59 +1111,105 @@ export default function PackageBuilder() {
   };
 
   const completedSteps = [
-    Boolean(plan),
-    subjects.every((item) => item.curriculum_subject_id && item.curriculum_chapter_ids.length > 0),
-    Boolean(plan && selectedSessions === plan.session_count),
-    packageWeekdays.size <= weekdayLimit && subjects.every((item) => item.weekdays.length > 0 && item.schedules.length === item.session_count && item.schedules.every(Boolean)) && schedulesDoNotOverlap,
+    Boolean(learningPath && plan && durationHours && level && grade && mode
+      && (!isGuest || (guestName.trim().length >= 2 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail.trim()) && guestPhone.trim().length >= 8))
+      && (participantCount === 1 || multiParticipantReady) && participantDetailsValid),
+    Boolean(plan && (learningPath === "subject" || learningProgram) && selectedSessions === plan.session_count && subjectsAreUnique
+      && subjects.every((item) => item.curriculum_subject_id && (learningProgram || item.curriculum_chapter_ids.length > 0))),
+    Boolean(draftValid),
     Boolean(draftValid && quote),
   ];
-  const firstIncomplete = completedSteps.findIndex((done) => !done);
-  const activeStepIndex = firstIncomplete === -1 ? 4 : Math.min(firstIncomplete, 4);
-
+  const planMissingItems: string[] = [];
+  if (!learningPath) planMissingItems.push("Pilih program/persiapan tes atau mata pelajaran");
+  if (step >= 1 && learningPath === "program" && !learningProgram) planMissingItems.push("Pilih program pada tahap mapel");
+  if (!plan) planMissingItems.push("Pilih paket belajar");
+  if (!durationHours || !level || !grade || !mode) planMissingItems.push("Lengkapi durasi, jenjang, kelas, dan metode");
+  if (isGuest && !(guestName.trim().length >= 2 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guestEmail.trim()) && guestPhone.trim().length >= 8)) planMissingItems.push("Lengkapi identitas pemesan");
+  if (!participantDetailsValid || (participantCount > 1 && !multiParticipantReady)) planMissingItems.push("Lengkapi data seluruh peserta");
+  if (!plan || selectedSessions !== plan.session_count || !subjectsAreUnique || subjects.some((item) => !item.curriculum_subject_id || (!learningProgram && item.curriculum_chapter_ids.length === 0))) planMissingItems.push(learningProgram ? "Pilih mapel program dan alokasi sesi" : "Pilih mapel, bab, dan alokasi sesi");
+  if (!draftValid) planMissingItems.push(mode === "offline" && !hasOfflineLocation ? "Lengkapi jadwal dan lokasi belajar" : "Lengkapi seluruh jadwal belajar");
+  const selectedSubjectSummary = subjects.map((item) => item.subject_name).filter(Boolean).join(", ");
+  const participantDiscountPercent = participantCount > 1 ? Number(participantDiscounts[String(participantCount)] || 0) : 0;
+  const activeStepIndex = step;
+  const moveStep = (next: number) => {
+    if (next > step && !completedSteps[step]) {
+      notify.error([!learningPath ? "Pilih jalur belajar terlebih dahulu." : "Lengkapi pilihan paket, jenjang, metode, dan peserta.", learningPath === "program" && !learningProgram ? "Pilih program pada tahap mapel terlebih dahulu." : learningProgram ? "Pilih mapel program dan alokasikan seluruh sesi." : "Pilih mapel, Bab, dan alokasikan seluruh sesi.", "Lengkapi jadwal dan lokasi belajar."][step] || "Lengkapi tahap ini dahulu.");
+      return;
+    }
+    setStep(Math.max(0, Math.min(3, next)));
+    const scrollRoot = document.getElementById("student-scroll-container");
+    if (scrollRoot) scrollRoot.scrollTo({ top: 0, behavior: "smooth" });
+    else window.scrollTo({ top: 0, behavior: "smooth" });
+  };
   if (loading) {
     return (
-      <StudentLayout title={renewalId ? "Perpanjang Paket" : "Pilih Paket Belajar"}>
-        <div className="mx-auto w-full min-w-0 max-w-6xl space-y-5 overflow-hidden pb-20 sm:space-y-6">
+      <PackageBuilderShell guest={isGuest} title={renewalId ? "Perpanjang Paket" : "Pilih Paket Belajar"}>
+        <div className="package-builder-form mx-auto w-full min-w-0 max-w-6xl space-y-5 pb-20 sm:space-y-6">
           <PackageBuilderIntro renewal={Boolean(renewalId)} />
           <PackageBuilderSkeleton />
         </div>
-      </StudentLayout>
+      </PackageBuilderShell>
     );
   }
 
   if (loadError) {
     return (
-      <StudentLayout title={renewalId ? "Perpanjang Paket" : "Pilih Paket Belajar"}>
-        <div className="mx-auto w-full min-w-0 max-w-6xl space-y-5 overflow-hidden pb-20 sm:space-y-6">
+      <PackageBuilderShell guest={isGuest} title={renewalId ? "Perpanjang Paket" : "Pilih Paket Belajar"}>
+        <div className="package-builder-form mx-auto w-full min-w-0 max-w-6xl space-y-5 pb-20 sm:space-y-6">
           <PackageBuilderIntro renewal={Boolean(renewalId)} />
           <div className="mx-auto max-w-xl py-10 sm:py-16">
             <ErrorState type={loadError} onRetry={handleRetry} />
           </div>
         </div>
-      </StudentLayout>
+      </PackageBuilderShell>
     );
   }
 
   return (
-    <StudentLayout title={renewalId ? "Perpanjang Paket" : "Pilih Paket Belajar"}>
-      <div className="mx-auto w-full min-w-0 max-w-6xl space-y-5 overflow-hidden pb-20 sm:space-y-6">
+    <PackageBuilderShell guest={isGuest} title={renewalId ? "Perpanjang Paket" : "Pilih Paket Belajar"}>
+      <div className="package-builder-form mx-auto w-full min-w-0 max-w-6xl space-y-5 pb-20 sm:space-y-6">
         <PackageBuilderIntro renewal={Boolean(renewalId)} />
-
-        <nav aria-label="Tahapan pemesanan" className="rounded-3xl border border-slate-100 bg-white p-3 shadow-sm">
-          <div className="sm:hidden">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-wider text-indigo-600">Langkah {activeStepIndex + 1} dari 5</p><p className="mt-1 text-sm font-black text-slate-900">{["Paket & sesi", "Mata pelajaran", "Pembagian sesi", "Jadwal", "Ringkasan"][activeStepIndex]}</p></div>
-              <span className="grid h-10 w-10 place-items-center rounded-2xl bg-indigo-600 text-sm font-black text-white">{activeStepIndex + 1}</span>
-            </div>
-            <div className="mt-3 grid grid-cols-5 gap-1.5" aria-hidden="true">{completedSteps.map((done, index) => <span key={index} className={`h-1.5 rounded-full ${index === activeStepIndex ? "bg-indigo-600" : done ? "bg-emerald-400" : "bg-slate-200"}`} />)}</div>
+        {!renewalId && <section aria-labelledby="learning-path-title" className="rounded-[1.75rem] border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+          <p className="text-[11px] font-black uppercase tracking-[.18em] text-orange-700">Mulai dari kebutuhanmu</p>
+          <h2 id="learning-path-title" className="mt-1 text-xl font-black text-slate-950">Mau belajar lewat jalur apa?</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-600">Untuk target ujian, pilih program. Untuk les biasa, langsung pilih mata pelajaran.</p>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <button type="button" aria-pressed={learningPath === "program"} disabled={!learningPrograms.length} onClick={() => chooseLearningPath("program")} className={`min-h-32 rounded-2xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${learningPath === "program" ? "border-orange-500 bg-orange-50 ring-2 ring-orange-100" : "border-slate-200 bg-white hover:border-orange-300 hover:bg-orange-50/50"}`}>
+              <span className="flex items-center justify-between gap-3"><Sparkles className="text-orange-600" size={22} />{learningPath === "program" && <Check className="text-orange-600" size={20} />}</span>
+              <span className="mt-3 block text-base font-black text-slate-900">Program / persiapan tes</span>
+              <span className="mt-1 block text-xs leading-5 text-slate-600">Contohnya TKA atau UTBK. Program dan mapelnya dipilih pada tahap kedua.</span>
+            </button>
+            <button type="button" aria-pressed={learningPath === "subject"} onClick={() => chooseLearningPath("subject")} className={`min-h-32 rounded-2xl border p-4 text-left transition ${learningPath === "subject" ? "border-indigo-600 bg-indigo-50 ring-2 ring-indigo-100" : "border-slate-200 bg-white hover:border-indigo-300 hover:bg-indigo-50/50"}`}>
+              <span className="flex items-center justify-between gap-3"><BookOpenCheck className="text-indigo-600" size={22} />{learningPath === "subject" && <Check className="text-indigo-600" size={20} />}</span>
+              <span className="mt-3 block text-base font-black text-slate-900">Mata pelajaran</span>
+              <span className="mt-1 block text-xs leading-5 text-slate-600">Pilih satu atau beberapa mapel sesuai kebutuhanmu, tanpa memilih program.</span>
+            </button>
           </div>
-          <ol className="hidden grid-cols-5 gap-2 sm:grid">
-            {["Paket & Sesi", "Mapel", "Pembagian Sesi", "Jadwal", "Ringkasan"].map((label, index) => (
-              <li key={label} className={`flex min-h-12 items-center gap-2 rounded-2xl px-3 text-xs font-black ${index === activeStepIndex ? "bg-indigo-600 text-white" : completedSteps[index] ? "bg-emerald-50 text-emerald-700" : "bg-slate-50 text-slate-500"}`}>
-                <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ${index === activeStepIndex ? "bg-white/20" : completedSteps[index] ? "bg-emerald-100" : "bg-white"}`}>{completedSteps[index] && index !== activeStepIndex ? <Check size={14} /> : index + 1}</span>
-                {label}
-              </li>
-            ))}
+        </section>}
+        {(Boolean(renewalId) || Boolean(learningPath)) && <>
+
+        <nav aria-label="Tahapan pemesanan" className="min-w-0 overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-sm">
+          <div className="flex min-w-0 flex-wrap items-end justify-between gap-3 border-b border-slate-100 bg-gradient-to-r from-orange-50 via-white to-indigo-50 px-4 py-4 sm:px-5">
+            <div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-[.18em] text-orange-700">Susun pesanan</p><h2 className="mt-1 break-words text-base font-black text-slate-950 sm:text-lg">Empat tahap, semua pilihan terlihat jelas.</h2></div>
+            <div className="shrink-0 text-right"><p className="text-xs font-black text-slate-900">Tahap {activeStepIndex + 1} dari 4</p><p className="mt-0.5 text-[10px] font-bold text-slate-500">{Math.round(((activeStepIndex + 1) / 4) * 100)}% posisi alur</p></div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-200" aria-hidden="true"><span className="block h-full rounded-full bg-gradient-to-r from-orange-500 to-indigo-600 transition-all" style={{ width: `${((activeStepIndex + 1) / 4) * 100}%` }} /></div>
+          </div>
+          <ol className="grid min-w-0 grid-cols-2 gap-2 p-3 sm:grid-cols-4 sm:p-4">
+            {[
+              { label: "Kebutuhan", detail: "Paket & peserta" },
+              { label: "Mapel", detail: learningPath === "program" ? "Program & sesi" : "Materi & sesi" },
+              { label: "Jadwal", detail: "Hari & lokasi" },
+              { label: "Konfirmasi", detail: "Harga akhir" },
+            ].map((item, index) => {
+              const active = index === activeStepIndex;
+              const done = completedSteps[index] && !active;
+              return <li key={item.label} className="min-w-0">
+                <button type="button" disabled={index > activeStepIndex} onClick={() => moveStep(index)} aria-current={active ? "step" : undefined} className={`flex min-h-[4.75rem] w-full min-w-0 items-start gap-3 rounded-2xl border p-3 text-left transition ${active ? "border-slate-950 bg-slate-950 text-white shadow-lg shadow-slate-200" : done ? "border-emerald-200 bg-emerald-50 text-emerald-900 hover:border-emerald-300" : "border-slate-200 bg-slate-50 text-slate-500"}`}>
+                  <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-xl text-xs font-black ${active ? "bg-orange-500 text-white" : done ? "bg-emerald-600 text-white" : "bg-white text-slate-500"}`}>{done ? <Check size={15} strokeWidth={3} /> : index + 1}</span>
+                  <span className="min-w-0"><span className="block break-words text-xs font-black sm:text-sm">{item.label}</span><span className={`mt-1 block break-words text-[10px] font-semibold leading-4 ${active ? "text-slate-300" : done ? "text-emerald-700" : "text-slate-400"}`}>{item.detail}</span></span>
+                </button>
+              </li>;
+            })}
           </ol>
         </nav>
 
@@ -1058,8 +1236,10 @@ export default function PackageBuilder() {
           </div>
         )}
 
-        <section>
-          <h2 className="mb-3 text-lg font-black text-slate-900">1. Pilih Paket Belajar</h2>
+        <div className={step < 3 ? "grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_320px]" : ""}>
+          <div className="min-w-0 space-y-5">
+        <section className={step === 0 ? "" : "hidden"}>
+          <h2 className="mb-3 text-lg font-black text-slate-900">Pilih Paket Belajar</h2>
           <div className="grid min-w-0 grid-cols-1 gap-3 min-[360px]:grid-cols-2 xl:grid-cols-4">
             {plans.map((item) => (
               <button
@@ -1081,11 +1261,14 @@ export default function PackageBuilder() {
           </div>
         </section>
 
-        <section data-tour="package-duration-picker" className="render-auto rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm sm:p-7">
+        {isGuest && <div hidden={step !== 0}><GuestOrderIdentity section="identity" name={guestName} email={guestEmail} phone={guestPhone} mode={mode} location={guestLocation} onIdentityChange={(field, value) => { if (field === "name") setGuestName(value); else if (field === "email") setGuestEmail(value); else setGuestPhone(value); }} onLocationChange={setGuestLocation} /></div>}
+        <div hidden={step !== 0}><PrivateParticipantsPicker count={participantCount} purchaserParticipates={purchaserParticipates} details={participantDetails} ready={multiParticipantReady && !renewalId} maximumParticipants={maximumParticipants} discounts={participantDiscounts} onCountChange={(count) => { setParticipantCount(count); const required = Math.max(0, count - (purchaserParticipates ? 1 : 0)); setParticipantDetails((current) => Array.from({ length: required }, (_, index) => current[index] || emptyParticipantDetail())); }} onPurchaserParticipatesChange={(value) => { setPurchaserParticipates(value); const required = Math.max(0, participantCount - (value ? 1 : 0)); setParticipantDetails((current) => Array.from({ length: required }, (_, index) => current[index] || emptyParticipantDetail())); }} onDetailChange={(index, patch) => setParticipantDetails((current) => { const next = Array.from({ length: expectedParticipantDetails }, (_, itemIndex) => current[itemIndex] || emptyParticipantDetail()); next[index] = { ...next[index], ...patch }; return next; })} /></div>
+
+        <section data-tour="package-duration-picker" className={step === 0 ? "render-auto rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm sm:p-7" : "hidden"}>
           <div className="flex min-w-0 items-start gap-3">
             <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-indigo-50 text-indigo-600"><Clock3 size={20} /></div>
             <div className="min-w-0">
-              <h2 className="break-words text-lg font-black text-slate-900">2. Durasi setiap pertemuan</h2>
+              <h2 className="break-words text-lg font-black text-slate-900">Durasi setiap pertemuan</h2>
               <p className="mt-1 text-sm leading-6 text-slate-500">Pilih lama belajar untuk setiap sesi dalam paket ini.</p>
             </div>
           </div>
@@ -1114,8 +1297,8 @@ export default function PackageBuilder() {
           <p className="mt-2 text-xs font-medium leading-5 text-slate-500">Jam mulai tetap memakai menit 00. Sistem otomatis menghitung jam selesai dan memeriksa benturan.</p>
         </section>
 
-        <section className="render-auto rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm sm:p-7">
-          <h2 className="text-lg font-black text-slate-900">3. Jenjang dan metode</h2>
+        <section className={step === 0 ? "render-auto rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm sm:p-7" : "hidden"}>
+          <h2 className="text-lg font-black text-slate-900">Jenjang dan metode</h2>
           <div className="mt-4 grid gap-4 md:grid-cols-3">
             <Field label="Jenjang">
               <ResponsiveSelect
@@ -1125,7 +1308,7 @@ export default function PackageBuilder() {
                 tone="emerald"
                 options={EDUCATION_LEVELS.map((item) => ({ value: item, label: item }))}
                 className={level ? "border-emerald-300 bg-emerald-50 text-emerald-800" : ""}
-                onValueChange={(next) => { setLevel(next); setGrade(""); setMaterialCatalogs({}); setSubjects((current) => current.map((item) => ({ ...item, curriculum_chapter_ids: [], chapter: "" }))); }}
+                onValueChange={(next) => { setLevel(next); setGrade(""); setLearningProgram(null); setMaterialCatalogs({}); setSubjects(learningPath === "program" ? [createSubject(plan?.session_count || 0)] : subjects.map((item) => ({ ...item, curriculum_chapter_ids: [], chapter: "" }))); setQuote(null); }}
               />
             </Field>
             <Field label={level === "Umum" ? "Tingkat" : "Kelas"}>
@@ -1137,7 +1320,7 @@ export default function PackageBuilder() {
                 disabled={!level}
                 options={(GRADES_BY_EDUCATION_LEVEL[level] || []).map((item) => ({ value: item, label: item }))}
                 className={grade ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "disabled:bg-slate-100"}
-                onValueChange={(next) => { setGrade(next); setMaterialCatalogs({}); setSubjects((current) => current.map((item) => ({ ...item, curriculum_chapter_ids: [], chapter: "" }))); }}
+                onValueChange={(next) => { setGrade(next); if (learningProgram?.grade && learningProgram.grade !== next) setLearningProgram(null); setMaterialCatalogs({}); setSubjects(learningPath === "program" ? [createSubject(plan?.session_count || 0)] : subjects.map((item) => ({ ...item, curriculum_chapter_ids: [], chapter: "" }))); setQuote(null); }}
               />
             </Field>
             <Field label="Metode belajar">
@@ -1153,7 +1336,7 @@ export default function PackageBuilder() {
             </Field>
           </div>
 
-          {mode === "offline" && (
+          {mode === "offline" && !isGuest && (
             <div className={`mt-5 rounded-2xl border p-4 sm:p-5 ${hasOfflineLocation ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
               <div className="flex min-w-0 items-start gap-3">
                 <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl ${hasOfflineLocation ? "bg-emerald-600 text-white" : "bg-amber-100 text-amber-700"}`}>
@@ -1165,7 +1348,7 @@ export default function PackageBuilder() {
                   </p>
                   <p className={`mt-1 break-words text-sm leading-6 ${hasOfflineLocation ? "text-emerald-700" : "text-amber-800"}`}>
                     {hasOfflineLocation
-                      ? studentProfile?.address
+                      ? selectedLocation?.address
                       : "Alamat dan titik lokasi diperlukan agar sistem dapat mencari tutor di sekitar kamu."}
                   </p>
                   <button
@@ -1181,10 +1364,18 @@ export default function PackageBuilder() {
           )}
         </section>
 
-        <section className="render-auto rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm sm:p-7">
+        <section className={step === 1 || step === 2 ? "render-auto rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm sm:p-7" : "hidden"}>
+          {step === 1 && learningPath === "program" && <div className="mb-6 rounded-2xl border border-orange-200 bg-orange-50/70 p-4">
+            <p className="text-sm font-black text-slate-900">Pilih program yang ingin diikuti</p>
+            <p className="mt-1 text-xs leading-5 text-slate-600">Pilihan menyesuaikan jenjang dan kelas dari tahap pertama. Setelah itu, pilih mapel program dan pembagian sesinya.</p>
+            <div className="mt-3"><ResponsiveSelect value={learningProgram?.id || ""} ariaLabel="Pilih program belajar" placeholder="Pilih program" disabled={!learningPrograms.some((item) => item.education_level === level && (!item.grade || item.grade === grade))} options={[{ value: "", label: "Pilih program" }, ...learningPrograms.filter((item) => item.education_level === level && (!item.grade || item.grade === grade)).map((item) => ({ value: item.id, label: item.name }))]} onValueChange={chooseLearningProgram} /></div>
+            {!learningPrograms.some((item) => item.education_level === level && (!item.grade || item.grade === grade)) && <p className="mt-2 text-xs font-semibold text-orange-800">Belum ada program untuk jenjang dan kelas ini. Kembali ke tahap pertama untuk memilih jenjang lain, atau pilih jalur Mata pelajaran.</p>}
+            {learningProgram && <p className="mt-3 text-xs leading-5 text-orange-900">{learningProgram.name} adalah satu pesanan. Satu tutor berbeda akan dicari untuk setiap mapel yang kamu pilih setelah pembayaran.</p>}
+          </div>}
+          {(learningPath !== "program" || Boolean(learningProgram)) ? <>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-black text-slate-900">4. Pilih mapel dan bagikan sesi</h2>
+              <h2 className="text-lg font-black text-slate-900">Pilih mapel dan bagikan sesi</h2>
               <p className={`mt-1 text-sm font-bold ${selectedSessions === plan?.session_count ? "text-emerald-700" : "text-orange-700"}`}>
                 Total: {selectedSessions} dari {plan?.session_count || 0} sesi
               </p>
@@ -1192,7 +1383,7 @@ export default function PackageBuilder() {
             <div className="flex w-full flex-wrap gap-2 sm:w-auto">
               <button type="button" onClick={openMultiSubjectGuide} className="inline-flex min-h-11 flex-1 items-center justify-center gap-1 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs font-black text-indigo-700 sm:flex-none"><HelpCircle size={14} /> Panduan 2+ mapel</button>
               {subjects.length > 1 && <button type="button" onClick={distribute} className="min-h-11 flex-1 rounded-xl bg-slate-100 px-3 py-2 text-xs font-black text-slate-700 sm:flex-none">Bagi merata</button>}
-              <button data-tour="package-add-subject" type="button" onClick={addSubject} disabled={!plan || subjects.length >= plan.maximum_subjects} className="inline-flex min-h-11 flex-1 items-center justify-center gap-1 rounded-xl bg-indigo-600 px-3 py-2 text-xs font-black text-white disabled:opacity-40 sm:flex-none">
+              <button data-tour="package-add-subject" type="button" onClick={addSubject} disabled={!plan || subjects.length >= plan.maximum_subjects || subjects.length >= plan.session_count || Boolean(learningProgram && subjects.length >= learningProgram.subjects.length)} className="inline-flex min-h-11 flex-1 items-center justify-center gap-1 rounded-xl bg-indigo-600 px-3 py-2 text-xs font-black text-white disabled:opacity-40 sm:flex-none">
                 <Plus size={14} /> Tambah mapel
               </button>
             </div>
@@ -1241,7 +1432,7 @@ export default function PackageBuilder() {
                 </div>
                 {subjects.length > 1 && <p className="mt-2 text-xs font-medium leading-5 text-slate-500">Tombol + memindahkan satu sesi dari mapel lain. Total paket selalu tetap {plan?.session_count} sesi.</p>}
                 <div className="mt-4 grid gap-4">
-                  <MaterialSelector
+                  {!learningProgram && <MaterialSelector
                     catalog={typeof item.curriculum_subject_id === "number" ? materialCatalogs[item.curriculum_subject_id] : undefined}
                     loading={typeof item.curriculum_subject_id === "number" && Boolean(materialsLoading[item.curriculum_subject_id])}
                     chapterIds={item.curriculum_chapter_ids}
@@ -1251,12 +1442,13 @@ export default function PackageBuilder() {
                       curriculum_chapter_ids: chapterIds,
                                         chapter: chapterLabel,
                     })}
-                  />
+                  />}
+                  {learningProgram && <p className="rounded-xl border border-indigo-100 bg-indigo-50 p-3 text-xs font-semibold leading-5 text-indigo-900">Bab tidak perlu dipilih untuk program ini. Tutor akan menyiapkan materi berdasarkan mapel dan target belajarmu.</p>}
                   <Field label="Target belajar atau kesulitan murid">
                     <input value={item.learning_goal} onChange={(event) => updateSubject(item.key, { learning_goal: event.target.value })} className="form-field" placeholder="Contoh: Mampu mengerjakan soal cerita pecahan" />
                   </Field>
                 </div>
-                <div className="mt-5 rounded-2xl border border-indigo-100 bg-white p-4">
+                <div className={step === 2 ? "mt-5 rounded-2xl border border-indigo-100 bg-white p-4" : "hidden"}>
                   <p className="mb-1 flex items-center gap-2 text-sm font-black text-slate-700"><CalendarPlus size={17} /> Atur pola jadwal sekali</p>
                   <p className="mb-3 text-xs font-semibold leading-5 text-slate-500">
                     Jadwal pertama dapat dimulai minimal {bookingLeadHours} jam dari sekarang. Setelah pembayaran manual diverifikasi, pencarian tutor berlangsung maksimal {bookingRules.maximum_search_hours} jam dan dihentikan {bookingRules.matching_cutoff_hours} jam sebelum kelas.
@@ -1280,7 +1472,8 @@ export default function PackageBuilder() {
                         {WEEKDAYS.map((day) => {
                           const active = item.weekdays.includes(day.value);
                           const limitReached = packageWeekdays.size >= weekdayLimit;
-                          const disabled = !active && !packageWeekdays.has(day.value) && limitReached;
+                          const replaceSingleDay = weekdayLimit === 1 && subjects.length === 1;
+                          const disabled = !active && !packageWeekdays.has(day.value) && limitReached && !replaceSingleDay;
                           return <button
                             key={day.value}
                             type="button"
@@ -1290,11 +1483,13 @@ export default function PackageBuilder() {
                               if (disabled) return;
                               const weekdays = active
                                 ? item.weekdays.filter((value) => value !== day.value)
-                                : [...item.weekdays, day.value].sort((a, b) => a - b);
-                              if (weekdays.length) updateSubject(item.key, { weekdays });
+                                : replaceSingleDay
+                                  ? [day.value]
+                                  : [...item.weekdays, day.value].sort((a, b) => a - b);
+                              updateSubject(item.key, { weekdays });
                             }}
                             className={`min-h-11 rounded-xl border px-2 text-xs font-black transition ${active ? "border-indigo-600 bg-indigo-600 text-white" : disabled ? "cursor-not-allowed border-slate-100 bg-slate-100 text-slate-300" : "border-slate-200 bg-white text-slate-600 hover:border-indigo-300 hover:text-indigo-700"}`}
-                            title={disabled ? `Maksimal ${weekdayLimit} hari belajar` : day.label}
+                            title={disabled ? `Maksimal ${weekdayLimit} hari belajar` : replaceSingleDay && !active && limitReached ? `Ganti ke ${day.label}` : day.label}
                           >
                             {day.short}
                           </button>;
@@ -1306,7 +1501,7 @@ export default function PackageBuilder() {
                         </p>
                         {packageWeekdays.size >= weekdayLimit && <span className="rounded-full bg-amber-100 px-2 py-1 font-black text-amber-800">Batas tercapai</span>}
                       </div>
-                      <p className="mt-1 text-xs font-medium text-slate-500">Jam yang dipilih berlaku sama pada seluruh hari. Tanggal tertentu dapat digeser sebelum tutor dicari.</p>
+                      <p className="mt-1 text-xs font-medium text-slate-500">{weekdayLimit === 1 ? "Ketuk hari lain untuk langsung mengganti pilihan. Ketuk hari aktif untuk mengosongkannya." : "Jam yang dipilih berlaku sama pada seluruh hari. Tanggal tertentu dapat digeser sebelum tutor dicari."}</p>
                     </div>
                   </div>
                   <div className="mt-4 rounded-2xl border border-violet-200 bg-violet-50 p-4">
@@ -1363,10 +1558,10 @@ export default function PackageBuilder() {
                   <div className="mt-4 rounded-2xl bg-indigo-50 p-4 text-sm text-indigo-900">
                     <p className="font-black">{item.subject_name || `Mapel ${subjectIndex + 1}`} · {item.schedules.length} pertemuan otomatis</p>
                     <p className="mt-1 text-xs font-medium leading-5 text-indigo-700">
-                      {item.schedules.length ? `${item.weekdays.map((day) => WEEKDAYS.find((option) => option.value === day)?.label).filter(Boolean).join(", ")} · ${new Date(item.schedules[0]).toLocaleDateString("id-ID", { dateStyle: "medium" })} sampai ${new Date(item.schedules[item.schedules.length - 1]).toLocaleDateString("id-ID", { dateStyle: "medium" })} · ${timeRange(item.schedules[0], effectiveDurationHours)} WIB` : "Jadwal belum dipilih."}
+                      {item.schedules.length ? `${item.weekdays.map((day) => WEEKDAYS.find((option) => option.value === day)?.label).filter(Boolean).join(", ")} · ${new Date(item.schedules[0]).toLocaleDateString("id-ID", { dateStyle: "medium" })} sampai ${new Date(item.schedules[item.schedules.length - 1]).toLocaleDateString("id-ID", { dateStyle: "medium" })}. Jam tiap pertemuan dapat diubah di bawah.` : "Jadwal belum dipilih."}
                     </p>
                     <details className="mt-3">
-                      <summary className="cursor-pointer text-xs font-black">Lihat atau ubah tanggal tertentu</summary>
+                      <summary className="cursor-pointer text-xs font-black">Lihat atau ubah tanggal dan jam tiap pertemuan</summary>
                       <ol className="mt-2 grid gap-1.5 sm:grid-cols-2">
                         {item.schedules.map((schedule, index) => (
                           <li key={`${item.key}-${index}`} className="grid min-w-0 gap-2 rounded-xl bg-white px-3 py-2 text-xs font-bold text-slate-700 sm:grid-cols-[1fr_150px] sm:items-center">
@@ -1378,12 +1573,21 @@ export default function PackageBuilder() {
                               value={schedule.slice(0, 10)}
                               onChange={(event) => {
                                 const nextSchedules = [...item.schedules];
-                                nextSchedules[index] = `${event.target.value}T${item.schedule_time}`;
+                                nextSchedules[index] = `${event.target.value}T${schedule.slice(11, 16)}`;
                                 nextSchedules.sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
                                 updateSubject(item.key, { schedules: nextSchedules });
                               }}
                               className="min-h-10 min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-2 text-xs font-bold text-slate-700"
                             />
+                            <details className="sm:col-span-2">
+                              <summary className="cursor-pointer text-xs text-indigo-700">Ubah jam sesi {index + 1}</summary>
+                              <div className="mt-2"><TimeSlotOptions value={schedule.slice(11, 16)} options={availableTimeSlots} onChoose={(time) => {
+                                const nextSchedules = [...item.schedules];
+                                nextSchedules[index] = `${schedule.slice(0, 10)}T${time}`;
+                                nextSchedules.sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+                                updateSubject(item.key, { schedules: nextSchedules });
+                              }} /></div>
+                            </details>
                           </li>
                         ))}
                       </ol>
@@ -1396,14 +1600,16 @@ export default function PackageBuilder() {
           {!schedulesDoNotOverlap && <div className="mt-4 flex gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-700"><AlertCircle className="shrink-0" size={19} />Ada jadwal yang bertumpang tindih. Ubah tanggal atau jam salah satunya.</div>}
           {!subjectsAreUnique && <div className="mt-4 flex gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-700"><AlertCircle className="shrink-0" size={19} />Satu mata pelajaran tidak boleh dipilih dua kali.</div>}
           {Boolean(plan && scheduleRangeDays > plan.validity_days) && <div className="mt-4 flex gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-700"><AlertCircle className="shrink-0" size={19} />Rentang jadwal melebihi masa paket {plan?.validity_days} hari. Tingkatkan frekuensi belajar atau ubah tanggal mulai.</div>}
-          
+          </> : <p className="rounded-2xl border border-dashed border-orange-200 bg-white p-4 text-sm font-semibold text-slate-600">Pilih program di atas untuk melihat mapel yang tersedia.</p>}
         </section>
 
-        <section className="render-auto-tall grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+        {isGuest && mode === "offline" && <div hidden={step !== 2}><GuestOrderIdentity section="location" name={guestName} email={guestEmail} phone={guestPhone} mode={mode} location={guestLocation} onIdentityChange={(field, value) => { if (field === "name") setGuestName(value); else if (field === "email") setGuestEmail(value); else setGuestPhone(value); }} onLocationChange={setGuestLocation} /></div>}
+
+        <section className={step === 3 ? "render-auto-tall grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_360px]" : "hidden"}>
           <div className="min-w-0 overflow-hidden rounded-[1.5rem] border border-slate-100 bg-white p-4 shadow-sm sm:rounded-[2rem] sm:p-7">
-            <h2 className="break-words text-lg font-black text-slate-900">5. Voucher atau kode promo</h2>
-            <p className="mt-1 text-sm text-slate-500">Satu transaksi hanya memakai satu voucher atau kode.</p>
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <h2 className="break-words text-lg font-black text-slate-900">Voucher atau kode promo</h2>
+            <p className="mt-1 text-sm text-slate-500">{isGuest ? "Voucher dan kode promo dapat diperiksa setelah masuk. Harga draf belum memakai promo." : "Satu transaksi hanya memakai satu voucher atau kode."}</p>
+            <div className={isGuest ? "hidden" : "mt-4 grid gap-4 md:grid-cols-2"}>
               <Field label="Voucher Saya">
                 <ResponsiveSelect
                   value={voucherId}
@@ -1463,6 +1669,54 @@ export default function PackageBuilder() {
           </aside>
         </section>
 
+        <div className="grid min-w-0 grid-cols-1 gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm min-[420px]:grid-cols-2">
+          {step > 0 ? <button type="button" onClick={() => moveStep(step - 1)} className="min-h-12 min-w-0 rounded-xl border border-slate-200 px-4 text-sm font-black text-slate-700">Kembali</button> : <p className="flex min-h-12 min-w-0 items-center break-words text-sm leading-5 text-slate-500">Lengkapi tahap pertama untuk melanjutkan.</p>}
+          {step < 3 && <button type="button" onClick={() => moveStep(step + 1)} className="min-h-12 min-w-0 break-words rounded-xl bg-indigo-600 px-4 py-2 text-sm font-black leading-5 text-white">Lanjut: {["Mapel & materi", "Jadwal & lokasi", "Periksa pesanan"][step]}</button>}
+        </div>
+          </div>
+
+          {step < 3 && (
+            <aside className="hidden min-w-0 self-start overflow-hidden rounded-[2rem] border border-orange-100 bg-white shadow-[0_24px_60px_-36px_rgba(15,23,42,.45)] lg:sticky lg:top-24 lg:block">
+              <div className="border-b border-orange-100 bg-gradient-to-br from-orange-50 via-amber-50 to-white p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div><p className="text-[10px] font-black uppercase tracking-[.2em] text-orange-600">Ringkasan langsung</p><h2 className="mt-1 text-xl font-black text-slate-950">Rencana Anda</h2></div>
+                  <span className="grid h-11 w-11 place-items-center rounded-2xl bg-orange-500 text-white"><FileCheck2 size={20} /></span>
+                </div>
+                <div className="mt-4 grid grid-cols-4 gap-1.5" aria-label={`Langkah ${step + 1} dari 4`}>
+                  {[0, 1, 2, 3].map((index) => <span key={index} className={`h-1.5 rounded-full ${index <= step ? "bg-orange-500" : "bg-orange-100"}`} />)}
+                </div>
+              </div>
+
+              <div className="max-h-[calc(100dvh-13rem)] overflow-y-auto p-5">
+                <dl className="space-y-3 text-sm">
+                  <div className="flex items-start justify-between gap-4"><dt className="text-slate-500">Paket belajar</dt><dd className="max-w-[11rem] break-words text-right font-black text-slate-900">{plan?.name || "Belum dipilih"}</dd></div>
+                  {learningProgram && <div className="flex items-start justify-between gap-4"><dt className="text-slate-500">Program</dt><dd className="max-w-[11rem] break-words text-right font-black text-slate-900">{learningProgram.name}</dd></div>}
+                  <div className="flex items-start justify-between gap-4"><dt className="text-slate-500">Peserta</dt><dd className="text-right font-black text-slate-900">{participantCount} orang{participantDiscountPercent > 0 && <span className="mt-1 block text-[10px] font-black text-emerald-700">Diskon {participantDiscountPercent.toLocaleString("id-ID", { maximumFractionDigits: 2 })}%</span>}</dd></div>
+                  <div className="flex items-start justify-between gap-4"><dt className="text-slate-500">Jenjang</dt><dd className="max-w-[11rem] break-words text-right font-black text-slate-900">{level && grade ? `${level} · ${grade}` : "Belum dipilih"}</dd></div>
+                  <div className="flex items-start justify-between gap-4"><dt className="text-slate-500">Mapel</dt><dd className="max-w-[11rem] break-words text-right font-black text-slate-900">{selectedSubjectSummary || "Belum dipilih"}</dd></div>
+                  <div className="flex items-start justify-between gap-4"><dt className="text-slate-500">Metode</dt><dd className="text-right font-black text-slate-900">{mode === "online" ? "Online" : mode === "offline" ? "Tatap muka" : "Belum dipilih"}</dd></div>
+                  <div className="flex items-start justify-between gap-4"><dt className="text-slate-500">Durasi</dt><dd className="text-right font-black text-slate-900">{durationHours ? `${durationHours} jam/sesi` : "Belum dipilih"}</dd></div>
+                  <div className="flex items-start justify-between gap-4"><dt className="text-slate-500">Jadwal</dt><dd className="max-w-[11rem] break-words text-right font-black text-slate-900">{plan ? `${scheduleTimestamps.length} dari ${plan.session_count} sesi` : "Menunggu paket"}</dd></div>
+                  <div className="flex items-start justify-between gap-4"><dt className="text-slate-500">Lokasi</dt><dd className="max-w-[11rem] break-words text-right font-black text-slate-900">{mode === "online" ? "Tidak diperlukan" : mode === "offline" ? (hasOfflineLocation ? "Lokasi siap" : "Belum lengkap") : "Menunggu metode"}</dd></div>
+                </dl>
+
+                <div className="mt-5 border-t border-slate-100 pt-5">
+                  <div className="flex items-end justify-between gap-3"><span className="text-xs font-black uppercase tracking-wider text-slate-400">Estimasi total</span><span className="break-all text-right text-xl font-black text-slate-950">{quote ? rupiah(quote.total_amount) : "Belum dihitung"}</span></div>
+                  {!quote && <p className="mt-1 text-xs leading-5 text-slate-500">Harga muncul setelah paket, materi, jadwal, dan lokasi lengkap.</p>}
+                </div>
+
+                {planMissingItems.length > 0 && (
+                  <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                    <p className="text-xs font-black uppercase tracking-wider text-amber-800">Yang masih perlu diisi</p>
+                    <ul className="mt-2 space-y-2 text-xs font-semibold leading-5 text-amber-900">{planMissingItems.slice(0, 5).map((item) => <li key={item} className="flex gap-2"><span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-orange-500" />{item}</li>)}</ul>
+                  </div>
+                )}
+
+              </div>
+            </aside>
+          )}
+        </div>
+
         {summaryOpen && quote && plan && (
           <div className="fixed inset-0 z-[var(--layer-modal)] flex items-end justify-center bg-slate-950/70 p-3 pb-[max(env(safe-area-inset-bottom),0.75rem)] sm:items-center sm:p-4" onMouseDown={(event) => { if (event.target === event.currentTarget && !submitting) setSummaryOpen(false); }}>
             <section role="dialog" aria-modal="true" aria-labelledby="order-summary-title" className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-3xl flex-col overflow-hidden rounded-[2rem] bg-white shadow-2xl sm:max-h-[94dvh]">
@@ -1482,7 +1736,22 @@ export default function PackageBuilder() {
                   <SummaryItem label="Jenjang" value={`${level} · ${grade}`} />
                   <SummaryItem label="Metode" value={mode === "online" ? "Online" : "Offline"} />
                 </div>
-                {mode === "offline" && <div className="rounded-2xl border border-slate-200 p-4"><p className="text-xs font-black uppercase tracking-wider text-slate-500">Lokasi belajar</p><p className="mt-2 text-sm font-bold leading-6 text-slate-800">{studentProfile?.address}</p>{studentProfile?.maps_link && <a href={studentProfile.maps_link} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs font-black text-indigo-600">Buka peta</a>}</div>}
+                <div className="rounded-2xl border border-slate-200 p-4">
+                  <p className="text-xs font-black uppercase tracking-wider text-slate-500">Peserta belajar</p>
+                  <p className="mt-2 text-sm font-bold text-slate-800">
+                    {participantCount} peserta · {purchaserParticipates ? "pemesan ikut belajar" : "pemesan tidak ikut belajar"}
+                  </p>
+                  {participantDetails.slice(0, expectedParticipantDetails).length > 0 && (
+                    <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+                      {participantDetails.slice(0, expectedParticipantDetails).map((detail, index) => (
+                        <li key={`${detail.full_name}-${index}`} className="rounded-xl bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
+                          {detail.full_name}{detail.nickname ? ` · ${detail.nickname}` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                {mode === "offline" && <div className="rounded-2xl border border-slate-200 p-4"><p className="text-xs font-black uppercase tracking-wider text-slate-500">Lokasi belajar</p><p className="mt-2 text-sm font-bold leading-6 text-slate-800">{selectedLocation?.address}</p>{selectedLocation?.maps_link && <a href={selectedLocation.maps_link} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs font-black text-indigo-600">Buka peta</a>}</div>}
                 <div>
                   <h3 className="text-sm font-black text-slate-900">Mapel, pembagian, dan jadwal</h3>
                   <div className="mt-3 space-y-3">
@@ -1507,13 +1776,14 @@ export default function PackageBuilder() {
 
               <footer className="grid shrink-0 gap-3 border-t border-slate-100 bg-white p-4 sm:grid-cols-2 sm:px-7">
                 <button type="button" disabled={submitting} onClick={() => setSummaryOpen(false)} className="min-h-12 rounded-2xl border border-slate-200 px-5 text-sm font-black text-slate-700 hover:bg-slate-50">Kembali & Ubah</button>
-                <button type="button" disabled={submitting} onClick={submit} className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-5 text-sm font-black text-white hover:bg-indigo-700 disabled:opacity-60">{submitting ? <Loader2 className="animate-spin" size={18} /> : <FileCheck2 size={18} />}{submitting ? "Membuat tagihan…" : "Konfirmasi & Bayar"}</button>
+                <button type="button" disabled={submitting} onClick={submit} className="flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-indigo-600 px-5 text-sm font-black text-white hover:bg-indigo-700 disabled:opacity-60">{submitting ? <Loader2 className="animate-spin" size={18} /> : <FileCheck2 size={18} />}{submitting ? (isGuest ? "Menyimpan draf…" : "Membuat tagihan…") : (isGuest ? "Simpan pesanan" : "Konfirmasi & Bayar")}</button>
               </footer>
             </section>
           </div>
         )}
+        </>}
       </div>
-    </StudentLayout>
+    </PackageBuilderShell>
   );
 }
 
@@ -1530,71 +1800,20 @@ function timePeriodLabel(time: string) {
   const hour = Number(time.slice(0, 2));
   if (hour < 11) return "Pagi";
   if (hour < 16) return "Siang";
-  return "Sore & malam";
+  if (hour < 19) return "Sore";
+  return "Malam";
 }
 
 function ScheduleTimePicker({ value, options, disabled = false, onChange }: { value: string; options: TimeSlot[]; disabled?: boolean; onChange: (value: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const selected = options.find((slot) => slot.start_time.slice(0, 5) === value);
-
-  useEffect(() => {
-    if (!open) return;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", closeOnEscape);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", closeOnEscape);
-    };
-  }, [open]);
-
-  const choose = (slotValue: string) => {
-    onChange(slotValue);
-    setOpen(false);
-  };
-
-  return (
-    <div className="relative min-w-0">
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        disabled={disabled || !options.length}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-label="Pilih jam mulai pertemuan"
-        className={`form-field flex min-w-0 items-center justify-between gap-3 text-left transition disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 ${open ? "border-indigo-400 ring-2 ring-indigo-100" : ""}`}
-      >
-        <span className="min-w-0 truncate">{selected ? timeSlotLabel(selected) : disabled ? "Pilih durasi dulu" : "Pilih jam"}</span>
-        <ChevronDown className={`shrink-0 text-slate-500 transition ${open ? "rotate-180" : ""}`} size={18} />
-      </button>
-
-      {open && (
-        <div
-          className="fixed inset-0 z-[var(--layer-modal)] flex min-h-0 items-center justify-center overflow-hidden bg-slate-950/45 p-4"
-        >
-          <section role="dialog" aria-modal="true" aria-label="Pilih jam belajar" className="flex max-h-[min(72dvh,36rem)] min-h-0 w-full max-w-xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl animate-in zoom-in-95 duration-200">
-            <header className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-100 px-4 pb-4 pt-4 sm:px-5">
-              <div className="absolute left-1/2 top-2 h-1.5 w-12 -translate-x-1/2 rounded-full bg-slate-200 lg:hidden" aria-hidden="true" />
-              <div className="min-w-0"><p className="text-base font-black text-slate-900">Pilih jam belajar</p><p className="mt-1 text-xs font-semibold leading-5 text-slate-500">Pilih waktu yang paling sesuai. Scroll untuk melihat lebih banyak pilihan jam. Setelah dipilih, kamu langsung kembali ke form.</p></div>
-              <button type="button" onClick={() => setOpen(false)} aria-label="Tutup pilihan jam" className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-500 hover:bg-slate-200"><X size={18} /></button>
-            </header>
-            <div className="min-h-0 max-h-[min(40dvh,15rem)] flex-none overflow-y-auto overscroll-contain px-4 pb-[max(env(safe-area-inset-bottom),1rem)] pt-4 sm:px-5">
-              <TimeSlotOptions value={value} options={options} onChoose={choose} />
-            </div>
-          </section>
-        </div>
-      )}
-    </div>
-  );
+  return <div className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-3">
+    {disabled || !options.length ? <p className="text-xs text-slate-500">Pilih durasi terlebih dahulu.</p> : <TimeSlotOptions value={value} options={options} onChoose={onChange} />}
+  </div>;
 }
 
 function TimeSlotOptions({ value, options, onChoose }: { value: string; options: TimeSlot[]; onChoose: (value: string) => void }) {
   return (
     <div className="space-y-4" role="listbox" aria-label="Daftar jam belajar">
-      {["Pagi", "Siang", "Sore & malam"].map((period) => {
+      {["Pagi", "Siang", "Sore", "Malam"].map((period) => {
         const periodOptions = options.filter((slot) => timePeriodLabel(slot.start_time.slice(0, 5)) === period);
         if (!periodOptions.length) return null;
         return (

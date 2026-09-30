@@ -3,7 +3,7 @@ import HelpCenter from "@/pages/common/HelpCenter";
 
 export default function StudentHelp() {
   return (
-    <StudentLayout title="Bantuan & Support" lockContentScroll>
+    <StudentLayout title="Bantuan & Support">
       <HelpCenter />
     </StudentLayout>
   );

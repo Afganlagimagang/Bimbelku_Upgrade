@@ -4,6 +4,7 @@ import { Loader2, RefreshCw, ShieldAlert, Star } from "lucide-react";
 import TeacherLayout from "@/components/TeacherLayout";
 import { Button } from "@/components/ui/button";
 import http, { getApiError } from "@/lib/http";
+import WorkspacePageIntro from "@/components/WorkspacePageIntro";
 
 type RatingItem = { id: number; student_name: string; subject?: string | null; rating: number; review?: string | null; created_at: string };
 type PerformanceData = {
@@ -44,18 +45,7 @@ export default function TeacherPerformance() {
   return (
     <TeacherLayout title="Performa">
       <div className="space-y-5 pb-10 sm:space-y-7">
-        <section className="rounded-[1.7rem] bg-gradient-to-br from-slate-950 via-indigo-950 to-violet-900 p-5 text-white shadow-xl sm:rounded-[2rem] sm:p-8">
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[.18em] text-indigo-200">Kualitas mengajar</p>
-              <h1 className="mt-2 text-2xl font-black sm:text-3xl">Rating & ulasan tutor</h1>
-              <p className="mt-2 max-w-xl text-sm leading-6 text-indigo-100/75">Rating berasal dari murid yang benar-benar menyelesaikan sesi. Nilai ini menjadi rekam mutu, bukan satu-satunya penentu penawaran kelas.</p>
-            </div>
-            <Button variant="outline" onClick={() => void load()} className="h-11 rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white">
-              <RefreshCw size={16} className="mr-2" />Muat ulang
-            </Button>
-          </div>
-        </section>
+        <WorkspacePageIntro eyebrow="Kualitas mengajar" title="Rating dan ulasan" description="Nilai berasal dari murid yang menyelesaikan sesi. Rating menjadi rekam mutu, bukan satu-satunya penentu penawaran kelas." icon={Star} tone="orange" actions={<Button variant="outline" onClick={() => void load()} className="h-11 w-full rounded-xl sm:w-auto"><RefreshCw size={16} className="mr-2" />Muat ulang</Button>} />
 
         {loading ? (
           <div className="grid min-h-80 place-items-center rounded-[2rem] bg-white"><Loader2 className="animate-spin text-indigo-600" size={30} /></div>

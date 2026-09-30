@@ -80,7 +80,7 @@ class TeacherMatchingService
                     'title' => 'Batas pencarian tutor berakhir',
                     'message' => $failure['message'],
                     'type' => 'warning',
-                    'target_url' => '/student/my-classes?tab=process',
+                    'target_url' => '/student/packages',
                 ]);
             }
             $bookingRequest->packageSubject?->update(['status' => 'no_teacher']);
@@ -224,7 +224,7 @@ class TeacherMatchingService
                     'title' => 'Masih mencari tutor',
                     'message' => 'Belum ada tutor yang tersedia. Sistem akan memeriksa kandidat baru secara otomatis dan admin sudah diberi tahu.',
                     'type' => 'warning',
-                    'target_url' => '/student/my-classes?tab=process',
+                    'target_url' => '/student/packages',
                 ]);
                 User::query()
                     ->where('role', 'admin')
@@ -718,6 +718,21 @@ class TeacherMatchingService
             ->withMax('teacherOffers as matching_last_offered_at', 'offered_at')
             ->withAvg('ratings as matching_rating_average', 'rating')
             ->withCount('ratings as matching_rating_count');
+
+        $programPackage = $bookingRequest->packageSubject?->package;
+        if ($programPackage?->learning_program_id) {
+            $otherAssigned = $programPackage->subjects()
+                ->whereKeyNot($bookingRequest->package_subject_id)
+                ->whereNotNull('assigned_teacher_id')
+                ->pluck('assigned_teacher_id');
+            $query->whereNotIn('users.id', $otherAssigned)
+                ->whereDoesntHave('teacherOffers', function ($offers) use ($bookingRequest, $programPackage) {
+                    $offers->where('status', 'pending')->where('expires_at', '>', now())
+                        ->whereHas('bookingRequest.packageSubject', fn ($subjects) => $subjects
+                            ->whereKeyNot($bookingRequest->package_subject_id)
+                            ->where('learning_package_id', $programPackage->id));
+                });
+        }
 
         if (
             $bookingRequest->learning_mode === 'offline'

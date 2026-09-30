@@ -53,16 +53,16 @@ for (const forbidden of ["finance-security", "payout-approvals", "finance.2fa"])
 
 expect(auth.includes("'role'     => 'required|in:student,teacher'"), "pendaftaran publik masih dapat membuat admin");
 expect(auth.includes("before_or_equal:today"), "tanggal lahir masa depan belum ditolak");
-expect(auth.includes("$user->role === 'admin' && !$user->isPrimaryAdmin()"), "login admin kedua belum ditolak");
+expect(auth.includes("'is_primary_admin' => $user->role === 'admin' && $user->isPrimaryAdmin()"), "respons login belum membedakan admin utama dan admin biasa");
 expect(bootstrap.includes("'active.account' =>"), "alias middleware akun aktif belum terdaftar");
 expect(activeMiddleware.includes("$user->status !== 'active'"), "middleware akun aktif tidak memeriksa status");
-expect(activeMiddleware.includes("$user->role === 'admin' && !$user->isPrimaryAdmin()"), "token admin kedua belum ditolak");
+expect(!activeMiddleware.includes("$user->role === 'admin' && !$user->isPrimaryAdmin()"), "middleware akun aktif masih menolak admin biasa");
 expect(roleMiddleware.includes("in_array($user->role, $roles, true)"), "middleware role tidak memakai perbandingan ketat");
 expect(permissionMiddleware.includes("AdminPermissionCatalog::permissionFor"), "route admin belum dipetakan ke kebijakan akses");
 expect(user.includes("private ?bool $primaryAdminCache = null"), "query admin utama belum diberi cache request-scoped");
 expect(user.includes("return $this->isPrimaryAdmin();"), "hak admin tunggal belum dipusatkan pada admin utama");
-expect(seeder.includes("'admin_type' => 'legacy_disabled'"), "admin lama belum dinonaktifkan oleh seeder");
-expect(seeder.includes("$legacyAdmin->tokens()->delete()"), "token admin lama belum dicabut oleh seeder");
+expect(seeder.includes("'admin_type' => 'super_admin'"), "seeder belum menandai admin utama");
+expect(!seeder.includes("'admin_type' => 'legacy_disabled'") && !seeder.includes("$legacyAdmin->tokens()->delete()"), "seeder masih menonaktifkan admin biasa secara diam-diam");
 
 expect(app.includes('path="/admin/finance-security" element={<Navigate to="/admin/pembayaran" replace />}'), "redirect route autentikator lama hilang atau tidak aman");
 expect(app.includes('path="/admin/access-control" element={<Navigate to="/admin" replace />}'), "redirect route pengelolaan admin lama hilang");
@@ -87,7 +87,7 @@ for (const name of migrations) {
 }
 const duplicatePrefixes = [...prefixes.values()].filter((names) => names.length > 1);
 
-console.log(`Checkpoint 1 lulus: ${migrations.length} migration, fondasi route/login/role/middleware/admin tunggal konsisten.`);
+console.log(`Checkpoint 1 lulus: ${migrations.length} migration, fondasi route/login/role/middleware/admin utama dan admin biasa konsisten.`);
 if (duplicatePrefixes.length) {
   console.log("Catatan migration historis dengan timestamp sama (dipertahankan agar riwayat production tidak rusak):");
   duplicatePrefixes.forEach((names) => console.log(`- ${names.join(", ")}`));

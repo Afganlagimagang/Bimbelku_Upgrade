@@ -24,12 +24,6 @@ class EnsureActiveAccount
             ], $user->role === 'admin' ? 403 : 401);
         }
 
-        if ($user->role === 'admin' && !$user->isPrimaryAdmin()) {
-            return response()->json([
-                'message' => 'Sesi admin tidak berlaku. Project ini hanya menggunakan satu admin utama.',
-            ], 401);
-        }
-
         return $next($request);
     }
 }

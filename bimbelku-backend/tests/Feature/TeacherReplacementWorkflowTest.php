@@ -58,7 +58,7 @@ class TeacherReplacementWorkflowTest extends TestCase
             'user_id' => $fixture['student']->id,
             'title' => 'Penggantian guru disetujui',
             'is_read' => false,
-            'target_url' => '/student/my-classes?tab=process',
+            'target_url' => '/student/packages',
         ]);
         $offer = app(TeacherMatchingService::class)->dispatchNextOffer($approved['booking_request']);
         $this->assertNotNull($offer);

@@ -6,6 +6,7 @@ import StudentLayout from "@/components/StudentLayout";
 import { ResponsiveSelect } from "@/components/ResponsiveSelect";
 import http, { getApiError, getCached } from "@/lib/http";
 import { notify } from "@/lib/notify";
+import WorkspacePageIntro from "@/components/WorkspacePageIntro";
 
 type TimeSlot = { id: number; start_time: string; label?: string | null };
 type BookingRules = { booking_lead_hours: number };
@@ -59,11 +60,14 @@ const earliest = (time: string, leadHours = 24) => {
   return dateInput(candidate);
 };
 const buildSchedules = (count: number, startDate: string, time: string, weekdays: number[]) => {
+  if (!startDate || !time || count < 1) return [];
+  if (count === 1) return [`${startDate}T${time}`];
+  if (!weekdays.length) return [];
   const result: string[] = [];
   const cursor = new Date(`${startDate}T00:00:00`);
   const hour = Number(time.slice(0, 2)) || 0;
   cursor.setHours(hour, 0, 0, 0);
-  const days = new Set(weekdays.length ? weekdays : [isoWeekday(cursor)]);
+  const days = new Set(weekdays);
   let guard = 0;
   while (result.length < count && guard < 730) {
     if (days.has(isoWeekday(cursor))) result.push(`${dateInput(cursor)}T${time}`);
@@ -103,7 +107,12 @@ export default function PackageReschedule() {
         const fallbackTime = fullHourSlots.find((slot) => slot.start_time.slice(0, 5) === "18:00")?.start_time.slice(0, 5) || fullHourSlots[0]?.start_time.slice(0, 5) || "18:00";
         const time = old[0] ? wibDateTime(old[0]).time : fallbackTime;
         const startDate = earliest(time, leadHours);
-        const weekdays = old.length ? [...new Set(old.map((value) => isoWeekday(new Date(`${wibDateTime(value).date}T12:00:00`))))].slice(0, 4) : [1, 3, 5];
+        const maximumDays = Math.min(4, subject.allocated_sessions);
+        const weekdays = subject.allocated_sessions === 1
+          ? [isoWeekday(new Date(`${startDate}T12:00:00`))]
+          : old.length
+            ? [...new Set(old.map((value) => isoWeekday(new Date(`${wibDateTime(value).date}T12:00:00`))))].slice(0, maximumDays)
+            : [isoWeekday(new Date(`${startDate}T12:00:00`))];
         return { id: subject.id, name: subject.name, count: subject.allocated_sessions, startDate, time, weekdays, schedules: buildSchedules(subject.allocated_sessions, startDate, time, weekdays) };
       }));
     } catch (err) {
@@ -124,25 +133,26 @@ export default function PackageReschedule() {
   }));
 
   const submit = async () => {
+    if (!drafts.length || drafts.some((draft) => !draft.startDate || !draft.time || draft.schedules.length !== draft.count)) {
+      notify.error("Lengkapi tanggal, jam, dan hari belajar sesuai jumlah sesi sebelum menyimpan.");
+      return;
+    }
     setSaving(true);
     try {
       const response = await http.post(`/student/packages/${id}/reschedule`, {
         subjects: drafts.map((draft) => ({ package_subject_id: draft.id, schedules: draft.schedules })),
       });
       notify.success(response.data.message);
-      navigate("/student/my-classes?tab=process", { replace: true });
+      navigate("/student/packages", { replace: true });
     } catch (err) { notify.error(getApiError(err, "Jadwal gagal diperbarui.")); }
     finally { setSaving(false); }
   };
 
   return <StudentLayout title="Ubah Jadwal Paket">
     <div className="space-y-5 pb-24">
-      <Link to="/student/my-classes?tab=process" className="inline-flex min-h-11 items-center gap-2 rounded-xl px-2 text-sm font-black text-indigo-700"><ArrowLeft size={17}/>Kembali ke Proses</Link>
-      <section className="rounded-[2rem] bg-gradient-to-br from-slate-950 via-indigo-950 to-blue-900 p-5 text-white sm:p-8">
-        <p className="text-xs font-black uppercase tracking-[.18em] text-indigo-200">Pencarian tutor</p>
-        <h1 className="mt-2 text-2xl font-black sm:text-3xl">Ubah jadwal agar kandidat tutor bertambah</h1>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-indigo-100/80">Pembayaran tidak diulang. Hanya jadwal mapel yang belum mendapat tutor yang diubah, lalu pencarian dimulai lagi dari awal.</p>
-      </section>
+      <Link to="/student/packages" className="inline-flex min-h-11 items-center gap-2 rounded-xl px-2 text-sm font-black text-indigo-700"><ArrowLeft size={17}/>Kembali ke Proses</Link>
+      <WorkspacePageIntro eyebrow="Pencarian tutor" title="Ubah jadwal paket" description="Atur ulang hanya mapel yang belum mendapat tutor. Pembayaran tidak diulang dan pencarian dimulai kembali setelah jadwal disimpan." icon={CalendarClock} />
+      <p className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold leading-6 text-amber-900">Perubahan jadwal dapat membuka lebih banyak kandidat tutor. Periksa seluruh tanggal sebelum menyimpan.</p>
 
       {loading ? <div className="grid min-h-64 place-items-center"><Loader2 className="animate-spin text-indigo-600" size={34}/></div> : error ? (
         <div className="rounded-3xl border border-rose-200 bg-rose-50 p-6 text-center"><AlertCircle className="mx-auto text-rose-500"/><p className="mt-3 font-bold text-rose-800">{error}</p><button onClick={() => void load()} className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-4 font-black text-rose-700"><RefreshCw size={16}/>Coba lagi</button></div>
@@ -154,8 +164,12 @@ export default function PackageReschedule() {
               <label><span className="mb-2 block text-xs font-black uppercase tracking-wider text-slate-500">Mulai belajar</span><input type="date" min={earliest(draft.time, bookingLeadHours)} value={draft.startDate} onChange={(e) => update(draft.id,{startDate:e.target.value})} className="form-field"/></label>
               <label className="min-w-0"><span className="mb-2 block text-xs font-black uppercase tracking-wider text-slate-500">Jam belajar</span><ResponsiveSelect value={draft.time} onValueChange={(time)=>update(draft.id,{time})} ariaLabel={`Pilih jam belajar ${draft.name}`} tone="emerald" className="border-emerald-300 bg-emerald-50 text-emerald-800" options={compatibleSlots.map((slot)=>({ value: slot.start_time.slice(0,5), label: slot.label || `${slot.start_time.slice(0,5).replace(":", ".")} WIB` }))}/></label>
             </div>
-            <div className="mt-4"><p className="mb-2 text-xs font-black uppercase tracking-wider text-slate-500">Hari belajar</p><div className="grid grid-cols-4 gap-2 sm:grid-cols-7">{WEEKDAYS.map((day)=>{const active=draft.weekdays.includes(day.value); const disabled=!active&&draft.weekdays.length>=4; return <button key={day.value} type="button" disabled={disabled} onClick={()=>{const days=active?draft.weekdays.filter(v=>v!==day.value):[...draft.weekdays,day.value].sort((a,b)=>a-b); if(days.length) update(draft.id,{weekdays:days});}} className={`min-h-11 rounded-xl border text-xs font-black ${active?"border-indigo-600 bg-indigo-600 text-white":"border-slate-200 bg-white text-slate-600 disabled:opacity-30"}`}>{day.short}</button>})}</div></div>
-            <div className="mt-5 rounded-2xl bg-slate-50 p-4"><p className="flex items-center gap-2 text-sm font-black text-slate-800"><CalendarClock size={17}/>Tanggal pertemuan</p><ol className="mt-3 grid gap-2 sm:grid-cols-2">{draft.schedules.map((schedule,index)=><li key={`${draft.id}-${index}`} className="rounded-xl bg-white p-3 text-xs font-bold text-slate-600"><span>{index+1}. {new Date(schedule).toLocaleDateString("id-ID",{weekday:"short",day:"numeric",month:"short"})} · {draft.time.replace(":", ".")} WIB</span><input type="date" min={earliest(draft.time)} value={schedule.slice(0,10)} onChange={(e)=>setDrafts(current=>current.map(item=>{if(item.id!==draft.id)return item; const schedules=[...item.schedules]; schedules[index]=`${e.target.value}T${item.time}`; schedules.sort((a,b)=>new Date(a).getTime()-new Date(b).getTime()); return {...item,schedules};}))} className="mt-2 min-h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-2"/></li>)}</ol></div>
+            {draft.count === 1 ? (
+              <p className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50 p-3 text-xs font-semibold leading-5 text-indigo-800">Mapel ini hanya memiliki satu sesi. Tanggal dan jam di atas adalah jadwal yang akan dicari ulang—tidak perlu memilih pola hari berulang.</p>
+            ) : (
+              <div className="mt-4"><p className="mb-2 text-xs font-black uppercase tracking-wider text-slate-500">Hari belajar · pilih paling banyak {Math.min(4, draft.count)}</p><div className="grid grid-cols-4 gap-2 sm:grid-cols-7">{WEEKDAYS.map((day)=>{const active=draft.weekdays.includes(day.value); const disabled=!active&&draft.weekdays.length>=Math.min(4,draft.count); return <button key={day.value} type="button" disabled={disabled} aria-pressed={active} onClick={()=>{const days=active?draft.weekdays.filter(v=>v!==day.value):[...draft.weekdays,day.value].sort((a,b)=>a-b); update(draft.id,{weekdays:days});}} className={`min-h-11 rounded-xl border text-xs font-black ${active?"border-indigo-600 bg-indigo-600 text-white":"border-slate-200 bg-white text-slate-600 disabled:opacity-30"}`}>{day.short}</button>})}</div><p className="mt-2 text-xs text-slate-500">Ketuk hari aktif untuk membatalkannya, lalu pilih hari lain.</p></div>
+            )}
+            <div className="mt-5 rounded-2xl bg-slate-50 p-4"><p className="flex items-center gap-2 text-sm font-black text-slate-800"><CalendarClock size={17}/>Tanggal pertemuan</p><ol className="mt-3 grid gap-2 sm:grid-cols-2">{draft.schedules.map((schedule,index)=><li key={`${draft.id}-${index}`} className="rounded-xl bg-white p-3 text-xs font-bold text-slate-600"><span>{index+1}. {new Date(schedule).toLocaleDateString("id-ID",{weekday:"short",day:"numeric",month:"short"})} · {draft.time.replace(":", ".")} WIB</span>{draft.count > 1 && <input type="date" min={earliest(draft.time, bookingLeadHours)} value={schedule.slice(0,10)} onChange={(e)=>setDrafts(current=>current.map(item=>{if(item.id!==draft.id)return item; const schedules=[...item.schedules]; schedules[index]=`${e.target.value}T${item.time}`; schedules.sort((a,b)=>new Date(a).getTime()-new Date(b).getTime()); return {...item,schedules};}))} className="mt-2 min-h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-2"/>}</li>)}</ol>{draft.schedules.length !== draft.count && <p className="mt-3 text-xs font-bold text-amber-700">Pilih setidaknya satu hari belajar agar {draft.count} tanggal sesi dapat disusun.</p>}</div>
           </section>)}
         </div>
         <div className="sticky bottom-20 z-20 rounded-2xl border border-indigo-100 bg-white/95 p-3 shadow-xl backdrop-blur sm:bottom-4"><button onClick={submit} disabled={saving||!drafts.length} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 text-sm font-black text-white disabled:opacity-50">{saving?<Loader2 className="animate-spin" size={18}/>:<CheckCircle2 size={18}/>} {saving?"Menyimpan & mencari tutor…":"Simpan Jadwal & Cari Tutor Lagi"}</button></div>

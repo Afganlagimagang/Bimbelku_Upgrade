@@ -54,7 +54,7 @@ class StageSixCFinalRegressionTest extends TestCase
         $this->postJson('/api/admin/payout-approvals', [])->assertNotFound();
     }
 
-    public function test_second_admin_cannot_login_when_primary_admin_exists(): void
+    public function test_second_active_admin_can_login_but_primary_remains_account_owner(): void
     {
         $primary = $this->activeAdmin([
             'email' => 'admin-utama@example.com',
@@ -66,9 +66,7 @@ class StageSixCFinalRegressionTest extends TestCase
         $this->postJson('/api/login', [
             'email' => $secondary->email,
             'password' => 'password',
-        ])
-            ->assertForbidden()
-            ->assertJsonPath('message', 'Project ini hanya menggunakan satu akun admin utama.');
+        ])->assertOk();
 
         $this->postJson('/api/login', [
             'email' => $primary->email,
@@ -76,6 +74,62 @@ class StageSixCFinalRegressionTest extends TestCase
         ])->assertOk();
     }
 
+    public function test_only_primary_admin_can_manage_other_admin_accounts(): void
+    {
+        $primary = $this->activeAdmin(['email' => 'primary@example.com']);
+        $secondary = $this->activeAdmin(['email' => 'secondary@example.com']);
+
+        Sanctum::actingAs($secondary);
+        $this->getJson('/api/admin/accounts')->assertForbidden();
+        $this->postJson('/api/admin/accounts', [
+            'name' => 'Admin Baru',
+            'email' => 'admin.baru@example.com',
+            'password' => 'password-baru-aman',
+            'super_admin_password' => 'password',
+        ])->assertForbidden();
+
+        Sanctum::actingAs($primary);
+        $this->getJson('/api/admin/accounts')
+            ->assertOk()
+            ->assertJsonCount(2);
+        $created = $this->postJson('/api/admin/accounts', [
+            'name' => 'Admin Baru',
+            'email' => 'admin.baru@example.com',
+            'password' => 'password-baru-aman',
+            'super_admin_password' => 'password',
+        ])->assertCreated();
+
+        $adminId = (int) $created->json('data.id');
+        $this->putJson('/api/admin/accounts/'.$adminId, [
+            'name' => 'Admin Diperbarui',
+            'email' => 'admin.update@example.com',
+            'password' => null,
+            'super_admin_password' => 'password',
+        ])->assertOk()->assertJsonPath('data.name', 'Admin Diperbarui');
+
+        $this->patchJson('/api/admin/accounts/'.$adminId.'/status', [
+            'status' => 'banned',
+            'super_admin_password' => 'password',
+        ])->assertOk();
+        $this->assertDatabaseHas('users', [
+            'email' => 'admin.update@example.com',
+            'role' => 'admin',
+            'status' => 'banned',
+        ]);
+
+        $this->deleteJson('/api/admin/accounts/'.$adminId, [
+            'super_admin_password' => 'password',
+        ])->assertOk();
+        $this->assertSoftDeleted('users', ['id' => $adminId]);
+    }
+    public function test_admin_seeder_never_silently_disables_secondary_admins(): void
+    {
+        $seeder = (string) file_get_contents(database_path('seeders/AdminSeeder.php'));
+
+        $this->assertStringContainsString("'admin_type' => 'super_admin'", $seeder);
+        $this->assertStringNotContainsString("'admin_type' => 'legacy_disabled'", $seeder);
+        $this->assertStringNotContainsString('$legacyAdmin->tokens()->delete()', $seeder);
+    }
     public function test_student_teacher_and_admin_routes_remain_isolated(): void
     {
         $student = User::factory()->create([

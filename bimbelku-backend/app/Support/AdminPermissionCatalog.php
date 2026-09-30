@@ -111,13 +111,13 @@ class AdminPermissionCatalog
             '#^(?:pending-payments|finance/payments|verify-payment|orders|payment-settings)(?:/|$)#' => self::FINANCE_PAYMENTS,
             '#^(?:finance/refunds|refunds)(?:/|$)#' => self::FINANCE_REFUNDS,
             '#^(?:finance|payout|commission-setting)(?:/|$)#' => self::FINANCE_PAYOUTS,
-            '#^(?:pending-teachers|history-teachers|verify-teacher)(?:/|$)#' => self::TEACHERS_MANAGE,
-            '#^users(?:/|$)#' => self::USERS_MANAGE,
+            '#^(?:pending-teachers|history-teachers|verify-teacher|teachers/.+/(?:verification-stage|schedule))(?:/|$)#' => self::TEACHERS_MANAGE,
+            '#^(?:users|accounts)(?:/|$)#' => self::USERS_MANAGE,
             '#^(?:cases|teacher-replacements|disputes|session-reports|bookings/.+/completion-review)(?:/|$)#' => self::CASES_MANAGE,
             '#^(?:classes|ratings)(?:/|$)#' => self::CLASSES_MANAGE,
-            '#^(?:notifications/(?:recipients|send)|tickets)(?:/|$)#' => self::SUPPORT_MANAGE,
-            '#^(?:hourly-rates|subjects|chapters|stage-five|cheap-class-templates|cheap-classes)(?:/|$)#' => self::CONTENT_MANAGE,
-            '#^(?:website-settings|settings/footer|admin-socials|socials|settings/teacher-cover|notes)(?:/|$)#' => self::SETTINGS_MANAGE,
+            '#^notifications/(?:recipients|send)(?:/|$)#' => self::SUPPORT_MANAGE,
+            '#^(?:hourly-rates|private-participant-pricing|program-groups|learning-programs|subject-groups|subjects|chapters|stage-five|cheap-class-templates|cheap-classes)(?:/|$)#' => self::CONTENT_MANAGE,
+            '#^(?:website-settings|website-media|website-tutor-gallery|settings/footer|admin-socials|socials|settings/teacher-cover|public-tutors|notes)(?:/|$)#' => self::SETTINGS_MANAGE,
             '#^audit-log(?:/|$)#' => self::AUDIT_VIEW,
         ];
 

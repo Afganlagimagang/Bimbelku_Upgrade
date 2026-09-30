@@ -57,7 +57,7 @@ class CheapClassPaymentLifecycleTest extends TestCase
         $this->assertNull($order->fresh()->payment_proof);
     }
 
-    public function test_payment_endpoint_returns_frontend_error_code_at_exact_seat_deadline(): void
+    public function test_gateway_checkout_rejects_exact_seat_deadline_and_manual_payment_is_retired(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-08-13 08:00:00', 'Asia/Jakarta'));
         Storage::fake('local');
@@ -86,11 +86,17 @@ class CheapClassPaymentLifecycleTest extends TestCase
             'Accept' => 'application/json',
             'Idempotency-Key' => 'cheap-class-exact-deadline-0001',
         ])
-            ->assertUnprocessable()
-            ->assertJsonPath('error_code', 'payment_expired');
+            ->assertStatus(410)
+            ->assertJsonPath('error_code', 'manual_payment_retired');
 
-        $this->assertSame('payment_expired', $enrollment->fresh()->status);
-        $this->assertSame('expired', $order->fresh()->status);
+        $this->postJson("/api/orders/{$order->id}/xendit-session", [], [
+            'Idempotency-Key' => 'cheap-class-exact-deadline-gateway-0001',
+        ])
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Batas pembayaran kursi sudah berakhir.');
+
+        $this->assertSame('seat_held', $enrollment->fresh()->status);
+        $this->assertSame('pending', $order->fresh()->status);
         Storage::disk('local')->assertDirectoryEmpty('payment_proofs');
     }
 

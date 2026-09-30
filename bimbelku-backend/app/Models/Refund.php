@@ -22,6 +22,9 @@ class Refund extends Model
         'processed_at' => 'datetime',
         'destination_selected_at' => 'datetime',
         'destination_selection_version' => 'integer',
+        'gateway_submitted_at' => 'datetime',
+        'gateway_processed_at' => 'datetime',
+        'last_reconciled_at' => 'datetime',
     ];
 
     protected function automaticPublicCodeColumn(): string

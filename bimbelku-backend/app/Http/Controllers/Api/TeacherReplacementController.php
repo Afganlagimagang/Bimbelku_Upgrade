@@ -7,6 +7,7 @@ use App\Models\LearningPackage;
 use App\Models\PackageSubject;
 use App\Models\TeacherReplacementRequest;
 use App\Services\PartialPackageRefundService;
+use App\Services\RefundSettlementService;
 use App\Services\TeacherMatchingService;
 use App\Services\TeacherReplacementService;
 use Illuminate\Http\Request;
@@ -132,14 +133,17 @@ class TeacherReplacementController extends Controller
         ]);
     }
 
-    public function requestRefund(Request $request, TeacherReplacementRequest $teacherReplacement, PartialPackageRefundService $refunds)
+    public function requestRefund(Request $request, TeacherReplacementRequest $teacherReplacement, PartialPackageRefundService $refunds, RefundSettlementService $settlement)
     {
         Gate::authorize('view', $teacherReplacement);
         $refund = $refunds->queueTeacherReplacement($teacherReplacement);
+        $automatic = $settlement->startAutomatic($refund);
 
         return response()->json([
-            'message' => 'Refund sesi tersisa masuk antrean. Pilih tujuan refund di Riwayat Transaksi.',
-            'data' => $refund,
+            'message' => $automatic
+                ? 'Refund sesi tersisa diproses otomatis ke sumber pembayaran asal.'
+                : 'Refund sesi tersisa siap diajukan. Pilih dan konfirmasi tujuan refund di Riwayat Transaksi.',
+            'data' => $refund->fresh(),
         ], 201);
     }
 

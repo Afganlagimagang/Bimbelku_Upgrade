@@ -7,6 +7,7 @@ import SessionLifecycle from "./components/SessionLifecycle";
 import DeferredToaster from "./components/DeferredToaster";
 import { WebsiteContentProvider } from "./components/WebsiteContentProvider";
 import { scheduleNonCriticalTask } from "./lib/schedule";
+import RouteSeoManager from "./components/RouteSeoManager";
 
 // =================================================================
 // KONFIGURASI LAZY LOAD (Code Splitting)
@@ -34,13 +35,19 @@ const Index = routeLazy(exactPath("/"), () => import("./pages/Index"));
 // rute terlindungi tersebut benar-benar dirender.
 const PrivateRoute = lazy(() => import("./components/PrivateRoute"));
 const StudentPackageRoute = lazy(() => import("./components/StudentPackageRoute"));
+const GuestPackageRoute = lazy(() => import("./components/GuestPackageRoute"));
+const GuestOrderStatus = routeLazy(pathPattern(/^\/pesanan\/[^/]+$/), () => import("./pages/GuestOrderStatus"));
 
 // 1. Halaman Umum
 const NotFound = lazy(() => import("./pages/NotFound"));
 const WhyUs = routeLazy(exactPath("/why-us"), () => import("./pages/WhyUs"));
-const ProgramCatalog = routeLazy(exactPath("/program"), () => import("./pages/ProgramCatalog"));
+const ProgramCatalog = routeLazy(exactPath("/program"), () => import("./pages/ProgramCatalogGrouped"));
 const Testimonials = routeLazy(exactPath("/testimonials"), () => import("./pages/Testimonials"));
+const TutorCatalog = routeLazy(exactPath("/tutor"), () => import("./pages/TutorCatalog"));
+const ServiceAreasPage = routeLazy(exactPath("/area-layanan"), () => import("./pages/ServiceAreasPage"));
+const TutorSelection = routeLazy(exactPath("/seleksi-tutor"), () => import("./pages/TutorSelection"));
 const ProgramDetail = routeLazy(pathPattern(/^\/program\/[^/]+$/), () => import("./pages/ProgramDetail"));
+const LearningSystemPage = routeLazy(pathPattern(/^\/cara-belajar(?:\/[^/]+)?$/), () => import("./pages/LearningSystemPage"));
 const AccessDenied = routeLazy(exactPath("/access-denied"), () => import("./pages/AccessDenied"));
 
 // 2. Halaman Rules
@@ -49,6 +56,7 @@ const TermsConditions = routeLazy(exactPath("/terms"), () => import("./pages/rul
 
 // 3. Halaman Autentikasi
 const Register = routeLazy(exactPath("/register"), () => import("./pages/Register"));
+const JadiTutor = routeLazy(exactPath("/jadi-tutor"), () => import("./pages/JadiTutor"));
 const Login = routeLazy(exactPath("/login"), () => import("./pages/Login"));
 const ForgotPassword = routeLazy(exactPath("/forgot-password"), () => import("./pages/ForgotPassword"));
 const ResetPassword = routeLazy(exactPath("/reset-password"), () => import("./pages/ResetPassword"));
@@ -62,14 +70,12 @@ const DashboardOverview = routeLazy(exactPath("/admin"), () => import("./pages/a
 const AdminProfile = routeLazy(exactPath("/admin/profile"), () => import("./pages/admin/AdminProfile"));
 const TutorSearchMonitoring = routeLazy(exactPath("/admin/tutor-searches"), () => import("./pages/admin/TutorSearchMonitoring"));
 const TeacherVerification = routeLazy(exactPath("/admin/guru"), () => import("./pages/admin/TeacherVerification"));
-const PaymentVerification = routeLazy(exactPath("/admin/pembayaran"), () => import("./pages/admin/PaymentVerification"));
-const RefundManagement = routeLazy(exactPath("/admin/refunds"), () => import("./pages/admin/RefundManagement"));
 const UserManagement = routeLazy(exactPath("/admin/users"), () => import("./pages/admin/UserManagement"));
-const PaymentSettings = routeLazy(exactPath("/admin/settings-payment"), () => import("./pages/admin/PaymentSettings"));
-const FinanceReport = routeLazy(exactPath("/admin/finance"), () => import("./pages/admin/FinanceReport"));
+const FinanceCenter = routeLazy(exactPath("/admin/finance"), () => import("./pages/admin/FinanceCenter"));
 const EditFooter = routeLazy(exactPath("/admin/settings-footer"), () => import("./pages/admin/EditFooter"));
 const PublicWebsiteSettings = routeLazy(exactPath("/admin/website"), () => import("./pages/admin/PublicWebsiteSettings"));
-const AdminMessages = routeLazy(exactPath("/admin/pesan"), () => import("./pages/admin/AdminMessages"));
+const WebsiteMediaSettings = routeLazy(exactPath("/admin/website-media"), () => import("./pages/admin/WebsiteMediaSettings"));
+const PublicTutorDirectoryAdmin = routeLazy(exactPath("/admin/public-tutors"), () => import("./pages/admin/PublicTutorDirectoryAdmin"));
 const SendMessage = routeLazy(exactPath("/admin/notifikasi"), () => import("./pages/admin/SendMessage"));
 const ClassMonitoring = routeLazy(exactPath("/admin/classes"), () => import("./pages/admin/ClassMonitoring"));
 const ClassDetail = routeLazy(pathPattern(/^\/admin\/classes\/[^/]+$/), () => import("./pages/admin/ClassDetail"));
@@ -79,6 +85,7 @@ const AdminRatings = routeLazy(exactPath("/admin/ratings"), () => import("./page
 const HourlyRates = routeLazy(exactPath("/admin/hourly-rates"), () => import("./pages/admin/HourlyRates"));
 const Chapters = routeLazy(exactPath("/admin/chapters"), () => import("./pages/admin/Chapters"));
 const SubjectManagement = routeLazy(exactPath("/admin/subjects"), () => import("./pages/admin/SubjectManagement"));
+const SubjectPageContentEditor = routeLazy(pathPattern(/^\/admin\/subjects\/\d+\/page$/), () => import("./pages/admin/SubjectPageContentEditor"));
 const CaseCenter = routeLazy(exactPath("/admin/cases"), () => import("./pages/admin/CaseCenter"));
 const StageFiveManagement = routeLazy(exactPath("/admin/stage-five"), () => import("./pages/admin/StageFiveManagement"));
 const AdminAuditLog = routeLazy(exactPath("/admin/audit-log"), () => import("./pages/admin/AdminAuditLog"));
@@ -90,8 +97,8 @@ const CheapClassRecurring = routeLazy(exactPath("/admin/kelas-murah/berulang"), 
 const TeacherDashboard = routeLazy(exactPath("/guru"), () => import("./pages/teacher/TeacherDashboard"));
 const ManageClasses = routeLazy(exactPath("/guru/kelas"), () => import("./pages/teacher/ManageClasses"));
 const TeacherProfile = routeLazy(exactPath("/guru/profil"), () => import("./pages/teacher/TeacherProfile"));
-const TeacherBankSettings = routeLazy(exactPath("/guru/rekening"), () => import("./pages/teacher/TeacherBankSettings"));
-const TeacherSalary = routeLazy(exactPath("/guru/gaji"), () => import("./pages/teacher/TeacherSalary"));
+const TeacherSalary = routeLazy(exactPath("/guru/dompet"), () => import("./pages/teacher/TeacherSalary"));
+const TeacherPayoutDestination = routeLazy(exactPath("/guru/pencairan/rekening"), () => import("./pages/teacher/TeacherPayoutDestination"));
 const ManageSchedule = routeLazy(exactPath("/guru/jadwal"), () => import("./pages/teacher/ManageSchedule"));
 const BookingGuru = routeLazy(exactPath("/guru/permintaan"), () => import("./pages/teacher/BookingGuru"));
 const TeacherMessages = routeLazy(exactPath("/guru/pesan"), () => import("./pages/teacher/TeacherMessages"));
@@ -103,10 +110,11 @@ const TeacherLearningProgressDetail = routeLazy(pathPattern(/^\/guru\/progress\/
 // 6. Halaman Murid
 const Dashboard = routeLazy(exactPath("/student/dashboard"), () => import("./pages/students/Dashboard"));
 const MyClasses = routeLazy(exactPath("/student/my-classes"), () => import("./pages/students/MyClasses"));
+const PackageProcess = routeLazy(exactPath("/student/packages"), () => import("./pages/students/PackageProcess"));
 const TransactionHistory = routeLazy(exactPath("/student/history"), () => import("./pages/students/TransactionHistory"));
 const Profile = routeLazy(exactPath("/student/profile"), () => import("./pages/students/Profile"));
 const Account = routeLazy(exactPath("/student/account"), () => import("./pages/students/Account"));
-const PackageBuilder = routeLazy(exactPath("/student/packages/new", "/search", "/student/find"), () => import("./pages/students/PackageBuilder"));
+const PackageBuilder = routeLazy(exactPath("/student/packages/new", "/search", "/student/find", "/pesan"), () => import("./pages/students/PackageBuilder"));
 const PackageReschedule = routeLazy(pathPattern(/^\/student\/packages\/[^/]+\/reschedule$/), () => import("./pages/students/PackageReschedule"));
 const Vouchers = routeLazy(exactPath("/student/vouchers"), () => import("./pages/students/Vouchers"));
 const PromotionDetail = routeLazy(pathPattern(/^\/student\/offers\/[^/]+$/), () => import("./pages/students/PromotionDetail"));
@@ -143,6 +151,17 @@ const DeferredFilePreviewProvider = () => {
       <FilePreviewProvider />
     </Suspense>
   ) : null;
+};
+
+const RouteScrollReset = () => {
+  const { pathname, hash } = useLocation();
+
+  useEffect(() => {
+    if (hash) return;
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [pathname, hash]);
+
+  return null;
 };
 
 const LegacyPackageRedirect = () => {
@@ -236,13 +255,14 @@ const PageLoader = () => (
   </div>
 );
 
-const App = () => (
+export const AppContent = () => (
   <ConfirmDialogProvider>
         {/* Toast dimuat setelah konten awal selesai atau saat pertama kali dibutuhkan. */}
         <DeferredToaster />
         <DeferredFilePreviewProvider />
         
-        <BrowserRouter>
+        <RouteScrollReset />
+        <RouteSeoManager />
         <SessionLifecycle />
         
         {/* === GLOBAL COMPONENTS === */}
@@ -259,9 +279,18 @@ const App = () => (
             <Route path="/" element={<WebsiteContentProvider><Index /></WebsiteContentProvider>} />
             <Route path="/program" element={<WebsiteContentProvider><ProgramCatalog /></WebsiteContentProvider>} />
             <Route path="/testimonials" element={<WebsiteContentProvider><Testimonials /></WebsiteContentProvider>} />
+            <Route path="/tutor" element={<WebsiteContentProvider><TutorCatalog /></WebsiteContentProvider>} />
+            <Route path="/area-layanan" element={<WebsiteContentProvider><ServiceAreasPage /></WebsiteContentProvider>} />
+            <Route path="/seleksi-tutor" element={<WebsiteContentProvider><TutorSelection /></WebsiteContentProvider>} />
             <Route path="/program/:slug" element={<WebsiteContentProvider><ProgramDetail /></WebsiteContentProvider>} />
+            <Route path="/cara-belajar" element={<WebsiteContentProvider><LearningSystemPage /></WebsiteContentProvider>} />
+            <Route path="/cara-belajar/pemesanan-dan-matching" element={<Navigate to="/cara-belajar/sistem-matching-tutor" replace />} />
+            <Route path="/cara-belajar/:slug" element={<WebsiteContentProvider><LearningSystemPage /></WebsiteContentProvider>} />
+            <Route path="/pesanan/:code" element={<WebsiteContentProvider><GuestOrderStatus /></WebsiteContentProvider>} />
             <Route path="/register" element={<WebsiteContentProvider><Register /></WebsiteContentProvider>} />
-            <Route path="/login" element={<Login />} />
+            <Route path="/jadi-tutor" element={<WebsiteContentProvider><JadiTutor /></WebsiteContentProvider>} />
+            <Route path="/login" element={<WebsiteContentProvider><Login /></WebsiteContentProvider>} />
+            <Route path="/admin/login" element={<WebsiteContentProvider><Login adminOnly /></WebsiteContentProvider>} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/oauth/google/callback" element={<GoogleAuthCallback />} />
@@ -270,7 +299,7 @@ const App = () => (
 
             <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="/terms" element={<TermsConditions />} />
-            <Route path="/why-us" element={<WhyUs />} />
+            <Route path="/why-us" element={<WebsiteContentProvider><WhyUs /></WebsiteContentProvider>} />
             <Route path="/access-denied" element={<AccessDenied />} />
 
             <Route path={'/verify-email'} element={<VerifyEmail />} />
@@ -283,15 +312,17 @@ const App = () => (
               <Route path="/admin/profile" element={<AdminProfile />} />
               <Route path="/admin/tutor-searches" element={<TutorSearchMonitoring />} />
               <Route path="/admin/guru" element={<TeacherVerification />} />
-              <Route path="/admin/pembayaran" element={<PaymentVerification />} />
+              <Route path="/admin/pembayaran" element={<Navigate to="/admin/finance?tab=payments" replace />} />
               <Route path="/admin/users" element={<UserManagement />} />
-              <Route path="/admin/settings-payment" element={<PaymentSettings />} />
+              <Route path="/admin/settings-payment" element={<Navigate to="/admin/finance?tab=payments" replace />} />
               <Route path="/admin/settings-footer" element={<EditFooter />} />
               <Route path="/admin/website" element={<PublicWebsiteSettings />} />
-              <Route path="/admin/finance" element={<FinanceReport />} />
-              <Route path="/admin/refunds" element={<RefundManagement />} />
+              <Route path="/admin/website-media" element={<WebsiteMediaSettings />} />
+              <Route path="/admin/public-tutors" element={<PublicTutorDirectoryAdmin />} />
+              <Route path="/admin/finance" element={<FinanceCenter />} />
+              <Route path="/admin/refunds" element={<Navigate to="/admin/finance?tab=refunds" replace />} />
               <Route path="/admin/finance-security" element={<Navigate to="/admin/pembayaran" replace />} />
-              <Route path="/admin/pesan" element={<AdminMessages />} />
+              <Route path="/admin/pesan" element={<Navigate to="/admin" replace />} />
               <Route path="/admin/notifikasi" element={<SendMessage />} /> 
               <Route path="/admin/classes" element={<ClassMonitoring />} />
               <Route path="/admin/classes/:id" element={<ClassDetail />} />
@@ -301,6 +332,8 @@ const App = () => (
               <Route path="/admin/hourly-rates" element={<HourlyRates />} />
               <Route path="/admin/chapters" element={<Chapters />} />
               <Route path="/admin/subjects" element={<SubjectManagement />} />
+              <Route path="/admin/subjects/:id/page" element={<SubjectPageContentEditor />} />
+              <Route path="/admin/programs" element={<Navigate to="/admin/subjects#programs" replace />} />
               <Route path="/admin/cases" element={<CaseCenter />} />
               <Route path="/admin/stage-five" element={<StageFiveManagement />} />
               <Route path="/admin/access-control" element={<Navigate to="/admin" replace />} />
@@ -319,8 +352,10 @@ const App = () => (
               <Route path="/guru/profil" element={<TeacherProfile />} />
               <Route path="/guru/jadwal" element={<ManageSchedule />} />
               <Route path="/guru/permintaan" element={<BookingGuru />} />
-              <Route path="/guru/rekening" element={<TeacherBankSettings />} />
-              <Route path="/guru/gaji" element={<TeacherSalary />} />
+              <Route path="/guru/dompet" element={<TeacherSalary />} />
+              <Route path="/guru/pencairan/rekening" element={<TeacherPayoutDestination />} />
+              <Route path="/guru/rekening" element={<Navigate to="/guru/pencairan/rekening" replace />} />
+              <Route path="/guru/gaji" element={<Navigate to="/guru/dompet" replace />} />
               <Route path="/guru/pesan" element={<TeacherMessages />} />
               <Route path="/guru/saya" element={<TeacherAccount />} />
               <Route path="/guru/performa" element={<TeacherPerformance />} />
@@ -329,6 +364,7 @@ const App = () => (
               <Route path="/guru/progress/package-subject/:id" element={<TeacherLearningProgressDetail />} />
               
               <Route path="/guru/bantuan" element={<TeacherHelp />} />
+              <Route path="/guru/help" element={<Navigate to="/guru/bantuan" replace />} />
             </Route>
 
             {/* Alias lama selalu dinormalisasi lebih dulu ke URL Paket Baru.
@@ -340,6 +376,7 @@ const App = () => (
             {/* Jalur pembelian Paket Belajar mempunyai guard khusus:
                 student boleh masuk, sedangkan admin/tutor mendapat penjelasan ramah
                 alih-alih diarahkan ke halaman Access Denied. */}
+            <Route element={<GuestPackageRoute />}><Route path="/pesan" element={<WebsiteContentProvider><PackageBuilder /></WebsiteContentProvider>} /></Route>
             <Route element={<StudentPackageRoute />}>
               <Route path="/student/packages/new" element={<PackageBuilder />} />
             </Route>
@@ -349,6 +386,7 @@ const App = () => (
                ========================================= */}
             <Route element={<PrivateRoute allowedRoles={['student']} />}>
               <Route path="/student/dashboard" element={<Dashboard />} />
+              <Route path="/student/packages" element={<PackageProcess />} />
               <Route path="/student/my-classes" element={<MyClasses />} />
               <Route path="/student/messages" element={<Messages />} />
               <Route path="/student/progress" element={<LearningProgress />} />
@@ -358,12 +396,12 @@ const App = () => (
               <Route path="/student/history" element={<TransactionHistory />} />
               <Route path="/student/profile" element={<Profile />} />
               <Route path="/student/account" element={<Account />} />
-              <Route path="/student/packages" element={<Navigate to="/student/my-classes?tab=process" replace />} />
               <Route path="/student/packages/:id/reschedule" element={<PackageReschedule />} />
               <Route path="/student/vouchers" element={<Vouchers />} />
               <Route path="/student/offers/:id" element={<PromotionDetail />} />
               
               <Route path="/student/help" element={<StudentHelp />} />
+              <Route path="/student/bantuan" element={<Navigate to="/student/help" replace />} />
               
               <Route path="/payment" element={<PaymentPage />} />
             </Route>
@@ -375,8 +413,9 @@ const App = () => (
 
           </Routes>
         </Suspense>
-        </BrowserRouter>
   </ConfirmDialogProvider>
 );
+
+const App = () => <BrowserRouter><AppContent /></BrowserRouter>;
 
 export default App;

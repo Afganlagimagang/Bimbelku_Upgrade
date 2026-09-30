@@ -155,7 +155,7 @@ export default function CheapClassSchedule() {
       setMeta(response.data?.meta || { ...initialMeta, view, scope, sort, page });
       setSubjects(Array.isArray(response.data?.filters?.subjects) ? response.data.filters.subjects : []);
     } catch (error) {
-      notify.error(getApiError(error, "Jadwal Kelas Kelompok belum dapat dimuat."));
+      notify.error(getApiError(error, "Jadwal Kelas Bersama belum dapat dimuat."));
       setPackages([]);
       setSessions([]);
     } finally {
@@ -185,7 +185,7 @@ export default function CheapClassSchedule() {
         ? ` ${item.pending_payment_count} pembayaran/kursi yang masih menunggu akan diselesaikan sesuai statusnya; bukti yang sudah dikirim tetap diperiksa.`
         : "";
     const approved = await confirm({
-      title: "Batalkan paket Kelas Kelompok?",
+      title: "Batalkan paket Kelas Bersama?",
       description: `${item.subject_name} · ${item.grade} beserta seluruh sesinya akan dibatalkan.${paymentNote} Paket yang memiliki riwayat peserta tetap disimpan sebagai arsip.`,
       confirmText: "Batalkan paket",
       tone: "danger",
@@ -207,7 +207,7 @@ export default function CheapClassSchedule() {
 
   const deletePackage = async (item: PackageItem) => {
     const approved = await confirm({
-      title: "Hapus paket Kelas Kelompok?",
+      title: "Hapus paket Kelas Bersama?",
       description: `${item.subject_name} · ${item.grade} beserta seluruh ${item.session_count} sesinya akan dihapus. Tindakan ini tidak dapat dibatalkan.`,
       confirmText: "Hapus paket",
       tone: "danger",
@@ -232,14 +232,14 @@ export default function CheapClassSchedule() {
     }
   };
 
-  return <AdminLayout title="Jadwal Kelas Kelompok">
+  return <AdminLayout title="Jadwal Kelas Bersama">
     <div className="w-full space-y-6 pb-12">
       <section className="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm sm:p-6">
         <div className="flex flex-wrap items-center justify-between gap-3"><Link to="/admin/kelas-murah" className="inline-flex items-center gap-2 text-sm font-black text-indigo-600 hover:text-indigo-800"><ArrowLeft size={16} /> Kembali ke pengaturan</Link><Link to="/admin/kelas-murah/berulang" className="inline-flex h-10 items-center gap-2 rounded-xl bg-violet-50 px-4 text-xs font-black text-violet-700 hover:bg-violet-100"><Repeat2 size={15} /> Kelola Paket Berulang</Link></div>
         <div className="mt-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-xs font-black uppercase tracking-[.18em] text-indigo-600">Kalender operasional</p>
-            <h1 className="mt-2 text-2xl font-black text-slate-950 sm:text-3xl">Jadwal Kelas Kelompok</h1>
+            <h1 className="mt-2 text-2xl font-black text-slate-950 sm:text-3xl">Jadwal Kelas Bersama</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">Jadwal aktif hanya memuat paket yang masih berjalan. Paket batal dan selesai disimpan terpisah dalam Riwayat.</p>
           </div>
           <div className="grid grid-cols-2 rounded-xl bg-slate-100 p-1">
@@ -310,7 +310,7 @@ function SessionList({ scope, items, onChanged }: { scope: ScheduleScope; items:
   if (!items.length) return <Empty text={scope === "history" ? "Belum ada sesi dalam riwayat." : "Belum ada sesi aktif yang cocok dengan filter."} />;
 
   const verify = async (item: SessionItem) => {
-    const approved = await confirm({ title: "Konfirmasi sesi Kelas Kelompok?", description: `Sesi ${item.session_number} ${item.subject_name} akan dinyatakan selesai dan progress tutor menjadi progress resmi murid.`, confirmText: "Konfirmasi sesi", tone: "default" });
+    const approved = await confirm({ title: "Konfirmasi sesi Kelas Bersama?", description: `Sesi ${item.session_number} ${item.subject_name} akan dinyatakan selesai dan progress tutor menjadi progress resmi murid.`, confirmText: "Konfirmasi sesi", tone: "default" });
     if (!approved) return;
     setWorkingId(item.id);
     try {

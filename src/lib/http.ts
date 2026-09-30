@@ -1,11 +1,15 @@
 import axios, { AxiosRequestConfig, AxiosResponse } from "axios";
 import { API_BASE_URL, STORAGE_BASE_URL } from "@/lib/apiBase";
+import { SESSION_MARKER } from "@/lib/session";
 
 export { API_BASE_URL, STORAGE_BASE_URL } from "@/lib/apiBase";
+
+axios.defaults.withCredentials = true;
 
 const http = axios.create({
   baseURL: API_BASE_URL,
   timeout: 20000,
+  withCredentials: true,
   headers: {
     Accept: "application/json",
   },
@@ -34,6 +38,8 @@ const PUBLIC_GET_ENDPOINTS = new Set([
   "/settings/teacher-cover",
   "/website-content",
   "/package-plans",
+  "/program-groups",
+  "/learning-programs",
   "/learning-time-slots",
   "/content/banners",
   "/content/tutorials",
@@ -51,7 +57,8 @@ const isPublicGetRequest = (method: string | undefined, url: string): boolean =>
   if ((method || "get").toLowerCase() !== "get") return false;
   const pathname = requestPathname(url);
   return PUBLIC_GET_ENDPOINTS.has(pathname)
-    || pathname.startsWith("/content/promotions/");
+    || pathname.startsWith("/content/promotions/")
+    || pathname.startsWith("/subject-pages/");
 };
 
 type FinancialRequestConfig = AxiosRequestConfig & {
@@ -148,11 +155,12 @@ http.interceptors.request.use((config) => {
   const method = config.method?.toLowerCase();
   const url = String(config.url || "");
   const token = localStorage.getItem("token");
-  if (token && !isPublicGetRequest(method, url)) {
+  if (token && token !== SESSION_MARKER && !isPublicGetRequest(method, url)) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   const financialMutation = method && !["get", "head", "options"].includes(method) && (
     /\/orders\/\d+\/pay$/.test(url)
+    || /\/orders\/\d+\/xendit-session$/.test(url)
     || /\/student\/cheap-classes\/\d+\/join$/.test(url)
     || url === "/admin/cheap-class-templates"
     || /\/admin\/cheap-class-templates\/\d+\/recurrence$/.test(url)
@@ -243,9 +251,29 @@ const validationMessageAliases: Record<string, string> = {
   "validation.date": "Tanggal yang dipilih tidak valid.",
 };
 
-const readableApiMessage = (message?: string): string | undefined => {
+const duplicateFieldMessage = (field?: string): string => {
+  const key = field?.split(".")[0];
+  if (key === "email") return "Email ini sudah terdaftar. Masuk dengan akun tersebut atau gunakan email lain.";
+  if (key === "slug") return "Nama atau alamat ini sudah digunakan. Ganti dengan nama yang berbeda.";
+  if (key === "name") return "Nama ini sudah digunakan. Gunakan nama lain agar tidak tertukar.";
+  if (key === "code") return "Kode ini sudah digunakan. Buat kode yang berbeda.";
+  return "Data ini sudah digunakan. Masukkan nilai yang berbeda.";
+};
+
+const readableApiMessage = (message?: string, field?: string): string | undefined => {
   if (!message) return undefined;
-  return validationMessageAliases[message.trim()] || message;
+  const clean = message.trim();
+  if (clean === "validation.unique" || /^The .+ has already been taken\.?$/i.test(clean)) {
+    return duplicateFieldMessage(field);
+  }
+  if (clean === "validation.min.array") {
+    if (field === "subjects") return "Pilih minimal satu mata pelajaran.";
+    if (field?.endsWith(".curriculum_chapter_ids")) return "Pilih minimal satu Bab untuk mapel ini.";
+    if (field?.endsWith(".weekdays")) return "Pilih minimal satu hari belajar untuk mapel ini.";
+    if (field?.endsWith(".schedules")) return "Atur minimal satu jadwal belajar untuk mapel ini.";
+    return "Pilih minimal satu pilihan.";
+  }
+  return validationMessageAliases[clean] || message;
 };
 
 const isTechnicalServerMessage = (message: string): boolean => /no query results for model|modelnotfoundexception|sqlstate\[|stack trace|undefined (?:property|variable|array key)|call to (?:a member function|undefined method)|too few arguments|class [^ ]+ not found|syntax error/i.test(message);
@@ -272,13 +300,14 @@ export function getApiErrorDetails(
 
   const data = error.response?.data as ApiErrorPayload | undefined;
   const status = error.response?.status;
-  const firstError = data?.errors ? Object.values(data.errors).flat()[0] : undefined;
+  const firstErrorEntry = data?.errors ? Object.entries(data.errors).find(([, messages]) => messages.length > 0) : undefined;
+  const firstError = firstErrorEntry?.[1][0];
   const genericMessage = data?.message === "The given data was invalid." ? undefined : data?.message;
   const rawRetryAfter = data?.retry_after_seconds ?? Number(error.response?.headers?.["retry-after"]);
   const retryAfterSeconds = Number.isFinite(Number(rawRetryAfter))
     ? Math.max(1, Number(rawRetryAfter))
     : undefined;
-  let message = readableApiMessage(firstError || genericMessage);
+  let message = readableApiMessage(firstError || genericMessage, firstErrorEntry?.[0]);
 
   if (status === 429 && (!message || /too many attempts/i.test(message))) {
     message = retryAfterSeconds
@@ -298,6 +327,14 @@ export function getApiErrorDetails(
 
 export function getApiError(error: unknown, fallback = "Terjadi kesalahan. Silakan coba lagi."): string {
   return getApiErrorDetails(error, fallback).message;
+}
+
+export function getApiValidationErrors(error: unknown): Record<string, string> {
+  if (!axios.isAxiosError(error)) return {};
+  const data = error.response?.data as ApiErrorPayload | undefined;
+  return Object.fromEntries(Object.entries(data?.errors || {}).map(([field, messages]) => [
+    field, readableApiMessage(messages[0], field) || "Periksa kembali data ini.",
+  ]));
 }
 
 export default http;

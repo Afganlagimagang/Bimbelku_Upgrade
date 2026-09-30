@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   FileText,
+  ExternalLink,
+  Loader2,
   RotateCw,
   ScanSearch,
   X,
@@ -15,6 +17,7 @@ import {
 
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 4;
+const PdfCanvasPreview = lazy(() => import("@/components/PdfCanvasPreview"));
 
 export default function FilePreviewProvider() {
   const [preview, setPreview] = useState<FilePreviewDetail | null>(null);
@@ -84,10 +87,6 @@ export default function FilePreviewProvider() {
 
   const isImage = preview?.contentType.startsWith("image/") || false;
   const isPdf = preview?.contentType === "application/pdf";
-  const pdfUrl = useMemo(
-    () => preview ? `${preview.url}#toolbar=0&navpanes=0&view=FitH` : "",
-    [preview],
-  );
 
   if (!preview) return null;
 
@@ -114,6 +113,7 @@ export default function FilePreviewProvider() {
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
+          {isPdf && <a href={preview.url} target="_blank" rel="noopener noreferrer" className="grid h-10 w-10 place-items-center rounded-xl text-slate-200 transition hover:bg-white/10" aria-label="Buka PDF di tab baru" title="Buka PDF di tab baru"><ExternalLink size={18} /></a>}
           {isImage && (
             <>
               <PreviewButton
@@ -165,11 +165,9 @@ export default function FilePreviewProvider() {
             />
           </div>
         ) : isPdf ? (
-          <iframe
-            title={`Pratinjau ${preview.filename}`}
-            src={pdfUrl}
-            className="h-full min-h-[calc(100dvh-7rem)] w-full rounded-xl border-0 bg-white"
-          />
+          <Suspense fallback={<p className="flex items-center justify-center gap-2 py-16 text-sm text-slate-300"><Loader2 size={18} className="animate-spin" />Memuat pembaca PDF…</p>}>
+            <PdfCanvasPreview url={preview.url} blob={preview.blob} />
+          </Suspense>
         ) : (
           <div className="grid min-h-full place-items-center">
             <div className="max-w-md rounded-2xl border border-white/10 bg-white/5 p-8 text-center">

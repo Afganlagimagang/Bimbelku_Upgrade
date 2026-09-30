@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import http, { getApiError } from "@/lib/http";
 import { notify } from "@/lib/notify";
 import { useConfirmDialog } from "@/components/ConfirmDialogProvider";
+import WorkspacePageIntro from "@/components/WorkspacePageIntro";
 
 type Enrollment = {
   id: number;
@@ -100,7 +101,7 @@ export default function CheapClasses() {
       const response = await http.get<CheapClass[]>("/student/cheap-classes");
       setClasses(response.data);
     } catch (error) {
-      notify.error(getApiError(error, "Kelas Kelompok belum dapat dimuat."));
+      notify.error(getApiError(error, "Kelas Bersama belum dapat dimuat."));
     } finally {
       setLoading(false);
     }
@@ -108,7 +109,6 @@ export default function CheapClasses() {
 
   useEffect(() => { void load(); }, [load]);
 
-  const availableCount = useMemo(() => classes.filter((item) => item.can_join).length, [classes]);
   const activeClasses = useMemo(() => classes.filter((item) => !["completed", "cancelled"].includes(item.status)), [classes]);
   const historyClasses = useMemo(() => classes.filter((item) => ["completed", "cancelled"].includes(item.status)), [classes]);
   const visibleClasses = scope === "active" ? activeClasses : historyClasses;
@@ -125,7 +125,7 @@ export default function CheapClasses() {
           invoiceId: response.data.order_number,
           tutorName: "Tutor diumumkan setelah kelas dikonfirmasi",
           subject: item.subject_name,
-          type: "Online - Kelas Kelompok",
+          type: "Online - Kelas Bersama",
           price: item.price_per_student,
           date: item.starts_at,
           paymentDueAt: response.data.payment_due_at,
@@ -170,25 +170,18 @@ export default function CheapClasses() {
   };
 
   return (
-    <StudentLayout title="Kelas Kelompok">
+    <StudentLayout title="Kelas Bersama">
       <div className="mx-auto max-w-7xl space-y-7 pb-12">
-        <section data-tour="cheap-class-hero" className="overflow-hidden rounded-[2rem] bg-gradient-to-br from-indigo-700 via-violet-700 to-fuchsia-700 px-6 py-8 text-white shadow-xl sm:px-8">
-          <div className="max-w-3xl">
-            <span className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 text-xs font-black uppercase tracking-widest"><Users size={14} /> Belajar bersama online</span>
-            <h1 className="mt-4 text-3xl font-black sm:text-4xl">Kelas berkualitas dengan harga hemat</h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-indigo-50">Kelas dibuat admin dalam beberapa sesi. Tutor dipilih otomatis setelah jadwal seluruh sesi dinyatakan tersedia.</p>
-            <p className="mt-5 text-sm font-bold text-white">{availableCount} kelas sedang menerima peserta.</p>
-          </div>
-        </section>
+        <div data-tour="cheap-class-hero"><WorkspacePageIntro eyebrow="Belajar bersama online" title="Kelas Bersama" description="Pilih kelas berdasarkan mapel, jenjang, jadwal, kapasitas, dan harga. Tutor ditetapkan setelah kesiapan seluruh sesi diperiksa." icon={Users} /></div>
 
         {!loading && classes.length > 0 && <section className="rounded-[1.5rem] border border-slate-100 bg-white p-2 shadow-sm"><div className="grid grid-cols-2 gap-1.5 rounded-2xl bg-slate-100 p-1.5"><button type="button" onClick={() => setScope("active")} className={`min-h-11 rounded-xl text-sm font-black ${scope === "active" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-500"}`}>Aktif ({activeClasses.length})</button><button type="button" onClick={() => setScope("history")} className={`min-h-11 rounded-xl text-sm font-black ${scope === "history" ? "bg-white text-indigo-700 shadow-sm" : "text-slate-500"}`}>Riwayat ({historyClasses.length})</button></div></section>}
 
         {loading ? (
           <div className="grid min-h-64 place-items-center rounded-[2rem] border border-slate-100 bg-white"><Loader2 className="animate-spin text-indigo-600" /></div>
         ) : classes.length === 0 ? (
-          <div className="rounded-[2rem] border-2 border-dashed border-slate-200 bg-white px-6 py-16 text-center"><BookOpen className="mx-auto text-slate-300" size={40} /><h2 className="mt-4 text-lg font-black text-slate-800">Belum ada Kelas Kelompok yang dijadwalkan</h2><p className="mt-2 text-sm text-slate-500">Penawaran baru akan tampil otomatis saat pendaftaran dibuka.</p><Link to="/student/packages/new" className="mt-5 inline-flex text-sm font-black text-indigo-600">Cari les privat <ArrowRight className="ml-1" size={16} /></Link></div>
+          <div className="rounded-[2rem] border-2 border-dashed border-slate-200 bg-white px-6 py-16 text-center"><BookOpen className="mx-auto text-slate-300" size={40} /><h2 className="mt-4 text-lg font-black text-slate-800">Belum ada Kelas Bersama yang dijadwalkan</h2><p className="mt-2 text-sm text-slate-500">Penawaran baru akan tampil otomatis saat pendaftaran dibuka.</p><Link to="/student/packages/new" className="mt-5 inline-flex text-sm font-black text-indigo-600">Cari les privat <ArrowRight className="ml-1" size={16} /></Link></div>
         ) : visibleClasses.length === 0 ? (
-          <div className="rounded-[2rem] border-2 border-dashed border-slate-200 bg-white px-6 py-12 text-center"><BookOpen className="mx-auto text-slate-300" size={34} /><p className="mt-3 text-sm font-bold text-slate-500">{scope === "history" ? "Riwayat Kelas Kelompok masih kosong." : "Tidak ada Kelas Kelompok aktif."}</p></div>
+          <div className="rounded-[2rem] border-2 border-dashed border-slate-200 bg-white px-6 py-12 text-center"><BookOpen className="mx-auto text-slate-300" size={34} /><p className="mt-3 text-sm font-bold text-slate-500">{scope === "history" ? "Riwayat Kelas Bersama masih kosong." : "Tidak ada Kelas Bersama aktif."}</p></div>
         ) : (
           <section data-tour="cheap-class-list" className="grid gap-5 lg:grid-cols-2">
             {visibleClasses.map((item) => <ClassCard key={item.id} item={item} working={working === item.id} onJoin={() => join(item)} onCancel={() => cancel(item)} />)}
@@ -212,7 +205,7 @@ function ClassCard({ item, working, onJoin, onCancel }: { item: CheapClass; work
   return <article className="overflow-hidden rounded-[2rem] border border-slate-100 bg-white shadow-sm transition hover-rise-half hover-shadow-lg">
     <div className="border-b border-indigo-50 bg-gradient-to-br from-indigo-50 to-white p-5 sm:p-6">
       <div className="flex min-w-0 flex-col gap-3 min-[360px]:flex-row min-[360px]:items-start min-[360px]:justify-between">
-        <div className="min-w-0"><p className="text-xs font-black uppercase tracking-[.18em] text-indigo-600">Kelas Kelompok · Online</p><h2 className="mt-2 break-words text-xl font-black text-slate-900">{item.subject_name}</h2><p className="mt-1 text-sm font-bold text-slate-600">{item.education_level} · {item.grade}</p></div>
+        <div className="min-w-0"><p className="text-xs font-black uppercase tracking-[.18em] text-indigo-600">Kelas Bersama · Online</p><h2 className="mt-2 break-words text-xl font-black text-slate-900">{item.subject_name}</h2><p className="mt-1 text-sm font-bold text-slate-600">{item.education_level} · {item.grade}</p></div>
         <span className={`max-w-full self-start break-words rounded-full px-3 py-1.5 text-xs font-black leading-tight ${["confirmed", "completed"].includes(item.status) ? "bg-emerald-100 text-emerald-700" : item.status === "cancelled" ? "bg-rose-100 text-rose-700" : "bg-indigo-100 text-indigo-700"}`}>{stateLabel[item.status] || item.status}</span>
       </div>
       <p className="mt-4 rounded-xl border border-white bg-white/85 p-3 text-sm font-semibold text-slate-700 shadow-sm">{item.chapter}</p>
@@ -259,8 +252,8 @@ function ClassCard({ item, working, onJoin, onCancel }: { item: CheapClass; work
       {item.status === "completed" && hasAcceptedPayment && <div className="rounded-2xl border border-violet-100 bg-violet-50 p-4 text-xs font-bold leading-5 text-violet-800"><p>Seluruh sesi sudah diverifikasi admin. Kelas masuk Riwayat dan progress akhir tetap bisa kamu lihat.</p><Link to={`/student/progress/cheap-class/${item.id}`} className="mt-3 inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-white px-4 text-sm font-black text-violet-700 shadow-sm ring-1 ring-violet-200 hover:bg-violet-100"><BarChart3 size={16} />Lihat Progress</Link></div>}
 
       {hasActions && <div className="flex flex-col gap-2 sm:flex-row">
-        {item.can_join && <Button disabled={working} onClick={onJoin} className="h-11 flex-1 rounded-xl bg-indigo-600 font-black hover:bg-indigo-700">{working && <Loader2 className="mr-2 animate-spin" size={16} />}{enrollment && ["cancelled", "payment_expired"].includes(enrollment.status) ? "Gabung Lagi" : "Gabung Kelas Kelompok"}</Button>}
-        {payable && enrollment && <Link to="/payment" state={{ orderId: enrollment.order_id, invoiceId: enrollment.order_number, tutorName: "Tutor diumumkan setelah kelas dikonfirmasi", subject: item.subject_name, type: "Online - Kelas Kelompok", price: item.price_per_student, date: item.starts_at, paymentDueAt: enrollment.seat_expires_at, durationHours: 1, totalLearningHours: item.session_count, orderKind: "cheap_class", enrollmentStatus: enrollment.status, cheapClassStatus: item.status, cheapClassCancellationReason: item.cancellation_reason, canCancel: enrollment.can_cancel }} className="inline-flex h-11 flex-1 items-center justify-center rounded-xl bg-indigo-600 px-4 text-sm font-black text-white hover:bg-indigo-700">Bayar paket ini</Link>}
+        {item.can_join && <Button disabled={working} onClick={onJoin} className="h-11 flex-1 rounded-xl bg-indigo-600 font-black hover:bg-indigo-700">{working && <Loader2 className="mr-2 animate-spin" size={16} />}{enrollment && ["cancelled", "payment_expired"].includes(enrollment.status) ? "Gabung Lagi" : "Gabung Kelas Bersama"}</Button>}
+        {payable && enrollment && <Link to="/payment" state={{ orderId: enrollment.order_id, invoiceId: enrollment.order_number, tutorName: "Tutor diumumkan setelah kelas dikonfirmasi", subject: item.subject_name, type: "Online - Kelas Bersama", price: item.price_per_student, date: item.starts_at, paymentDueAt: enrollment.seat_expires_at, durationHours: 1, totalLearningHours: item.session_count, orderKind: "cheap_class", enrollmentStatus: enrollment.status, cheapClassStatus: item.status, cheapClassCancellationReason: item.cancellation_reason, canCancel: enrollment.can_cancel }} className="inline-flex h-11 flex-1 items-center justify-center rounded-xl bg-indigo-600 px-4 text-sm font-black text-white hover:bg-indigo-700">Bayar paket ini</Link>}
         {enrollment?.can_cancel && <Button disabled={working} onClick={onCancel} variant="outline" className="h-11 rounded-xl text-rose-600 hover:bg-rose-50">Batalkan keikutsertaan</Button>}
         {!item.can_join && !payable && !needsProofReview && !hasAcceptedPayment && item.status !== "cancelled" && !["cancellation_pending", "refund_pending", "refunded", "cancelled", "payment_expired"].includes(enrollment?.status || "") && <div className="flex flex-1 items-center justify-center rounded-xl bg-slate-100 px-4 text-sm font-bold text-slate-500">Pendaftaran tidak tersedia</div>}
       </div>}

@@ -11,6 +11,7 @@ class PackageSubject extends Model
     protected $casts = [
         'allocated_sessions' => 'integer',
         'unit_price' => 'decimal:2',
+        'tutor_hourly_gross' => 'decimal:2',
         'subtotal_amount' => 'decimal:2',
         'curriculum_chapter_ids' => 'array',
     ];

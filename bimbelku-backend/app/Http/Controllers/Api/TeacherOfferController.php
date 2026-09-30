@@ -64,6 +64,7 @@ class TeacherOfferController extends Controller
 
             if ($request) {
                 $perStudentAmount = (float) $request->total_amount;
+                $request->setAttribute('participant_count', (int) ($request->packageSubject?->package?->participant_count ?? 1));
                 $request->setAttribute('source_label', $request->teacher_replacement_request_id ? 'Guru Pengganti · Paket Belajar' : 'Paket Belajar');
                 $request->setAttribute('commission_percent', $effectiveCommission);
                 $request->setAttribute('amount_per_student', $perStudentAmount);

@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\Classroom;
+use App\Models\Rating;
 use App\Models\TeacherProfile;
 use App\Models\User;
 use App\Models\WebsiteSection;
@@ -90,6 +92,25 @@ class PublicWebsiteCmsTest extends TestCase
         ]);
     }
 
+    public function test_media_page_changes_only_images_not_landing_text(): void
+    {
+        Storage::fake('public');
+        $admin = User::factory()->create(['role' => 'admin', 'status' => 'active']);
+        Sanctum::actingAs($admin);
+        $section = WebsiteSection::query()->where('section_key', 'hero')->firstOrFail();
+        $section->update(['title' => 'Judul landing yang harus tetap sama']);
+
+        $this->getJson('/api/admin/website-media')->assertOk()->assertJsonStructure(['media']);
+        $response = $this->post('/api/admin/website-media', [
+            'hero_desktop_image' => UploadedFile::fake()->image('hero.jpg', 1200, 800),
+        ], ['Accept' => 'application/json'])->assertOk();
+
+        $this->assertStringContainsString('/api/public-media/website/hero_desktop_image_',
+            $response->json('media.hero_desktop_image_url'));
+        $this->assertSame('Judul landing yang harus tetap sama', $section->fresh()->title);
+        $this->postJson('/api/admin/website-media', [])->assertUnprocessable();
+    }
+
     public function test_manual_trust_value_requires_source_note_and_date(): void
     {
         $admin = User::factory()->create(['role' => 'admin', 'status' => 'active']);
@@ -111,12 +132,17 @@ class PublicWebsiteCmsTest extends TestCase
         Storage::fake('public');
         Storage::fake('local');
         $admin = User::factory()->create(['role' => 'admin', 'status' => 'active']);
+        $student = User::factory()->create(['role' => 'student', 'status' => 'active']);
+        $teacher = User::factory()->create(['role' => 'teacher', 'status' => 'active']);
+        $classroom = Classroom::create(['user_id' => $teacher->id, 'title' => 'Kelas testimoni', 'subject' => 'Matematika', 'type' => 'private']);
+        $rating = Rating::create(['classroom_id' => $classroom->id, 'student_id' => $student->id, 'teacher_id' => $teacher->id, 'rating' => 5, 'review' => 'Belajar menjadi lebih terarah.']);
         Sanctum::actingAs($admin);
         $payload = $this->validPayload();
         $payload['testimonials'] = [[
+            'rating_id' => $rating->id,
             'display_name' => 'Nadia A.',
             'audience_role' => 'Siswa kelas 12',
-            'quote' => 'Pendampingan membantu saya menyusun target belajar dengan lebih terarah.',
+            'quote' => 'Belajar menjadi lebih terarah.',
             'program_name' => 'Persiapan SNBT',
             'outcome' => 'Diterima melalui SNBT',
             'institution' => 'Universitas Gadjah Mada',
@@ -140,6 +166,8 @@ class PublicWebsiteCmsTest extends TestCase
             ->assertOk()
             ->assertJsonPath('testimonials.0.display_name', 'Nadia A.')
             ->assertJsonPath('testimonials.0.is_verified', true)
+            ->assertJsonPath('testimonials.0.verified_by_name', $admin->name)
+            ->assertJsonPath('testimonials.0.verified_at', now()->toDateString())
             ->assertJsonMissingPath('testimonials.0.has_proof');
 
         $this->getJson('/api/testimonials')
@@ -150,6 +178,10 @@ class PublicWebsiteCmsTest extends TestCase
     public function test_public_testimonial_requires_consent_verification_and_photo(): void
     {
         $admin = User::factory()->create(['role' => 'admin', 'status' => 'active']);
+        $student = User::factory()->create(['role' => 'student', 'status' => 'active']);
+        $teacher = User::factory()->create(['role' => 'teacher', 'status' => 'active']);
+        $classroom = Classroom::create(['user_id' => $teacher->id, 'title' => 'Kelas testimoni', 'subject' => 'Matematika', 'type' => 'private']);
+        $rating = Rating::create(['classroom_id' => $classroom->id, 'student_id' => $student->id, 'teacher_id' => $teacher->id, 'rating' => 5, 'review' => 'Belajar menjadi lebih terarah.']);
         Sanctum::actingAs($admin);
         $payload = $this->validPayload();
         $payload['testimonials'] = [[
@@ -165,6 +197,26 @@ class PublicWebsiteCmsTest extends TestCase
         $this->postJson('/api/admin/website-settings', $payload)
             ->assertUnprocessable()
             ->assertJsonPath('message', 'Izin publikasi wajib dikonfirmasi untuk testimoni ke-1.');
+
+        $payload['testimonials'][0]['consent_confirmed'] = true;
+        $payload['testimonials'][0]['verified'] = true;
+        $this->postJson('/api/admin/website-settings', $payload)
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Pilih rating murid nyata untuk testimoni publik ke-1.');
+
+        $payload['testimonials'][0]['rating_id'] = $rating->id;
+        $this->postJson('/api/admin/website-settings', $payload)
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Kutipan testimoni ke-1 harus berasal dari ulasan rating murid yang dipilih.');
+        $payload['testimonials'][0]['quote'] = $rating->review;
+        $this->postJson('/api/admin/website-settings', $payload)
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Foto asli wajib diunggah untuk testimoni publik ke-1.');
+
+        $payload['testimonials'][0]['photo'] = UploadedFile::fake()->image('siswa.jpg');
+        $this->post('/api/admin/website-settings', $payload, ['Accept' => 'application/json'])
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Bukti privat wajib diunggah sebelum testimoni ke-1 ditampilkan.');
     }
     private function validPayload(): array
     {

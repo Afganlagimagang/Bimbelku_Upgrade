@@ -17,6 +17,7 @@ import StudentLayout from "@/components/StudentLayout";
 import { Button } from "@/components/ui/button";
 import http, { getApiError, getCached } from "@/lib/http";
 import { notify } from "@/lib/notify";
+import WorkspacePageIntro from "@/components/WorkspacePageIntro";
 import {
   CheapClassProgress,
   PackageListResponse,
@@ -93,29 +94,13 @@ export default function LearningProgress() {
   return (
     <StudentLayout title="Perkembangan Belajar">
       <div className="w-full space-y-5 pb-10 sm:space-y-6">
-        <section className="relative overflow-hidden rounded-[1.75rem] bg-gradient-to-br from-slate-950 via-indigo-950 to-blue-800 p-5 text-white shadow-xl sm:rounded-[2rem] sm:p-8">
-          <div aria-hidden="true" className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-blue-400/20 blur-3xl" />
-          <div aria-hidden="true" className="pointer-events-none absolute -bottom-24 left-1/3 h-52 w-52 rounded-full bg-indigo-400/15 blur-3xl" />
-          <div className="relative flex items-start gap-4 sm:gap-5">
-            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white/10 text-blue-200 ring-1 ring-white/10 sm:h-14 sm:w-14"><BarChart3 size={24} /></span>
-            <div className="min-w-0 flex-1">
-              <p className="text-[11px] font-black uppercase tracking-[.18em] text-blue-200">Ruang belajar</p>
-              <h1 className="mt-2 text-2xl font-black tracking-tight sm:text-3xl">Perkembangan Belajar</h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">Pantau posisi materi tiap program. Pilih satu program untuk melihat progress per Bab dan riwayat perkembangan setiap sesi.</p>
-              <div className="mt-5 flex flex-wrap gap-2">
-                <HeaderMetric label="Berjalan" value={activeCount} />
-                <HeaderMetric label="Selesai" value={completedCount} />
-                <HeaderMetric label="Total program" value={packages.length + cheapClasses.length} />
-              </div>
-            </div>
-          </div>
-        </section>
+        <WorkspacePageIntro eyebrow="Ruang belajar" title="Perkembangan Belajar" description="Pantau posisi materi tiap program dan buka rincian progress per Bab serta riwayat setiap sesi." icon={BarChart3} metrics={[{ label: "Berjalan", value: activeCount }, { label: "Selesai", value: completedCount }, { label: "Total program", value: packages.length + cheapClasses.length }]} />
 
         <section className="flex flex-col gap-3 rounded-2xl border border-indigo-100 bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-4">
           <div className="flex min-w-0 gap-2 overflow-x-auto pb-1 sm:pb-0">
             <FilterButton active={filter === "all"} onClick={() => setFilter("all")}>Semua</FilterButton>
             <FilterButton active={filter === "package"} onClick={() => setFilter("package")}>Paket Belajar</FilterButton>
-            <FilterButton active={filter === "cheap_class"} onClick={() => setFilter("cheap_class")}>Kelas Kelompok</FilterButton>
+            <FilterButton active={filter === "cheap_class"} onClick={() => setFilter("cheap_class")}>Kelas Bersama</FilterButton>
           </div>
           <button type="button" onClick={() => void load(true)} className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-xl px-3 text-xs font-black text-slate-600 transition hover:bg-indigo-50 hover:text-indigo-700">
             <RefreshCw size={15} /> Muat ulang
@@ -138,7 +123,7 @@ export default function LearningProgress() {
             <GraduationCap className="mx-auto text-indigo-300" size={42} />
             <h2 className="mt-4 text-lg font-black text-slate-800">Belum ada program yang memiliki progress</h2>
             <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">Progress mulai tersedia setelah pembayaran diterima dan program belajar masuk tahap pencocokan atau sudah aktif.</p>
-            <Button asChild className="mt-5 rounded-xl bg-indigo-600 hover:bg-indigo-700"><Link to="/student/my-classes?tab=process">Lihat proses paket</Link></Button>
+            <Button asChild className="mt-5 rounded-xl bg-indigo-600 hover:bg-indigo-700"><Link to="/student/packages">Lihat proses paket</Link></Button>
           </div>
         ) : (
           <div className="grid gap-4">
@@ -229,7 +214,7 @@ function CheapClassProgressCard({ item }: { item: CheapClassProgress }) {
             {item.teacher?.photo ? <img src={item.teacher.photo} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" /> : <Users size={22} />}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2"><p className="text-[10px] font-black uppercase tracking-[.16em] text-indigo-600">{item.subject_name}</p><span className="text-indigo-200">•</span><span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Kelas Kelompok</span></div>
+            <div className="flex flex-wrap items-center gap-2"><p className="text-[10px] font-black uppercase tracking-[.16em] text-indigo-600">{item.subject_name}</p><span className="text-indigo-200">•</span><span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Kelas Bersama</span></div>
             <div className="mt-1 flex flex-wrap items-start justify-between gap-2">
               <h2 className="min-w-0 break-words text-base font-black text-slate-900 sm:text-lg">{[item.education_level, item.grade].filter(Boolean).join(" · ") || "Kelas belajar bersama"}</h2>
               <span className={`shrink-0 rounded-full border px-3 py-1 text-[10px] font-black uppercase ${statusTone(item.status)}`}>{statusLabel[item.status] || item.status}</span>
@@ -257,10 +242,6 @@ function CheapClassProgressCard({ item }: { item: CheapClassProgress }) {
       </div>
     </article>
   );
-}
-
-function HeaderMetric({ label, value }: { label: string; value: number }) {
-  return <div className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.08] px-3 py-2 backdrop-blur-sm"><span className="text-base font-black text-white">{value}</span><span className="text-[10px] font-black uppercase tracking-wider text-blue-100/80">{label}</span></div>;
 }
 
 function FilterButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {

@@ -38,8 +38,8 @@ export const packagePath = (subject: CatalogSubject, level?: string) => {
 };
 
 export const supportedLevels = (subject: CatalogSubject) => {
-  const values = (subject.education_levels || []).filter((value) => ["SD", "SMP", "SMA"].includes(value));
-  return values.length ? values : ["SD", "SMP", "SMA"];
+  const values = (subject.education_levels || []).filter((value) => ["SD", "SMP", "SMA", "Umum"].includes(value));
+  return values.length ? values : ["Umum"];
 };
 
 export const programSummary = (subject: CatalogSubject) => {

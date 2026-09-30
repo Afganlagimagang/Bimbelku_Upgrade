@@ -30,7 +30,7 @@ const checks = [
   {
     file: "src/pages/students/PackageBuilder.tsx",
     patterns: [
-      /Langkah \{activeStepIndex \+ 1\} dari 5/,
+      /Langkah \{activeStepIndex \+ 1\} dari 4/,
       /Konfirmasi & Bayar/,
       /Pencarian tutor baru dimulai setelah pembayaran dinyatakan diterima oleh sistem/,
       /\/student\/packages/,

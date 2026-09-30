@@ -41,4 +41,6 @@ return [
         ],
     ],
 
+    'xendit' => config('xendit'),
+
 ];

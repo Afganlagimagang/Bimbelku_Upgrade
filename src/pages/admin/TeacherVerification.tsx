@@ -35,6 +35,7 @@ interface Teacher {
   about?: string;
   phone?: string;
   verification_notes?: string;
+  verification_stage?: "submitted" | "documents_checked" | "whatsapp_scheduled" | "whatsapp_passed" | "approved" | "rejected";
   photo_url?: string;
   identity_document_url?: string;
   live_selfie_url?: string;
@@ -73,6 +74,33 @@ export default function TeacherVerification() {
     }
   };
 
+  const advanceStage = async () => {
+    if (!selected) return;
+    const next = selected.verification_stage === "documents_checked"
+      ? "whatsapp_scheduled"
+      : selected.verification_stage === "whatsapp_scheduled"
+        ? "whatsapp_passed"
+        : "documents_checked";
+    if (next === "whatsapp_passed" && notes.trim().length < 10) {
+      notify.error("Tulis ringkasan hasil tes WhatsApp minimal 10 karakter.");
+      return;
+    }
+    setProcessing(true);
+    try {
+      const response = await http.patch("/admin/teachers/" + selected.id + "/verification-stage", {
+        stage: next,
+        notes: next === "whatsapp_passed" ? notes.trim() : undefined,
+      });
+      notify.success(response.data.message);
+      setSelected((current) => current ? { ...current, verification_stage: next, verification_notes: next === "whatsapp_passed" ? notes.trim() : current.verification_notes } : current);
+      setPending((current) => current.map((item) => item.id === selected.id ? { ...item, verification_stage: next } : item));
+      if (next === "whatsapp_passed") setScreeningPassed(true);
+    } catch (error) {
+      notify.error(getApiError(error));
+    } finally {
+      setProcessing(false);
+    }
+  };
   const decide = async (status: "active" | "rejected") => {
     if (!selected) return;
     if (status === "active") {
@@ -140,12 +168,12 @@ export default function TeacherVerification() {
           {selected && <>
             <DialogHeader><DialogTitle className="text-2xl">{rejecting ? "Tolak verifikasi tutor" : selected.name}</DialogTitle><DialogDescription>{selected.email} · {selected.subject} · {(selected.levels || []).join(", ")}</DialogDescription></DialogHeader>
             {rejecting ? <div className="space-y-4"><div className="rounded-2xl border border-rose-100 bg-rose-50 p-4 text-sm leading-6 text-rose-800">Jelaskan dokumen, seleksi, atau hasil tes yang belum memenuhi standar. Alasan dikirim kepada tutor.</div><Textarea className="min-h-36 rounded-xl" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Alasan penolakan yang jelas" /><div className="flex gap-2"><Button variant="outline" className="flex-1 rounded-xl" onClick={() => setRejecting(false)}>Kembali</Button><Button className="flex-1 rounded-xl bg-rose-600 hover:bg-rose-700" onClick={() => decide("rejected")} disabled={processing}><XCircle size={16} className="mr-2" />Tolak</Button></div></div> : <>
-              <div className="grid gap-3 sm:grid-cols-3"><Metric label="Mata pelajaran" value={selected.subject || "-"} /><Metric label="Metode" value={selected.teaching_method || "-"} /><Metric label="Status seleksi" value={selected.status === "active" ? "Lulus" : selected.status === "rejected" ? "Tidak lulus" : "Belum dicatat"} /></div>
+              <div className="grid gap-3 sm:grid-cols-3"><Metric label="Mata pelajaran" value={selected.subject || "-"} /><Metric label="Metode" value={selected.teaching_method || "-"} /><Metric label="Tahap seleksi" value={stageLabel(selected.verification_stage)} /></div>
               {selected.phone && <a href={whatsappHref(selected.phone, `Halo ${selected.name}, kami dari BimbelKu ingin melanjutkan proses seleksi tutor.`) || undefined} target="_blank" rel="noreferrer" className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#15803D] px-4 py-2.5 text-sm font-black text-white hover:bg-green-800">Hubungi kandidat melalui WhatsApp</a>}
               {selected.about && <div className="rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-700">{selected.about}</div>}
               <div className="grid gap-3 sm:grid-cols-2"><Document icon={IdCard} label="Kartu identitas" url={selected.identity_document_url} onOpen={openDocument} /><Document icon={UserRoundCheck} label="Foto wajah langsung" url={selected.live_selfie_url} onOpen={openDocument} /><Document icon={FileCheck2} label="Ijazah / kualifikasi" url={selected.qualification_document_url} onOpen={openDocument} /><Document icon={FileBadge} label="Sertifikat pendukung" url={selected.certification_document_url} optional onOpen={openDocument} /></div>
               {selected.verification_notes && <div className="rounded-2xl border border-slate-200 p-4 text-sm text-slate-600">Catatan keputusan: {selected.verification_notes}</div>}
-              {selected.status === "pending" && <div className="space-y-3 rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4"><Textarea className="min-h-24 rounded-xl bg-white" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Ringkasan hasil seleksi dan tes WhatsApp (wajib untuk persetujuan)" /><label className="flex cursor-pointer items-start gap-3 text-sm leading-6 text-indigo-950"><Checkbox checked={screeningPassed} onCheckedChange={(value) => setScreeningPassed(Boolean(value))} className="mt-1" /><span>Saya memastikan kandidat telah mengikuti seleksi dan tes melalui WhatsApp serta dinyatakan lulus.</span></label><div className="grid grid-cols-2 gap-2"><Button variant="outline" className="rounded-xl border-rose-200 text-rose-700" onClick={() => setRejecting(true)}><XCircle size={16} className="mr-2" />Tolak</Button><Button className="rounded-xl bg-emerald-600 hover:bg-emerald-700" onClick={() => decide("active")} disabled={processing || !screeningPassed || notes.trim().length < 10}><CheckCircle2 size={16} className="mr-2" />Setujui</Button></div></div>}
+              {selected.status === "pending" && <div className="space-y-3 rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4"><VerificationSteps stage={selected.verification_stage} /><Textarea className="min-h-24 rounded-xl bg-white" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Ringkasan hasil seleksi dan tes WhatsApp (wajib untuk persetujuan)" /><label className="flex cursor-pointer items-start gap-3 text-sm leading-6 text-indigo-950"><Checkbox checked={screeningPassed} disabled={selected.verification_stage !== "whatsapp_passed"} onCheckedChange={(value) => setScreeningPassed(Boolean(value))} className="mt-1" /><span>Saya memastikan kandidat telah mengikuti seleksi dan tes melalui WhatsApp serta dinyatakan lulus.</span></label>{selected.verification_stage !== "whatsapp_passed" && <Button type="button" variant="outline" className="w-full rounded-xl border-indigo-200 bg-white text-indigo-800" onClick={() => void advanceStage()} disabled={processing}>{selected.verification_stage === "documents_checked" ? "Catat jadwal tes WhatsApp" : selected.verification_stage === "whatsapp_scheduled" ? "Nyatakan tes WhatsApp lulus" : "Tandai dokumen sudah diperiksa"}</Button>}<div className="grid grid-cols-2 gap-2"><Button variant="outline" className="rounded-xl border-rose-200 text-rose-700" onClick={() => setRejecting(true)}><XCircle size={16} className="mr-2" />Tolak</Button><Button className="rounded-xl bg-emerald-600 hover:bg-emerald-700" onClick={() => decide("active")} disabled={processing || selected.verification_stage !== "whatsapp_passed" || !screeningPassed || notes.trim().length < 10}><CheckCircle2 size={16} className="mr-2" />Setujui</Button></div></div>}
             </>}
           </>}
         </DialogContent>
@@ -164,4 +192,19 @@ function Metric({ label, value }: { label: string; value: string }) {
 
 function Document({ icon: Icon, label, url, optional, onOpen }: { icon: typeof IdCard; label: string; url?: string; optional?: boolean; onOpen: (url: string, label: string) => void }) {
   return <div className={`rounded-2xl border p-4 ${url ? "border-emerald-100 bg-emerald-50/50" : optional ? "border-slate-100 bg-slate-50" : "border-rose-100 bg-rose-50"}`}><div className="flex items-center gap-3"><Icon className={url ? "text-emerald-600" : "text-slate-400"} /><div><p className="text-sm font-black text-slate-800">{label}</p><p className="text-xs text-slate-400">{url ? "Berkas tersedia" : optional ? "Tidak dilampirkan" : "Berkas wajib tidak ada"}</p></div></div>{url && <Button type="button" variant="outline" size="sm" className="mt-3 w-full rounded-xl" onClick={() => onOpen(url, label)}><ShieldCheck size={14} className="mr-2" />Buka dokumen</Button>}</div>;
+}
+
+function stageLabel(stage?: Teacher["verification_stage"]) {
+  return stage === "documents_checked" ? "Dokumen diperiksa"
+    : stage === "whatsapp_scheduled" ? "Tes WA dijadwalkan"
+      : stage === "whatsapp_passed" ? "Tes WA lulus"
+        : stage === "approved" ? "Siap mengajar"
+          : stage === "rejected" ? "Ditolak"
+            : "Pendaftaran masuk";
+}
+
+function VerificationSteps({ stage }: { stage?: Teacher["verification_stage"] }) {
+  const order = ["submitted", "documents_checked", "whatsapp_scheduled", "whatsapp_passed"] as const;
+  const active = Math.max(0, order.indexOf((stage || "submitted") as typeof order[number]));
+  return <ol className="grid grid-cols-4 gap-1" aria-label="Tahap verifikasi tutor">{["Masuk", "Dokumen", "Tes WA", "Lulus"].map((label, index) => <li key={label} className={index <= active ? "rounded-lg bg-indigo-600 px-2 py-2 text-center text-[10px] font-black text-white" : "rounded-lg bg-white px-2 py-2 text-center text-[10px] font-black text-slate-400"}>{label}</li>)}</ol>;
 }

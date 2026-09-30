@@ -5,6 +5,7 @@ export interface FilePreviewDetail {
   url: string;
   filename: string;
   contentType: string;
+  blob?: Blob;
   release?: () => void;
 }
 

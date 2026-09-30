@@ -3,24 +3,18 @@ import { Link } from "react-router-dom";
 import {
   BadgePercent,
   Bell,
-  BookOpenCheck,
-  CalendarDays,
   ChevronRight,
   CircleHelp,
-  CreditCard,
   FileText,
-  GraduationCap,
-  LockKeyhole,
   MessageSquareText,
   ShieldCheck,
   UserRound,
-  WalletCards,
 } from "lucide-react";
 
 import StudentLayout from "@/components/StudentLayout";
 import LogoutButton from "@/components/LogoutButton";
 import { getCached } from "@/lib/http";
-import { NAVIGATION_ATTENTION_CHANGED_EVENT, normalizeAttentionPath, pageGroupForPath, type AttentionNotification } from "@/lib/navigationAttention";
+import { NAVIGATION_ATTENTION_CHANGED_EVENT, pageGroupForPath, type AttentionNotification } from "@/lib/navigationAttention";
 
 type Student = {
   name?: string;
@@ -107,68 +101,47 @@ export default function Account() {
     return Boolean(group && groupKeys.includes(group.key));
   }).length;
 
-  const packageAttention = attentionNotifications.filter((notification) => {
-    if (notification.is_read) return false;
-    const path = normalizeAttentionPath(notification.target_url);
-    return path === "/payment" || path === "/student/packages" || path.startsWith("/student/packages/");
-  }).length;
-  const classAttention = attentionNotifications.filter((notification) => {
-    if (notification.is_read) return false;
-    const path = normalizeAttentionPath(notification.target_url);
-    return path === "/student/my-classes" || path.startsWith("/student/my-classes/");
-  }).length;
-  const progressAttention = attentionCountFor("student-progress");
-  const historyAttention = attentionCountFor("student-history");
   const voucherAttention = attentionCountFor("student-vouchers");
-  const helpAttention = attentionCountFor("student-help");
   const profileAttention = attentionCountFor("student-profile");
 
   return (
     <StudentLayout title="Saya">
       <div className="mx-auto max-w-5xl space-y-5">
-        <section data-tour="student-account-card" className="overflow-hidden rounded-[1.75rem] bg-gradient-to-br from-slate-950 via-indigo-950 to-blue-800 p-5 text-white shadow-xl sm:rounded-[2rem] sm:p-8">
+        <section data-tour="student-account-card" className="overflow-hidden rounded-[1.75rem] border border-orange-100 bg-gradient-to-br from-[#FFF7ED] via-white to-indigo-50 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
           {loading ? (
             <div className="h-24 animate-pulse rounded-3xl bg-white/10" role="status" aria-label="Memuat profil" />
           ) : (
             <>
               <div className="flex items-center gap-4 sm:gap-5">
-                <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-2xl bg-white/15 text-xl font-black ring-4 ring-white/10 sm:h-20 sm:w-20 sm:rounded-3xl sm:text-2xl">
+                <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-2xl bg-[#14213D] text-xl font-black text-white ring-4 ring-orange-100 sm:h-20 sm:w-20 sm:rounded-3xl sm:text-2xl">
                   {student?.avatar_url || student?.avatar ? <img src={student.avatar_url || student.avatar || ""} alt="Foto profil" loading="lazy" decoding="async" className="h-full w-full object-cover" /> : student?.name?.charAt(0) || "M"}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-200">Akun murid</p>
-                  <h1 className="mt-1 truncate text-xl font-black sm:text-2xl">{student?.name || "Murid BimbelKu"}</h1>
-                  <p className="mt-1 text-sm font-medium text-slate-300">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-orange-700">Akun murid</p>
+                  <h1 className="mt-1 truncate text-xl font-black text-slate-950 sm:text-2xl">{student?.name || "Murid BimbelKu"}</h1>
+                  <p className="mt-1 text-sm font-medium text-slate-600">
                     {[student?.student_education_level, student?.grade, student?.school_name].filter(Boolean).join(" • ") || student?.email || "Lengkapi profil belajar agar pesanan lebih cepat dibuat."}
                   </p>
                 </div>
-                <Link to="/student/profile" className="hidden min-h-11 items-center justify-center rounded-2xl bg-white px-5 text-sm font-black text-slate-900 hover:bg-blue-50 sm:inline-flex">Edit Profil</Link>
+                <Link to="/student/profile" className="hidden min-h-11 shrink-0 items-center rounded-xl bg-[#14213D] px-4 text-sm font-black text-white sm:inline-flex">Edit profil</Link>
               </div>
-              <Link to="/student/profile" className="mt-5 inline-flex min-h-11 w-full items-center justify-center rounded-2xl bg-white px-5 text-sm font-black text-slate-900 hover:bg-blue-50 sm:hidden">Edit Profil</Link>
+              <dl className="mt-6 grid gap-2 border-t border-slate-200/80 pt-5 sm:grid-cols-3"><div><dt className="text-[10px] font-black uppercase tracking-wider text-slate-400">Email akun</dt><dd className="mt-1 truncate text-sm font-bold text-slate-800">{student?.email || "Belum tersedia"}</dd></div><div><dt className="text-[10px] font-black uppercase tracking-wider text-slate-400">Nomor aktif</dt><dd className="mt-1 truncate text-sm font-bold text-slate-800">{student?.phone || "Belum dilengkapi"}</dd></div><div><dt className="text-[10px] font-black uppercase tracking-wider text-slate-400">Lokasi belajar</dt><dd className="mt-1 truncate text-sm font-bold text-slate-800">{student?.address || "Diatur saat dibutuhkan"}</dd></div></dl>
             </>
           )}
         </section>
 
         <div className="grid gap-5 lg:grid-cols-2">
-          <Group title="Belajar dan paket" items={[
-            { label: "Proses Pesanan Privat", description: "Pantau pembayaran, pencarian tutor, dan perubahan jadwal.", to: "/student/my-classes?tab=process", icon: BookOpenCheck, attention: packageAttention > 0, attentionCount: packageAttention },
-            { label: "Kelas Saya", description: "Lihat jadwal, detail kelas, dan seluruh riwayat belajar.", to: "/student/my-classes", icon: CalendarDays, attention: classAttention > 0, attentionCount: classAttention },
-            { label: "Perkembangan Belajar", description: "Lihat progress per paket, lalu buka perkembangan setiap Bab.", to: "/student/progress", icon: GraduationCap, attention: progressAttention > 0, attentionCount: progressAttention },
-          ]} />
-          <Group title="Transaksi dan penawaran" items={[
+          <Group title="Voucher dan penawaran" items={[
             { label: "Voucher Saya", description: "Lihat voucher yang sudah diklaim dan masa berlakunya.", to: "/student/vouchers", icon: BadgePercent, attention: voucherAttention > 0, attentionCount: voucherAttention },
-            { label: "Riwayat Pembayaran", description: "Periksa tagihan, transfer, refund, dan status pembayaran.", to: "/student/history", icon: CreditCard, attention: historyAttention > 0, attentionCount: historyAttention },
-            { label: "Refund dan keberatan", description: "Lihat status pengembalian dana atau minta bantuan kasus.", to: "/student/help", icon: WalletCards, attention: helpAttention > 0, attentionCount: helpAttention },
           ]} />
           <Group title="Pengaturan akun" items={[
-            { label: "Profil dan lokasi belajar", description: "Atur identitas, pendidikan, alamat, dan persetujuan lokasi.", to: "/student/profile", icon: UserRound, attention: profileAttention > 0, attentionCount: profileAttention },
-            { label: "Keamanan akun", description: "Ubah kata sandi dan periksa perlindungan akun.", to: "/student/profile", icon: LockKeyhole },
+            { label: "Profil, lokasi, dan keamanan", description: "Atur identitas, pendidikan, alamat, lokasi belajar, serta kata sandi dalam satu halaman.", to: "/student/profile", icon: UserRound, attention: profileAttention > 0, attentionCount: profileAttention },
             { label: "Notifikasi", description: unreadCount > 0 ? `${unreadCount} notifikasi belum dibaca. Buka untuk melihat isi dan tujuan yang jelas.` : "Lihat seluruh pemberitahuan akun di satu tempat.", to: "/student/notifications", icon: Bell, attention: unreadCount > 0, attentionCount: unreadCount },
             { label: "Privasi", description: "Baca kebijakan penggunaan dan perlindungan data.", to: "/privacy", state: { from: "/student/account" }, icon: ShieldCheck },
           ]} />
           <Group title="Bantuan dan informasi" items={[
             { label: "Tutorial penggunaan", description: "Tampilkan kembali panduan dengan tombol target yang tetap terang.", icon: CircleHelp, action: openTutorial },
-            { label: "Pusat Bantuan", description: "Temukan jawaban atau kirim permintaan bantuan.", to: "/student/help", icon: MessageSquareText },
+            { label: "Pusat Bantuan", description: "Hubungi tim BimbelKu melalui WhatsApp.", to: "/student/help", icon: MessageSquareText },
             { label: "Syarat dan ketentuan", description: "Baca aturan layanan BimbelKu.", to: "/terms", state: { from: "/student/account" }, icon: FileText },
           ]} />
           <LogoutButton accent="student" className="lg:col-start-2" />

@@ -151,14 +151,14 @@ const copyFor = (action: SessionAction) => {
         eyebrow: "Waktunya mengajar",
         title: "Konfirmasi hadir dan mulai kelas",
         description: "Tekan satu kali saat kamu sudah siap di Zoom. Jam kehadiran pertama akan tercatat dan seluruh murid diberi tahu.",
-        button: "Buka Kelas Kelompok",
+        button: "Buka Kelas Bersama",
         Icon: UserCheck,
         tone: "indigo" as const,
       };
     case "cheap_teacher_session_started":
       return {
         eyebrow: "Kehadiran tercatat",
-        title: "Kelas Kelompok sedang berlangsung",
+        title: "Kelas Bersama sedang berlangsung",
         description: "Murid sudah diberi tahu. Buka Zoom dan mulai mengajar sesuai materi sesi hari ini.",
         button: "Buka halaman kelas",
         Icon: PlayCircle,
@@ -178,7 +178,7 @@ const copyFor = (action: SessionAction) => {
     case "cheap_admin_verify_report":
       return {
         eyebrow: "Perlu dicek",
-        title: "Laporan Kelas Kelompok menunggu verifikasi",
+        title: "Laporan Kelas Bersama menunggu verifikasi",
         description: `${action.teacher_name || "Tutor"} sudah mengirim laporan sesi ${action.session_number || ""}. Cek kehadiran, progress, dan catatannya lalu konfirmasi atau minta perbaikan.`,
         button: "Periksa laporan",
         Icon: ClipboardCheck,
@@ -196,7 +196,7 @@ const copyFor = (action: SessionAction) => {
     case "cheap_student_session_started":
       return {
         eyebrow: "Tutor sudah hadir",
-        title: "Kelas Kelompok sudah dimulai",
+        title: "Kelas Bersama sudah dimulai",
         description: `Sesi ${action.session_number || "ini"} sedang berlangsung. Buka Kelas Saya lalu masuk ke Zoom untuk mulai belajar.`,
         button: "Gabung belajar",
         Icon: PlayCircle,
@@ -206,7 +206,7 @@ const copyFor = (action: SessionAction) => {
       return {
         eyebrow: "Kelas selesai",
         title: "Semua pertemuan sudah selesai",
-        description: "Seluruh sesi Kelas Kelompok sudah diverifikasi admin. Progress akhir dan riwayat belajarmu tetap bisa dilihat kapan saja.",
+        description: "Seluruh sesi Kelas Bersama sudah diverifikasi admin. Progress akhir dan riwayat belajarmu tetap bisa dilihat kapan saja.",
         button: "Lihat progress akhir",
         Icon: CheckCircle2,
         tone: "emerald" as const,

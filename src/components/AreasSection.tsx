@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { Laptop2, MapPin, Navigation, Wifi } from "lucide-react";
 
 import Reveal from "@/components/Reveal";
@@ -42,6 +43,7 @@ export default function AreasSection() {
               <article className="rounded-3xl border border-stone-200 bg-[#FBF7F1] p-5"><span className="grid h-11 w-11 place-items-center rounded-2xl bg-teal-100 text-teal-800"><Laptop2 size={21} /></span><h3 className="mt-4 font-extrabold text-[#14213D]">Belajar online</h3><p className="mt-2 text-sm leading-6 text-slate-600">Tidak dibatasi area tatap muka, selama program dan tutor tersedia.</p></article>
               <article className="rounded-3xl border border-stone-200 bg-[#FBF7F1] p-5"><span className="grid h-11 w-11 place-items-center rounded-2xl bg-orange-100 text-orange-800"><Wifi size={21} /></span><h3 className="mt-4 font-extrabold text-[#14213D]">Belajar tatap muka</h3><p className="mt-2 text-sm leading-6 text-slate-600">Ketersediaan tidak dijanjikan sebelum alamat dan jadwal dicocokkan.</p></article>
             </div>
+            <Link to="/area-layanan" className="mt-6 inline-flex min-h-11 items-center rounded-xl border border-teal-200 bg-white px-4 text-sm font-extrabold text-teal-800">Pelajari area layanan</Link>
           </div>
         </div>
 

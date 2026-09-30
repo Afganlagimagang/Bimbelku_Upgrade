@@ -7,6 +7,7 @@ const expect = (condition, message) => {
 
 const app = read("src/App.tsx");
 const register = read("src/pages/Register.tsx");
+const tutorEntry = read("src/pages/JadiTutor.tsx");
 const help = read("src/pages/common/HelpCenter.tsx");
 const auth = read("bimbelku-backend/app/Http/Controllers/Api/AuthController.php");
 const adminController = read("bimbelku-backend/app/Http/Controllers/Api/AdminController.php");
@@ -16,7 +17,7 @@ const readme = read("README.md");
 
 expect(app.includes("<WebsiteContentProvider><Register /></WebsiteContentProvider>"), "halaman daftar memakai konfigurasi website yang dikelola admin");
 expect(register.includes("teacherWhatsappUrl") && register.includes("seleksi dan tes"), "pendaftaran tutor menjelaskan seleksi melalui WhatsApp");
-expect(register.includes('searchParams.get("role") === "teacher"'), "tautan pendaftaran tutor dapat langsung membuka konteks tutor");
+expect(tutorEntry.includes('<Register role="teacher" />') && app.includes('path="/jadi-tutor"'), "halaman tutor khusus belum membuka konteks tutor");
 expect(help.includes("Hanya calon yang lolos dan disetujui admin"), "pusat bantuan menjelaskan gerbang aktivasi tutor");
 expect(auth.includes("seleksi dan tes melalui WhatsApp"), "pesan backend konsisten dengan alur seleksi tutor");
 expect(adminController.includes("screening_passed") && adminController.includes("hasil tes WhatsApp wajib dicatat"), "backend menolak aktivasi tutor tanpa bukti seleksi");

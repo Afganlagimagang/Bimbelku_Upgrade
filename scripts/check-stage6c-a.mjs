@@ -21,9 +21,10 @@ expect(layout.includes('label: "Pusat operasional"'), "sidebar dikelompokkan ber
 for (const label of ["Ringkasan kerja", "Pencarian tutor", "Monitoring kelas", "Pusat kasus"]) {
   expect(layout.includes(`label: "${label}"`), `menu operasional memuat ${label}`);
 }
-for (const label of ["Pembayaran murid", "Pencairan tutor", "Rekening penerimaan"]) {
+for (const label of ["Pusat keuangan", "Pengaturan Xendit"]) {
   expect(layout.includes(`label: "${label}"`), `menu transaksi memuat ${label}`);
 }
+expect(app.includes('path="/admin/pembayaran"') && app.includes('path="/admin/refunds"'), "rute lama pembayaran dan refund diarahkan ke pusat keuangan");
 expect(layout.includes("readAdmin") && layout.includes("localStorage.getItem(\"user\")"), "identitas admin tidak lagi berupa placeholder tetap");
 
 expect(dashboard.includes("work_queue") && dashboard.includes("matching_preview"), "dashboard memakai antrean dan preview pencarian dari backend");

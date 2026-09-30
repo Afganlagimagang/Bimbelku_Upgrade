@@ -572,9 +572,9 @@ class LearningSessionController extends Controller
             $locked->forceFill([
                 'tutor_ready_at' => $readyAt,
                 'session_focus_note' => trim((string) ($validated['focus_note'] ?? '')) ?: null,
-                'tutor_ready_latitude' => $validated['latitude'] ?? null,
-                'tutor_ready_longitude' => $validated['longitude'] ?? null,
-                'tutor_ready_accuracy_meters' => $validated['accuracy_meters'] ?? null,
+                'tutor_ready_latitude' => $locked->learning_mode === 'offline' ? ($validated['latitude'] ?? null) : null,
+                'tutor_ready_longitude' => $locked->learning_mode === 'offline' ? ($validated['longitude'] ?? null) : null,
+                'tutor_ready_accuracy_meters' => $locked->learning_mode === 'offline' ? ($validated['accuracy_meters'] ?? null) : null,
                 'tutor_ready_ip_hash' => hash_hmac('sha256', (string) $request->ip(), (string) config('app.key')),
             ])->save();
 

@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Laravel\Sanctum\HasApiTokens;
 
 use App\Models\TeacherSubject;
@@ -16,7 +17,7 @@ use App\Models\Rating;
 
 class User extends Authenticatable
 {
-    use HasApiTokens, HasFactory, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable, SoftDeletes;
 
     /** Cache request-scoped untuk menghindari query admin utama berulang pada satu instance user. */
     private ?bool $primaryAdminCache = null;
@@ -33,6 +34,7 @@ class User extends Authenticatable
         'password',
         'payment_pin_hash',
         'profile_cover',
+        'profile_cover_use_default',
         'password_updated_at',
         'role',
         'admin_type',
@@ -95,6 +97,7 @@ class User extends Authenticatable
     }
 
     protected $casts = [
+        'profile_cover_use_default' => 'boolean',
         'email_verified_at' => 'datetime',
         'email_verification_required_at' => 'datetime',
         'google_onboarding_required_at' => 'datetime',
@@ -154,7 +157,7 @@ class User extends Authenticatable
     {
         // Parameter tetap diterima untuk kompatibilitas middleware dan audit,
         // tetapi tidak ada lagi pembagian admin terbatas per modul.
-        return $this->isPrimaryAdmin();
+        return $this->role === 'admin' && $this->status === 'active';
     }
 
     public function adminPermissionsUpdatedBy()

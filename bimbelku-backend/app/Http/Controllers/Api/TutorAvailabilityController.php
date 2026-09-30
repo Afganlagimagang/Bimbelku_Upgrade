@@ -73,7 +73,7 @@ class TutorAvailabilityController extends Controller
             'duration_hours' => (int) $validated['duration_hours'],
             'latitude' => $validated['latitude'] ?? null,
             'longitude' => $validated['longitude'] ?? null,
-            'search_radius_km' => $validated['learning_mode'] === 'offline' ? 3 : 12,
+            'search_radius_km' => $validated['learning_mode'] === 'offline' ? 3 : null,
         ]);
 
         $available = $matchingService->hasAvailableCandidate($preview);

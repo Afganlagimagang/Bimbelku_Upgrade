@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { ArrowRight, MessageCircle } from "lucide-react";
 
 import Reveal from "@/components/Reveal";
+import LandingAmbientOrbit from "@/components/LandingAmbientOrbit";
 import StudentPackageLink from "@/components/StudentPackageLink";
 import { useWebsiteContent } from "@/components/WebsiteContentProvider";
 import { whatsappHref } from "@/lib/websiteContent";
@@ -20,6 +21,7 @@ export default function CTASection() {
         <Reveal width="100%">
           <div className="relative overflow-hidden rounded-[28px] bg-[#14213D] px-6 py-12 text-center sm:px-12 sm:py-16 lg:px-20">
             <div className="absolute inset-x-0 top-0 h-1 bg-orange-500" aria-hidden="true" />
+            <LandingAmbientOrbit variant="focus" color="#F6B94A" style={{ width: 232, height: 232, top: 16, right: 12, opacity: 0.72 }} />
             <div className="relative mx-auto max-w-3xl">
               <p className="text-xs font-extrabold uppercase tracking-[0.16em] text-orange-300">{cta?.eyebrow || "Mulai dari kebutuhanmu"}</p>
               <h2 className="mt-4 text-balance text-3xl font-extrabold leading-tight tracking-tight text-white sm:text-4xl lg:text-5xl">{cta?.title || "Belajar lebih terarah dimulai dari kebutuhan yang jelas."}</h2>

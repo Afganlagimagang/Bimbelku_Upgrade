@@ -1,90 +1,63 @@
-import { useState, type ComponentType } from "react";
-import { BookOpenCheck, CalendarDays, CheckCircle2, CreditCard, Fingerprint, Radar, ShieldCheck } from "lucide-react";
-
+import { ArrowRight, Check, Minus } from "lucide-react";
 import Reveal from "@/components/Reveal";
+import LandingAmbientOrbit from "@/components/LandingAmbientOrbit";
+import StudentPackageLink from "@/components/StudentPackageLink";
 import { useWebsiteContent } from "@/components/WebsiteContentProvider";
 
-type ProofKey = "verification" | "payment" | "matching" | "progress";
-type IconType = ComponentType<{ size?: number; className?: string }>;
-
-const proofs: Array<{ key: ProofKey; label: string; icon: IconType; title: string; copy: string }> = [
-  { key: "verification", label: "Verifikasi tutor", icon: Fingerprint, title: "Dokumen masuk ke pemeriksaan admin", copy: "Status verifikasi menjadi syarat tutor aktif. Dokumen identitas tidak dibuka ke publik." },
-  { key: "payment", label: "Ringkasan biaya", icon: CreditCard, title: "Nominal diperiksa sebelum membayar", copy: "Paket, jumlah sesi, dan komponen biaya muncul sebelum transaksi dikirim untuk verifikasi." },
-  { key: "matching", label: "Status matching", icon: Radar, title: "Pencarian tutor punya status yang terbaca", copy: "Murid dapat melihat kapan pencarian berjalan, tutor ditemukan, atau keputusan lanjutan dibutuhkan." },
-  { key: "progress", label: "Laporan belajar", icon: BookOpenCheck, title: "Materi tersusun per Bab dan sesi", copy: "Progress tidak disamakan dengan jumlah pertemuan. Bab selesai dan laporan sesi memiliki catatan sendiri." },
+const comparisons = [
+  ["Jumlah peserta", "1–8 peserta dalam satu pesanan", "Mengikuti kapasitas kelas"],
+  ["Materi", "Mapel, Bab, dan target dipilih", "Mengikuti materi kelas"],
+  ["Ritme", "Dapat fokus pada kebutuhan peserta", "Mengikuti ritme kelompok"],
+  ["Jadwal", "Hari dan jam diajukan sejak awal", "Biasanya sudah ditetapkan"],
+  ["Tempat", "Online atau tatap muka sesuai area", "Mengikuti lokasi kelas"],
+  ["Tutor", "Matching setelah pembayaran terverifikasi", "Biasanya ditentukan penyelenggara"],
 ];
 
 export default function FeaturesSection() {
   const { section } = useWebsiteContent();
   const cms = section("proof");
-  const [active, setActive] = useState<ProofKey>("verification");
-  const proof = proofs.find((item) => item.key === active) || proofs[0];
+  const eyebrow = !cms?.eyebrow || cms.eyebrow === "Bukti di dalam produk" ? "Bandingkan cara belajarnya" : cms.eyebrow;
+  const title = !cms?.title || cms.title === "Yang dijanjikan di depan, terlihat lagi di dashboard." ? "Pilih pola belajar yang cocok—lihat bedanya secara cepat." : cms.title;
+  const description = !cms?.description || cms.description.includes("verifikasi, matching, jadwal") ? "Bukan untuk menyatakan satu metode selalu lebih baik. Bagian ini membantu orang tua melihat kapan privat lebih relevan dan kapan kelas besar sudah cukup." : cms.description;
 
-  return (
-    <section className="overflow-hidden bg-white py-20 sm:py-24 lg:py-28">
-      <div className="mx-auto max-w-[1200px] px-5 sm:px-8">
-        <Reveal width="100%">
-          <div className="grid items-end gap-6 lg:grid-cols-[1fr_.75fr]">
-            <div>
-              <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-teal-700">{cms?.eyebrow || "Bukti di dalam produk"}</p>
-              <h2 className="mt-4 max-w-3xl text-balance text-3xl font-extrabold tracking-tight text-[#14213D] sm:text-4xl">{cms?.title || "Yang dijanjikan di depan, terlihat lagi di dashboard."}</h2>
+  return <section className="relative overflow-hidden py-20 text-white sm:py-24" style={{ backgroundColor: "#071A2D" }}>
+    <LandingAmbientOrbit variant="spark" color="#F6B94A" style={{ width: 250, height: 250, top: 10, right: 16, opacity: 0.72 }} />
+    <div className="relative mx-auto max-w-[1200px] px-5 sm:px-8">
+      <Reveal width="100%"><div className="grid gap-6 lg:grid-cols-2"><div><p className="text-xs font-extrabold uppercase tracking-wider text-orange-300">{eyebrow}</p><h2 className="mt-4 text-3xl font-extrabold tracking-tight sm:text-4xl">{title}</h2></div><p className="text-base leading-8 text-slate-300">{description}</p></div></Reveal>
+      <div className="-mx-5 mt-8 overflow-x-auto px-5 pb-8 pt-2 [scrollbar-color:#F59E0B_#16334A] [scrollbar-gutter:stable] [scrollbar-width:thin] sm:-mx-8 sm:px-8 md:mx-0 md:mt-10 md:px-0">
+        <div className="flex w-[760px] snap-x snap-mandatory items-stretch overflow-visible rounded-3xl border border-white/10 bg-[#0D2940] p-3 shadow-2xl sm:p-5 md:w-full md:p-6">
+          <div className="w-[150px] shrink-0 snap-start md:w-1/4">
+            <div className="flex min-h-20 items-center px-3 text-[10px] font-extrabold uppercase tracking-wider text-slate-400 sm:px-5 sm:text-xs">Yang dibandingkan</div>
+            {comparisons.map(([label]) => <div key={label} className="flex min-h-20 items-center border-t border-white/10 px-3 text-xs font-extrabold text-white sm:px-5 sm:text-sm"><span className="mr-2 h-2 w-2 shrink-0 rounded-full bg-orange-400 sm:mr-3" />{label}</div>)}
+          </div>
+
+          <article
+            className="group relative z-10 -my-2 w-[315px] shrink-0 snap-start overflow-hidden rounded-3xl bg-[#E8F1F2] text-[#164E63] shadow-2xl transition-transform duration-300 md:w-5/12"
+            onMouseEnter={(event) => {
+              if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) event.currentTarget.style.transform = "scale(1.025)";
+            }}
+            onMouseLeave={(event) => {
+              event.currentTarget.style.transform = "";
+            }}
+          >
+            <div className="flex min-h-20 items-center gap-3 bg-[#147D7E] px-5 text-white sm:px-6">
+              <span className="grid h-9 w-9 place-items-center rounded-full bg-orange-400 text-[#14213D]"><Check size={18} strokeWidth={3} /></span>
+              <h3 className="text-base font-extrabold">BimbelKu privat</h3>
             </div>
-            <p className="text-base leading-8 text-slate-600">{cms?.description || "Lihat bagaimana verifikasi, matching, jadwal, dan laporan bekerja di sistem BimbelKu."}</p>
-          </div>
-        </Reveal>
+            {comparisons.map(([, privateValue]) => <div key={privateValue} className="flex min-h-20 items-center gap-3 border-t border-teal-900/10 px-5 sm:px-6"><span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-orange-400 text-[#14213D]"><Check size={13} strokeWidth={3} /></span><p className="text-sm font-bold leading-6">{privateValue}</p></div>)}
+          </article>
 
-        <div className="mt-10 grid overflow-hidden rounded-[32px] border border-slate-800 bg-[#101A31] shadow-[0_28px_70px_rgba(20,33,61,.16)] lg:grid-cols-[.42fr_.58fr]">
-          <div className="border-b border-white/10 p-4 lg:border-b-0 lg:border-r lg:p-6" role="tablist" aria-label="Bukti sistem">
-            {proofs.map((item, index) => {
-              const Icon = item.icon;
-              const selected = item.key === active;
-              return <button key={item.key} type="button" role="tab" aria-selected={selected} onClick={() => setActive(item.key)} className={`flex w-full items-center gap-3 rounded-2xl px-4 py-4 text-left transition ${selected ? "bg-white text-[#14213D]" : "text-slate-300 hover:bg-white/[.07] hover:text-white"}`}><span className={`grid h-10 w-10 place-items-center rounded-xl ${selected ? "bg-orange-100 text-orange-700" : "bg-white/[.08] text-orange-300"}`}><Icon size={19} /></span><span><span className="block text-[10px] font-extrabold uppercase tracking-[.14em] opacity-55">Bukti 0{index + 1}</span><span className="mt-0.5 block text-sm font-extrabold">{item.label}</span></span></button>;
-            })}
-          </div>
-
-          <div className="relative min-h-[450px] overflow-hidden bg-[#16243F] p-5 sm:p-8 lg:p-10">
-            <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full border border-orange-300/15" aria-hidden="true" />
-            <div className="absolute -right-8 -top-8 h-40 w-40 rounded-full border border-dashed border-orange-300/25" aria-hidden="true" />
-            <Reveal key={proof.key} width="100%">
-              <div className="relative">
-                <p className="text-xs font-extrabold uppercase tracking-[.16em] text-orange-300">Contoh tampilan sistem</p>
-                <h3 className="mt-3 max-w-xl text-2xl font-extrabold text-white sm:text-3xl">{proof.title}</h3>
-                <p className="mt-3 max-w-xl text-sm leading-7 text-slate-300">{proof.copy}</p>
-                <ProofPanel type={proof.key} />
-              </div>
-            </Reveal>
-          </div>
+          <article className="w-[295px] shrink-0 snap-start overflow-hidden rounded-r-3xl border border-l-0 border-white/10 bg-[#071A2D] md:w-1/3">
+            <div className="flex min-h-20 items-center gap-3 px-5 sm:px-6">
+              <span className="grid h-9 w-9 place-items-center rounded-full border border-white/15 text-slate-400"><Minus size={18} /></span>
+              <h3 className="text-base font-extrabold text-slate-200">Kelas besar umumnya</h3>
+            </div>
+            {comparisons.map(([, , classValue]) => <div key={classValue} className="flex min-h-20 items-center gap-3 border-t border-white/10 px-5 text-sm leading-6 text-slate-300 sm:px-6"><Minus size={16} className="shrink-0 text-slate-500" /><p>{classValue}</p></div>)}
+          </article>
         </div>
       </div>
-    </section>
-  );
-}
-
-function ProofPanel({ type }: { type: ProofKey }) {
-  if (type === "verification") return (
-    <div className="mt-8 rounded-3xl bg-white p-5 text-[#14213D] shadow-xl sm:p-6">
-      <div className="flex items-center justify-between gap-4"><div><p className="text-xs font-bold text-slate-400">Status profil tutor</p><p className="mt-1 text-lg font-extrabold">Pemeriksaan selesai</p></div><span className="grid h-12 w-12 place-items-center rounded-2xl bg-emerald-100 text-emerald-700"><ShieldCheck size={23} /></span></div>
-      <div className="mt-5 grid gap-3 sm:grid-cols-3">{["Identitas diperiksa", "Kualifikasi diperiksa", "Status akun aktif"].map((item) => <p key={item} className="flex items-center gap-2 rounded-xl bg-stone-50 p-3 text-xs font-bold text-slate-600"><CheckCircle2 size={15} className="text-emerald-600" />{item}</p>)}</div>
+      <p className="mt-1 text-center text-xs font-bold text-slate-400 md:hidden">Geser tabel ke samping untuk membandingkan semua pilihan.</p>
+      <div className="mt-7 flex flex-col gap-5 rounded-3xl border border-orange-300/20 bg-orange-300/10 p-5 sm:flex-row sm:items-center sm:justify-between"><p className="max-w-3xl text-sm leading-6 text-slate-200">Detail BimbelKu mengikuti pilihan yang benar-benar muncul di formulir. Kapasitas, area, harga, dan ketersediaan tutor tidak dipalsukan untuk kebutuhan promosi.</p><StudentPackageLink to="/student/packages/new" className="inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-2xl bg-orange-600 px-6 text-sm font-extrabold text-white">Cek pilihanmu <ArrowRight size={17} /></StudentPackageLink></div>
     </div>
-  );
-  if (type === "payment") return (
-    <div className="mt-8 rounded-3xl bg-white p-5 text-[#14213D] shadow-xl sm:p-6">
-      <div className="flex items-center justify-between gap-3 border-b border-stone-100 pb-4"><p className="font-extrabold">Ringkasan pesanan</p><span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-extrabold text-amber-800">Belum dibayar</span></div>
-      <dl className="mt-4 space-y-3 text-sm"><div className="flex justify-between"><dt className="text-slate-500">Paket</dt><dd className="font-bold">4 sesi · 1 mapel</dd></div><div className="flex justify-between"><dt className="text-slate-500">Mode</dt><dd className="font-bold">Online</dd></div><div className="flex justify-between border-t border-stone-100 pt-3"><dt className="font-extrabold">Total</dt><dd className="font-extrabold text-orange-700">Terlihat sebelum lanjut</dd></div></dl>
-    </div>
-  );
-  if (type === "matching") return (
-    <div className="mt-8 rounded-3xl bg-white p-5 text-[#14213D] shadow-xl sm:p-6">
-      <div className="flex gap-4"><span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-teal-100 text-teal-800"><Radar size={23} /></span><div><p className="text-xs font-bold text-slate-400">Pencarian tutor</p><p className="mt-1 text-lg font-extrabold">Mencocokkan jadwal</p><p className="mt-1 text-xs text-slate-500">Matematika · Selasa & Kamis · Online</p></div></div>
-      <div className="mt-5 h-2 overflow-hidden rounded-full bg-stone-100"><div className="proof-loading-bar h-full w-2/3 rounded-full bg-gradient-to-r from-teal-600 to-orange-500" /></div>
-      <p className="mt-4 rounded-xl bg-amber-50 p-3 text-xs font-bold leading-5 text-amber-950">Bila tutor belum ditemukan, akun akan menampilkan pilihan tindakan berikutnya.</p>
-    </div>
-  );
-  return (
-    <div className="mt-8 rounded-3xl bg-white p-5 text-[#14213D] shadow-xl sm:p-6">
-      <div className="flex items-center justify-between"><div><p className="text-xs font-bold text-slate-400">Bab aktif</p><p className="mt-1 text-lg font-extrabold">Persamaan linear</p></div><span className="text-2xl font-extrabold text-orange-700">67%</span></div>
-      <div className="mt-5 h-2 overflow-hidden rounded-full bg-stone-100"><div className="h-full w-2/3 rounded-full bg-gradient-to-r from-orange-600 to-amber-400" /></div>
-      <div className="mt-5 grid gap-3 sm:grid-cols-2"><p className="flex items-center gap-2 rounded-xl bg-stone-50 p-3 text-xs font-bold text-slate-600"><CalendarDays size={16} className="text-teal-700" />Sesi berikutnya terjadwal</p><p className="flex items-center gap-2 rounded-xl bg-stone-50 p-3 text-xs font-bold text-slate-600"><BookOpenCheck size={16} className="text-orange-700" />Laporan sesi tersedia</p></div>
-    </div>
-  );
+  </section>;
 }

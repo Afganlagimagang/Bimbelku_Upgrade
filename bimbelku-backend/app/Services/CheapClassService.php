@@ -776,7 +776,7 @@ class CheapClassService
                 'title' => 'Bukti Kelas Kelompok masuk',
                 'message' => "Tagihan {$order->order_id} menunggu verifikasi.",
                 'type' => 'info',
-                'target_url' => '/admin/pembayaran',
+                'target_url' => '/admin/finance?tab=payments',
             ]));
         }
     }

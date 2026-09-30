@@ -13,6 +13,7 @@ use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Http;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -97,44 +98,103 @@ class StageSixBTeacherOperationsTest extends TestCase
         ]);
     }
 
-    public function test_teacher_payout_request_moves_ready_sessions_to_requested_once(): void
+    public function test_teacher_payout_request_is_sent_automatically_and_reserves_only_requested_amount(): void
     {
+        app()->instance(\App\Services\BankAccountNameVerifier::class, new class extends \App\Services\BankAccountNameVerifier {
+            public function available(): bool { return true; }
+            public function matches(string $channelCode, string $accountNumber, string $expectedName): bool { return true; }
+        });
+        config()->set('xendit.enabled', true);
+        config()->set('xendit.secret_key', 'xnd_development_test');
+        config()->set('xendit.webhook_token', 'callback-test');
+        config()->set('xendit.base_url', 'https://api.xendit.test');
+        Http::fake(['https://api.xendit.test/v3/payouts' => Http::response([
+            'payout_id' => 'po-stage6b-1', 'status' => 'ACCEPTED',
+        ])]);
+
         [$student, $teacher, $booking] = $this->makeBooking();
+        $teacher->update(['address' => 'Yogyakarta']);
         $booking->update([
-            'status' => 'completed',
-            'completed_at' => now(),
-            'gross_amount' => 100000,
-            'teacher_net_amount' => 80000,
-            'payout_status' => 'ready',
+            'status' => 'completed', 'completed_at' => now(), 'gross_amount' => 100000,
+            'teacher_net_amount' => 80000, 'payout_status' => 'ready',
         ]);
         TeacherProfile::create([
-            'user_id' => $teacher->id,
-            'bank_name' => 'Bank Contoh',
-            'account_number' => '1234567890',
-            'account_name' => $teacher->name,
-            'bank_details_version' => 1,
+            'user_id' => $teacher->id, 'bank_name' => 'Bank Central Asia (BCA)',
+            'payout_channel_code' => 'BCA', 'account_number' => '1234567890',
+            'account_name' => $teacher->name, 'bank_details_version' => 1,
         ]);
 
         Sanctum::actingAs($teacher);
         $this->getJson('/api/teacher/salary')
-            ->assertOk()
-            ->assertJsonPath('balances.available', 80000)
-            ->assertJsonPath('bank.account_number_masked', str_repeat("\u{2022}", 6).'7890');
+            ->assertOk()->assertJsonPath('balances.available', 80000);
 
-        $this->postJson('/api/teacher/payout-requests', [
-            'booking_ids' => [$booking->id],
-        ], ['Idempotency-Key' => 'stage6b-payout-request-0001'])
-            ->assertCreated();
+        $this->postJson('/api/teacher/payout-requests', ['amount' => 30000], [
+            'Idempotency-Key' => 'stage6b-payout-request-0001',
+        ])->assertStatus(202)
+            ->assertJsonPath('data.requested_amount', 30000)
+            ->assertJsonPath('data.transfer_amount', 30000);
 
         $this->assertDatabaseHas('teacher_payout_requests', [
-            'teacher_id' => $teacher->id,
-            'net_amount' => 80000,
-            'status' => 'pending',
+            'teacher_id' => $teacher->id, 'requested_amount' => 30000,
+            'net_amount' => 30000, 'status' => 'processing',
         ]);
         $this->assertDatabaseHas('bookings', [
-            'id' => $booking->id,
-            'payout_status' => 'requested',
+            'id' => $booking->id, 'teacher_reserved_amount' => 30000,
+            'payout_status' => 'ready',
         ]);
+        $this->getJson('/api/teacher/salary')
+            ->assertOk()->assertJsonPath('balances.available', 50000)
+            ->assertJsonPath('balances.requested', 30000);
+    }
+
+    public function test_payout_stays_unreserved_until_bank_owner_name_can_be_verified(): void
+    {
+        config(['xendit.enabled' => true, 'xendit.secret_key' => 'test', 'xendit.webhook_token' => 'test']);
+        [$student, $teacher, $booking] = $this->makeBooking();
+        $teacher->update(['address' => 'Yogyakarta']);
+        $booking->update([
+            'status' => 'completed', 'completed_at' => now(), 'gross_amount' => 100000,
+            'teacher_net_amount' => 80000, 'payout_status' => 'ready',
+        ]);
+        TeacherProfile::create([
+            'user_id' => $teacher->id, 'bank_name' => 'BCA', 'payout_channel_code' => 'BCA',
+            'account_number' => '1234567890', 'account_name' => $teacher->name,
+        ]);
+        Sanctum::actingAs($teacher);
+
+        $this->getJson('/api/teacher/salary')->assertOk()
+            ->assertJsonPath('bank_name_validation_available', false);
+        $this->postJson('/api/teacher/payout-requests', ['amount' => 30000], [
+            'Idempotency-Key' => 'bank-verification-unavailable-1',
+        ])->assertStatus(422)->assertJsonPath('message', 'Pencairan belum dapat dikirim: verifikasi nama pemilik rekening langsung dari bank belum tersedia atau belum cocok. Saldo Anda tetap aman.');
+        $this->assertDatabaseCount('teacher_payout_requests', 0);
+        $this->assertSame(0.0, (float) $booking->fresh()->teacher_reserved_amount);
+    }
+
+    public function test_payout_failure_webhook_does_not_release_another_pending_withdrawal(): void
+    {
+        app()->instance(\App\Services\BankAccountNameVerifier::class, new class extends \App\Services\BankAccountNameVerifier {
+            public function available(): bool { return true; }
+            public function matches(string $channelCode, string $accountNumber, string $expectedName): bool { return true; }
+        });
+        config(['xendit.enabled' => true, 'xendit.secret_key' => 'test', 'xendit.webhook_token' => 'test', 'xendit.base_url' => 'https://api.xendit.test']);
+        Http::fake(['*/v3/payouts' => Http::sequence()
+            ->push(['payout_id' => 'po-first', 'status' => 'ACCEPTED'])
+            ->push(['payout_id' => 'po-second', 'status' => 'ACCEPTED'])]);
+        [$student, $teacher, $booking] = $this->makeBooking();
+        $teacher->update(['address' => 'Yogyakarta']);
+        $booking->update(['status' => 'completed', 'completed_at' => now(), 'gross_amount' => 100000, 'teacher_net_amount' => 80000, 'payout_status' => 'ready']);
+        TeacherProfile::create(['user_id' => $teacher->id, 'bank_name' => 'BCA', 'payout_channel_code' => 'BCA', 'account_number' => '1234567890', 'account_name' => $teacher->name]);
+        $service = app(\App\Services\TeacherPayoutService::class);
+        $first = $service->request($teacher, 30000)['payout'];
+        $service->request($teacher, 20000);
+        $webhooks = app(\App\Services\XenditWebhookService::class);
+        $data = ['payout_id' => 'po-first', 'status' => 'FAILED'];
+        $webhooks->handle('v3_payout.failed', 'first-failure', $data, $data);
+        $webhooks->handle('v3_payout.failed', 'duplicate-failure-new-event', $data, $data);
+        $this->assertSame(20000.0, (float) $booking->fresh()->teacher_reserved_amount);
+        $this->assertSame(60000.0, $service->availableAmount($teacher->id));
+        $this->assertSame('failed', $first->fresh()->status);
     }
 
     private function makeBooking(?Carbon $start = null, ?Carbon $end = null): array

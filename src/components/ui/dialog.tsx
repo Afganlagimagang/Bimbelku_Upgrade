@@ -45,10 +45,13 @@ type DialogContentProps = React.ComponentPropsWithoutRef<typeof DialogPrimitive.
   overlayClassName?: string;
 };
 
+const isInteractivePortalEvent = (event: { detail?: { originalEvent?: Event } }) =>
+  (event.detail?.originalEvent?.target as Element | null)?.closest?.("[data-dialog-interactive-portal]") !== null;
+
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   DialogContentProps
->(({ className, children, layer = "modal", hideCloseButton = false, overlayClassName, ...props }, ref) => (
+>(({ className, children, layer = "modal", hideCloseButton = false, overlayClassName, onPointerDownOutside, onInteractOutside, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay className={cn(overlayLayerClass[layer], overlayClassName)} />
     <DialogPrimitive.Content
@@ -58,6 +61,14 @@ const DialogContent = React.forwardRef<
         contentLayerClass[layer],
         className,
       )}
+      onPointerDownOutside={(event) => {
+        if (isInteractivePortalEvent(event)) event.preventDefault();
+        onPointerDownOutside?.(event);
+      }}
+      onInteractOutside={(event) => {
+        if (isInteractivePortalEvent(event)) event.preventDefault();
+        onInteractOutside?.(event);
+      }}
       {...props}
     >
       {children}

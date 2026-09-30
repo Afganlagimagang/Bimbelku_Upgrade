@@ -1,3 +1,10 @@
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 800;
+  src: url("@fontsource-variable/plus-jakarta-sans/files/plus-jakarta-sans-latin-wght-normal.woff2") format("woff2-variations");
+}
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -35,16 +42,7 @@
     --radius: 1rem;
 
     --brand-orange: #F97316;
-    --brand-orange-button: #C2410C;
-    --brand-orange-hover: #9A3412;
-    --brand-orange-soft: #FFF1E6;
-    --brand-cream: #FFFBF7;
-    --brand-navy: #14213D;
     --brand-text: #1E293B;
-    --brand-text-muted: #64748B;
-    --brand-success: #15803D;
-    --brand-danger: #B91C1C;
-
     /*
      * Global interaction layers. Keep these ordered so a local z-index cannot
      * accidentally place evidence behind the case that opened it.
@@ -66,14 +64,8 @@
     --coral-dark: 17 88% 40%;
     --teal: 174 60% 45%;
     --teal-light: 174 60% 92%;
-    --warm-gray: 30 10% 50%;
-    --warm-white: 30 100% 98%;
-
     /* Gradients */
-    --gradient-hero: linear-gradient(135deg, hsl(16 85% 60%) 0%, hsl(30 90% 65%) 100%);
     --gradient-card: linear-gradient(180deg, hsl(0 0% 100%) 0%, hsl(30 30% 98%) 100%);
-    --gradient-accent: linear-gradient(135deg, hsl(174 60% 45%) 0%, hsl(174 50% 55%) 100%);
-
     /* Shadows */
     --shadow-sm: 0 1px 2px 0 hsl(20 30% 15% / 0.05);
     --shadow-md: 0 4px 6px -1px hsl(20 30% 15% / 0.07), 0 2px 4px -2px hsl(20 30% 15% / 0.05);
@@ -174,28 +166,32 @@
 }
 
 @layer components {
-  .gradient-hero {
-    background: var(--gradient-hero);
-  }
-
-  .gradient-accent {
-    background: var(--gradient-accent);
-  }
 
   .shadow-card {
     box-shadow: var(--shadow-card);
   }
 
-  .shadow-card-hover {
-    box-shadow: var(--shadow-card-hover);
+  .package-builder-form :where(section, article, div, fieldset, label, legend) {
+    min-inline-size: 0;
+    max-inline-size: 100%;
   }
 
-  .form-field {
-    @apply h-12 w-full min-w-0 max-w-full rounded-2xl border border-stone-200 bg-white px-4 text-sm font-bold text-slate-700 outline-none transition focus:border-orange-600 focus:ring-4 focus:ring-orange-100;
+  .package-builder-form :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+    inline-size: 100%;
+    min-inline-size: 0;
+    max-inline-size: 100%;
   }
 
-  .form-textarea {
-    @apply w-full min-w-0 max-w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm font-semibold leading-6 text-slate-700 outline-none transition focus:border-orange-600 focus:ring-4 focus:ring-orange-100;
+  .package-builder-form fieldset {
+    inline-size: 100%;
+  }
+
+  @media (max-width: 639px) {
+    .package-builder-form input[type="date"] {
+      display: block;
+      min-height: 3rem;
+      -webkit-min-logical-width: 0;
+    }
   }
 
   .skip-link {
@@ -204,11 +200,6 @@
 
   .skip-link:focus {
     @apply translate-y-0;
-  }
-
-  .break-anywhere {
-    overflow-wrap: anywhere;
-    word-break: break-word;
   }
 }
 
@@ -289,6 +280,19 @@
     overscroll-behavior-y: contain;
   }
 
+  .mobile-app-content :where(table) {
+    min-width: 42rem;
+  }
+
+  .mobile-app-content :where(.overflow-x-auto) {
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .mobile-app-content :where(button, a, input, select) {
+    min-width: 0;
+  }
+
   .mobile-app-content [class~="space-y-7"] > :not([hidden]) ~ :not([hidden]),
   .mobile-app-content [class~="space-y-8"] > :not([hidden]) ~ :not([hidden]),
   .mobile-app-content [class~="space-y-10"] > :not([hidden]) ~ :not([hidden]) {
@@ -335,7 +339,6 @@
     .hover-rise-half:hover { transform: translateY(-0.125rem); }
     .hover-rise:hover { transform: translateY(-0.25rem); }
     .hover-scale-102:hover { transform: scale(1.02); }
-    .hover-scale-105:hover { transform: scale(1.05); }
     .hover-scale-110:hover { transform: scale(1.1); z-index: 20; }
   }
 
@@ -344,6 +347,24 @@
 }
 
 @layer components {
+  :where(input, select, textarea).form-field,
+  :where(input, select, textarea).form-textarea {
+    @apply w-full min-w-0 rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-orange-500 focus:ring-4 focus:ring-orange-100;
+  }
+
+  :where(input, select).form-field {
+    @apply min-h-11;
+  }
+
+  textarea.form-field,
+  textarea.form-textarea {
+    @apply min-h-24 resize-y;
+  }
+
+  input[type="file"].form-field {
+    @apply h-auto cursor-pointer py-2;
+  }
+
   .form-input {
     @apply h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-orange-400 focus:ring-4 focus:ring-orange-100;
   }
@@ -357,6 +378,63 @@
   0%, 24% { transform: translateY(6px); opacity: .82; }
   36%, 82% { transform: translateY(0); opacity: 1; }
   94%, 100% { transform: translateY(6px); opacity: .82; }
+}
+
+@keyframes hero-mobile-note-float {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(0, -5px, 0); }
+}
+
+@keyframes hero-mobile-write {
+  0%, 8% { opacity: .2; transform: scaleX(.12); }
+  28%, 76% { opacity: 1; transform: scaleX(1); }
+  94%, 100% { opacity: .2; transform: scaleX(.12); }
+}
+
+@keyframes hero-mobile-icon-tilt {
+  0%, 24%, 100% { transform: rotate(0deg); }
+  34% { transform: rotate(-12deg); }
+  42% { transform: rotate(6deg); }
+  50% { transform: rotate(0deg); }
+}
+
+.hero-mobile-scene[data-active="true"] .hero-mobile-note-one {
+  animation: hero-mobile-note-float 7s ease-in-out infinite;
+}
+
+.hero-mobile-scene[data-active="true"] .hero-mobile-note-two {
+  animation: hero-mobile-note-float 8s ease-in-out -3.5s infinite;
+}
+
+.hero-mobile-scene[data-active="true"] .hero-mobile-note svg {
+  animation: hero-mobile-icon-tilt 8s ease-in-out infinite;
+}
+
+.hero-mobile-scene[data-active="true"] .hero-mobile-writing-line {
+  animation: hero-mobile-write 7s ease-in-out infinite;
+}
+
+.hero-mobile-scene[data-active="true"] .hero-mobile-writing-line:nth-child(2) {
+  animation-delay: .65s;
+}
+
+.hero-mobile-scene[data-active="true"] .hero-mobile-writing-right .hero-mobile-writing-line {
+  animation-delay: -3.5s;
+  transform-origin: right center;
+}
+
+.hero-mobile-writing-line { transform-origin: left center; }
+
+html[data-site-animations="off"] .hero-mobile-note,
+html[data-site-animations="off"] .hero-mobile-note svg,
+html[data-site-animations="off"] .hero-mobile-writing-line {
+  animation: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-mobile-note,
+  .hero-mobile-note svg,
+  .hero-mobile-writing-line { animation: none !important; }
 }
 
 @keyframes hero-match-dot {

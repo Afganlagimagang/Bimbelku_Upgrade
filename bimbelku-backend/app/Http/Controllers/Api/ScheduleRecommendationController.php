@@ -96,7 +96,7 @@ class ScheduleRecommendationController extends Controller
                     'duration_hours' => $duration,
                     'latitude' => $validated['learning_mode'] === 'offline' ? $student->latitude : null,
                     'longitude' => $validated['learning_mode'] === 'offline' ? $student->longitude : null,
-                    'search_radius_km' => $validated['learning_mode'] === 'offline' ? 3 : 12,
+                    'search_radius_km' => $validated['learning_mode'] === 'offline' ? 3 : null,
                 ]);
                 $packageSubject = new PackageSubject();
                 $packageSubject->setRelation('sessions', $starts->values()->map(

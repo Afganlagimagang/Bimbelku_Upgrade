@@ -14,6 +14,9 @@ use App\Models\TeacherProfile;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use App\Support\XenditPayoutChannelCatalog;
+use App\Services\TeacherPayoutService;
+use RuntimeException;
 
 class TeacherOperationsController extends Controller
 {
@@ -61,8 +64,8 @@ class TeacherOperationsController extends Controller
         $balance = Booking::query()
             ->where('teacher_id', $teacherId)
             ->where('status', 'completed')
-            ->selectRaw("COALESCE(SUM(CASE WHEN payout_status = 'ready' THEN teacher_net_amount ELSE 0 END), 0) AS available")
-            ->selectRaw("COALESCE(SUM(CASE WHEN payout_status = 'requested' THEN teacher_net_amount ELSE 0 END), 0) AS requested")
+            ->selectRaw('COALESCE(SUM(CASE WHEN teacher_net_amount - teacher_paid_amount - teacher_reserved_amount > 0 THEN teacher_net_amount - teacher_paid_amount - teacher_reserved_amount ELSE 0 END), 0) AS available')
+            ->selectRaw('COALESCE(SUM(teacher_reserved_amount), 0) AS requested')
             ->selectRaw("COALESCE(SUM(CASE WHEN payout_status = 'locked' THEN teacher_net_amount ELSE 0 END), 0) AS held")
             ->first();
         $rating = Rating::query()
@@ -156,6 +159,8 @@ class TeacherOperationsController extends Controller
                 'booking_ids' => $item->booking_ids,
                 'gross_amount' => (float) $item->gross_amount,
                 'commission_amount' => (float) $item->commission_amount,
+                'requested_amount' => (float) ($item->requested_amount ?? $item->net_amount),
+                'tax_amount' => (float) ($item->tax_amount ?? 0),
                 'net_amount' => (float) $item->net_amount,
                 'bank_name' => $item->bank_name,
                 'account_number_masked' => $this->maskAccount($item->getRawOriginal('account_number')),
@@ -167,96 +172,32 @@ class TeacherOperationsController extends Controller
             ]));
     }
 
-    public function requestPayout(Request $request)
+    public function requestPayout(Request $request, TeacherPayoutService $payouts)
     {
         $validated = $request->validate([
-            'booking_ids' => ['nullable', 'array', 'min:1', 'max:200'],
-            'booking_ids.*' => ['integer', 'distinct', 'exists:bookings,id'],
+            'amount' => ['nullable', 'numeric', 'min:'.TeacherPayoutService::MINIMUM_AMOUNT],
         ]);
-        $teacher = $request->user()->load('teacherProfile');
-        $profile = $teacher->teacherProfile;
-        if (!$profile || blank($profile->bank_name) || blank($profile->account_number) || blank($profile->account_name)) {
-            return response()->json(['message' => 'Lengkapi rekening pencairan sebelum mengajukan saldo.'], 422);
+        $teacher = $request->user();
+        $amount = isset($validated['amount'])
+            ? round((float) $validated['amount'], 2)
+            : $payouts->availableAmount((int) $teacher->id);
+
+        try {
+            $result = $payouts->request($teacher, $amount);
+        } catch (RuntimeException $exception) {
+            return response()->json(['message' => $exception->getMessage()], 422);
         }
-        if ($profile->payout_hold_until?->isFuture()) {
-            return response()->json([
-                'message' => 'Pencairan ditahan sampai '.$profile->payout_hold_until->translatedFormat('d M Y, H:i').' WIB.',
-            ], 422);
-        }
-
-        $record = DB::transaction(function () use ($validated, $teacher) {
-            $lockedProfile = TeacherProfile::query()
-                ->where('user_id', $teacher->id)
-                ->lockForUpdate()
-                ->firstOrFail();
-            if ($lockedProfile->payout_hold_until?->isFuture()) {
-                abort(422, 'Pencairan masih ditahan setelah perubahan rekening.');
-            }
-            $bookings = Booking::query()
-                ->where('teacher_id', $teacher->id)
-                ->where('status', 'completed')
-                ->where('payout_status', 'ready')
-                ->when(!empty($validated['booking_ids']), fn ($query) => $query->whereIn('id', $validated['booking_ids']))
-                ->lockForUpdate()
-                ->get();
-            if ($bookings->isEmpty()) {
-                abort(422, 'Belum ada saldo tersedia yang dapat diajukan.');
-            }
-            if (!empty($validated['booking_ids']) && $bookings->count() !== count($validated['booking_ids'])) {
-                abort(422, 'Sebagian sesi sudah diajukan atau belum siap dicairkan.');
-            }
-
-            $gross = (float) $bookings->sum('gross_amount');
-            $net = (float) $bookings->sum('teacher_net_amount');
-            $record = TeacherPayoutRequest::create([
-                'teacher_id' => $teacher->id,
-                'booking_ids' => $bookings->pluck('id')->sort()->values()->all(),
-                'gross_amount' => $gross,
-                'commission_amount' => max(0, $gross - $net),
-                'net_amount' => $net,
-                'bank_name' => $lockedProfile->bank_name,
-                'account_number' => $lockedProfile->account_number,
-                'account_name' => $lockedProfile->account_name,
-                'bank_details_version' => (int) $lockedProfile->bank_details_version,
-                'status' => 'pending',
-                'requested_at' => now(),
-            ]);
-            $bookings->each->update([
-                'payout_status' => 'requested',
-                'payout_request_id' => $record->id,
-            ]);
-
-            Notification::updateOrCreate(
-                ['unique_key' => "teacher-payout-request:{$record->id}:{$teacher->id}"],
-                [
-                    'user_id' => $teacher->id,
-                    'title' => 'Pencairan diajukan',
-                    'message' => 'Saldo Rp'.number_format($net, 0, ',', '.').' menunggu pemeriksaan admin.',
-                    'type' => 'info',
-                    'target_url' => '/guru/gaji',
-                    'is_read' => false,
-                ]
-            );
-            User::query()->where('role', 'admin')->where('status', 'active')->pluck('id')
-                ->each(fn ($adminId) => Notification::updateOrCreate(
-                    ['unique_key' => "teacher-payout-request:{$record->id}:{$adminId}"],
-                    [
-                        'user_id' => $adminId,
-                        'title' => 'Pengajuan pencairan tutor',
-                        'message' => "{$teacher->name} mengajukan Rp".number_format($net, 0, ',', '.').'.',
-                        'type' => 'warning',
-                        'target_url' => '/admin/finance',
-                        'is_read' => false,
-                    ]
-                ));
-
-            return $record;
-        }, 3);
 
         return response()->json([
-            'message' => 'Pencairan berhasil diajukan. Saldo dipindahkan ke status menunggu admin.',
-            'data' => $record,
-        ], 201);
+            'message' => 'Pencairan sedang dikirim otomatis ke rekening terdaftar.',
+            'data' => [
+                'id' => $result['request']->id,
+                'requested_amount' => (float) $result['request']->requested_amount,
+                'tax_amount' => (float) $result['request']->tax_amount,
+                'transfer_amount' => (float) $result['request']->net_amount,
+                'status' => $result['request']->status,
+            ],
+        ], 202);
     }
 
     private function maskAccount(?string $value): string

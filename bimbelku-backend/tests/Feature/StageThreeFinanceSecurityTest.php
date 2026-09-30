@@ -12,6 +12,7 @@ use App\Support\EducationCatalog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
@@ -38,7 +39,7 @@ class StageThreeFinanceSecurityTest extends TestCase
         Sanctum::actingAs($admin);
 
         $this->postJson('/api/admin/commission-setting', [
-            'admin_fee' => 18,
+            'admin_fee' => 20,
         ], ['Idempotency-Key' => 'single-admin-finance-0001'])
             ->assertOk();
 
@@ -54,14 +55,14 @@ class StageThreeFinanceSecurityTest extends TestCase
         Sanctum::actingAs($admin);
         $headers = ['Idempotency-Key' => 'commission-change-0001'];
 
-        $first = $this->postJson('/api/admin/commission-setting', ['admin_fee' => 17], $headers)
+        $first = $this->postJson('/api/admin/commission-setting', ['admin_fee' => 20], $headers)
             ->assertOk();
-        $second = $this->postJson('/api/admin/commission-setting', ['admin_fee' => 17], $headers)
+        $second = $this->postJson('/api/admin/commission-setting', ['admin_fee' => 20], $headers)
             ->assertOk();
 
         $this->assertSame($first->getContent(), $second->getContent());
         $this->assertDatabaseCount('idempotency_records', 1);
-        $this->assertDatabaseHas('settings', ['key' => 'admin_fee', 'value' => '17']);
+        $this->assertDatabaseHas('settings', ['key' => 'admin_fee', 'value' => '20']);
     }
 
     public function test_paid_order_creates_balanced_immutable_journal(): void
@@ -103,7 +104,7 @@ class StageThreeFinanceSecurityTest extends TestCase
         $this->postJson('/api/teacher/bank', [
             'bank_name' => 'BCA',
             'account_number' => '1234567890',
-            'account_name' => 'Tutor Aman',
+            'account_name' => $teacher->name,
             'current_password' => 'TeacherPass123!',
         ], ['Idempotency-Key' => 'teacher-bank-change-0001'])
             ->assertOk()
@@ -115,77 +116,35 @@ class StageThreeFinanceSecurityTest extends TestCase
         $this->assertNotNull($profile->bank_account_fingerprint);
     }
 
-    public function test_single_admin_can_complete_high_value_payout_with_proof_and_database_locking(): void
+    public function test_teacher_cannot_save_bank_holder_name_different_from_account_name(): void
     {
-        Storage::fake('local');
-        $student = User::factory()->create(['role' => 'student', 'status' => 'active']);
-        $teacher = User::factory()->create(['role' => 'teacher', 'status' => 'active']);
-        TeacherProfile::create([
-            'user_id' => $teacher->id,
-            'bank_name' => 'BCA',
-            'account_number' => '1234567890',
-            'account_name' => 'Tutor Besar',
+        $teacher = User::factory()->create([
+            'role' => 'teacher', 'status' => 'active', 'password' => Hash::make('TeacherPass123!'),
         ]);
-        $scheduledStart = now()->subHours(2);
-        $scheduledEnd = now()->subHour();
-        $bookingRequest = BookingRequest::create([
-            'student_id' => $student->id,
-            'matched_teacher_id' => $teacher->id,
-            'subject_name' => 'Matematika',
-            'education_level' => 'SMA',
-            'grade' => 'Kelas 12',
-            'learning_mode' => 'online',
-            'class_type' => 'private',
-            'scheduled_date' => $scheduledStart->toDateString(),
-            'start_time' => $scheduledStart->format('H:i:s'),
-            'end_time' => $scheduledEnd->format('H:i:s'),
-            'duration_hours' => 1,
-            'status' => 'confirmed',
-            'hourly_rate' => 7500000,
-            'total_amount' => 7500000,
-        ]);
-        $booking = Booking::create([
-            'booking_request_id' => $bookingRequest->id,
-            'student_id' => $student->id,
-            'teacher_id' => $teacher->id,
-            'start_at' => $scheduledStart,
-            'end_at' => $scheduledEnd,
-            'duration_hours' => 1,
-            'learning_mode' => 'online',
-            'class_type' => 'private',
-            'hourly_rate' => 7500000,
-            'total_amount' => 7500000,
-            'status' => 'completed',
-            'commission_percent' => 20,
-            'gross_amount' => 7500000,
-            'teacher_net_amount' => 6000000,
-            'completed_at' => now(),
-            'payout_status' => 'ready',
-        ]);
+        TeacherProfile::create(['user_id' => $teacher->id]);
+        Sanctum::actingAs($teacher);
 
-        $bookingRequest->update(['booking_id' => $booking->id]);
-
-        Sanctum::actingAs($this->activeAdmin());
-        $this->post('/api/admin/payout', [
-            'teacher_id' => $teacher->id,
-            'booking_ids' => [$booking->id],
-            'proof_file' => UploadedFile::fake()->image('transfer.jpg'),
-        ], [
-            'Accept' => 'application/json',
-            'Idempotency-Key' => 'single-admin-large-payout-0001',
-        ])->assertOk();
-
-        $this->assertDatabaseHas('payouts', [
-            'user_id' => $teacher->id,
-            'amount' => 6000000,
-            'status' => 'completed',
-        ]);
-        $this->assertDatabaseHas('bookings', [
-            'id' => $booking->id,
-            'payout_status' => 'paid',
-        ]);
+        $this->postJson('/api/teacher/bank', [
+            'bank_name' => 'BCA', 'account_number' => '1234567890',
+            'account_name' => 'Nama Berbeda', 'current_password' => 'TeacherPass123!',
+        ], ['Idempotency-Key' => 'bank-name-mismatch-0001'])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Nama pemilik rekening harus sama dengan nama akun tutor. Pastikan nama akun sesuai KTP sebelum melanjutkan.');
+        $this->assertNull($teacher->teacherProfile()->firstOrFail()->account_number);
     }
 
+    public function test_admin_cannot_manually_trigger_teacher_payout(): void
+    {
+        Sanctum::actingAs($this->activeAdmin());
+
+        $this->postJson('/api/admin/payout', [
+            'teacher_id' => 1,
+            'booking_ids' => [1],
+        ], ['Idempotency-Key' => 'manual-admin-payout-disabled'])
+            ->assertNotFound();
+
+        $this->assertDatabaseCount('payouts', 0);
+    }
     private function activeAdmin(): User
     {
         return User::factory()->create([

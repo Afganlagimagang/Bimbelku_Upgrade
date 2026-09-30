@@ -1,9 +1,10 @@
-import { ChangeEvent, FormEvent, useEffect, useState } from "react";
-import { ArrowDown, ArrowUp, Eye, EyeOff, FileImage, Loader2, Plus, Save, ShieldCheck, Trash2 } from "lucide-react";
+import { FormEvent, useEffect, useState } from "react";
+import { ArrowDown, ArrowUp, Eye, EyeOff, Loader2, Plus, Save, ShieldCheck, Trash2 } from "lucide-react";
 import axios from "axios";
+import { Link } from "react-router-dom";
 
 import AdminLayout from "@/components/AdminLayout";
-import http, { clearApiCache } from "@/lib/http";
+import http, { clearApiCache, getCached } from "@/lib/http";
 import { notify } from "@/lib/notify";
 import { sanitizePhoneInput } from "@/lib/validation";
 
@@ -92,6 +93,7 @@ type AdminTestimonial = {
   id?: number;
   client_key: string;
   rating_id: number | null;
+  curriculum_subject_id: number | null;
   display_name: string;
   audience_role: string | null;
   quote: string;
@@ -105,6 +107,8 @@ type AdminTestimonial = {
   is_verified: boolean;
   consent_confirmed: boolean;
   has_proof: boolean;
+  verified_at?: string | null;
+  verified_by_name?: string | null;
   is_featured: boolean;
   is_visible: boolean;
   sort_order: number;
@@ -118,24 +122,8 @@ type WebsitePayload = {
 };
 
 type TestimonialFiles = { photo?: File; proof?: File };
-
-type UploadKey = "logo" | "logo_light" | "logo_dark" | "favicon" | "social_share_image" | "hero_desktop_image" | "hero_mobile_image" | "trust_image_1" | "trust_image_2" | "trust_image_3" | "trust_image_4" | "trust_image_5" | "trust_image_6";
-
-const uploadLabels: Array<{ key: UploadKey; label: string; hint: string; accept: string; current: keyof WebsiteSettings }> = [
-  { key: "logo", label: "Logo utama", hint: "PNG/WebP, maks. 2 MB", accept: ".png,.jpg,.jpeg,.webp", current: "logo_url" },
-  { key: "logo_light", label: "Logo versi terang", hint: "Untuk latar gelap", accept: ".png,.jpg,.jpeg,.webp", current: "logo_light_url" },
-  { key: "logo_dark", label: "Logo versi gelap", hint: "Untuk latar terang", accept: ".png,.jpg,.jpeg,.webp", current: "logo_dark_url" },
-  { key: "favicon", label: "Favicon", hint: "PNG/ICO, maks. 512 KB", accept: ".png,.ico", current: "favicon_url" },
-  { key: "social_share_image", label: "Gambar berbagi", hint: "Rekomendasi 1200 × 630", accept: ".png,.jpg,.jpeg,.webp", current: "social_share_image_url" },
-  { key: "hero_desktop_image", label: "Hero desktop", hint: "Foto horizontal, maks. 3 MB", accept: ".png,.jpg,.jpeg,.webp", current: "hero_desktop_image_url" },
-  { key: "hero_mobile_image", label: "Hero mobile", hint: "Foto vertikal, maks. 3 MB", accept: ".png,.jpg,.jpeg,.webp", current: "hero_mobile_image_url" },
-  { key: "trust_image_1", label: "Tutor publik 1", hint: "Foto tutor berizin, rasio 4:5", accept: ".png,.jpg,.jpeg,.webp", current: "trust_image_1_url" },
-  { key: "trust_image_2", label: "Tutor publik 2", hint: "Foto tutor berizin, rasio 4:5", accept: ".png,.jpg,.jpeg,.webp", current: "trust_image_2_url" },
-  { key: "trust_image_3", label: "Tutor publik 3", hint: "Foto tutor berizin, rasio 4:5", accept: ".png,.jpg,.jpeg,.webp", current: "trust_image_3_url" },
-  { key: "trust_image_4", label: "Tutor publik 4", hint: "Foto tutor berizin, rasio 4:5", accept: ".png,.jpg,.jpeg,.webp", current: "trust_image_4_url" },
-  { key: "trust_image_5", label: "Tutor publik 5", hint: "Foto tutor berizin, rasio 4:5", accept: ".png,.jpg,.jpeg,.webp", current: "trust_image_5_url" },
-  { key: "trust_image_6", label: "Tutor publik 6", hint: "Foto tutor berizin, rasio 4:5", accept: ".png,.jpg,.jpeg,.webp", current: "trust_image_6_url" },
-];
+type SubjectOption = { id: number; name: string; education_levels?: string[] };
+type RatingOption = { id: number; rating: number; review: string | null; student_name: string; teacher_name: string };
 
 const defaultSettings: WebsiteSettings = {
   brand_name: "BimbelKu",
@@ -180,7 +168,7 @@ const nullable = (value: string | null | undefined) => value ?? "";
 const dateValue = (value: string | null) => value ? value.slice(0, 10) : "";
 const testimonialKey = () => typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `new-${Date.now()}-${Math.random()}`;
 const emptyTestimonial = (sortOrder: number): AdminTestimonial => ({
-  client_key: testimonialKey(), rating_id: null, display_name: "", audience_role: "", quote: "",
+  client_key: testimonialKey(), rating_id: null, curriculum_subject_id: null, display_name: "", audience_role: "", quote: "",
   program_name: "", outcome: "", institution: "", major: "", achievement_year: null,
   photo_url: null, rating: null, is_verified: false, consent_confirmed: false, has_proof: false,
   is_featured: false, is_visible: false, sort_order: sortOrder,
@@ -192,8 +180,9 @@ export default function PublicWebsiteSettings() {
   const [trustItems, setTrustItems] = useState<TrustItem[]>([]);
   const [testimonials, setTestimonials] = useState<AdminTestimonial[]>([]);
   const [testimonialFiles, setTestimonialFiles] = useState<Record<string, TestimonialFiles>>({});
+  const [subjectOptions, setSubjectOptions] = useState<SubjectOption[]>([]);
+  const [ratingOptions, setRatingOptions] = useState<RatingOption[]>([]);
   const [deletedTestimonialIds, setDeletedTestimonialIds] = useState<number[]>([]);
-  const [files, setFiles] = useState<Partial<Record<UploadKey, File>>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -223,6 +212,19 @@ export default function PublicWebsiteSettings() {
       .finally(() => active && setLoading(false));
 
     return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    void Promise.all([
+      getCached<{ subject_options?: SubjectOption[] }>("/learning-catalog", { params: { compact: 1 }, maxAgeMs: 5 * 60_000 }),
+      http.get<{ data?: RatingOption[] }>("/admin/ratings"),
+    ]).then(([catalog, ratings]) => {
+      setSubjectOptions(catalog.data.subject_options || []);
+      setRatingOptions(ratings.data.data || []);
+    }).catch(() => {
+      setSubjectOptions([]);
+      setRatingOptions([]);
+    });
   }, []);
 
   const updateSetting = <K extends keyof WebsiteSettings>(key: K, value: WebsiteSettings[K]) => {
@@ -275,11 +277,6 @@ export default function PublicWebsiteSettings() {
     setSections((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, content: { ...(item.content || {}), ...patch } } : item));
   };
 
-  const selectFile = (key: UploadKey) => (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) setFiles((current) => ({ ...current, [key]: file }));
-  };
-
   const append = (data: FormData, key: string, value: unknown) => {
     data.append(key, value === null || value === undefined ? "" : String(value));
   };
@@ -330,6 +327,7 @@ export default function PublicWebsiteSettings() {
     testimonials.forEach((item, index) => {
       if (item.id) append(payload, `testimonials[${index}][id]`, item.id);
       append(payload, `testimonials[${index}][rating_id]`, item.rating_id);
+      append(payload, `testimonials[${index}][curriculum_subject_id]`, item.curriculum_subject_id);
       append(payload, `testimonials[${index}][display_name]`, item.display_name);
       append(payload, `testimonials[${index}][audience_role]`, item.audience_role);
       append(payload, `testimonials[${index}][quote]`, item.quote);
@@ -348,7 +346,6 @@ export default function PublicWebsiteSettings() {
       if (selected?.proof) payload.append(`testimonials[${index}][proof]`, selected.proof);
     });
     deletedTestimonialIds.forEach((id, index) => append(payload, `deleted_testimonial_ids[${index}]`, id));
-    Object.entries(files).forEach(([key, file]) => file && payload.append(key, file));
 
     setSaving(true);
     try {
@@ -359,7 +356,6 @@ export default function PublicWebsiteSettings() {
       setTestimonials((data.data.testimonials || []).map((item) => ({ ...item, client_key: `saved-${item.id}` })));
       setTestimonialFiles({});
       setDeletedTestimonialIds([]);
-      setFiles({});
       clearApiCache("/website-content");
       window.dispatchEvent(new Event("bimbelku:website-content-changed"));
       notify.success(data.message);
@@ -385,7 +381,7 @@ export default function PublicWebsiteSettings() {
           <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
               <h1 className="text-3xl font-extrabold text-[#14213D]">Fondasi website publik</h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Struktur desain dikunci agar konsisten. Admin mengelola isi, visibilitas, media, dan sumber bukti.</p>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Struktur desain dikunci agar konsisten. Di sini admin mengelola teks, visibilitas, dan sumber bukti; gambar diatur pada halaman Media Website.</p>
             </div>
             <button type="submit" disabled={saving} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-[#C2410C] px-6 font-bold text-white transition hover:bg-[#9A3412] disabled:opacity-60">
               {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />} Simpan perubahan
@@ -415,7 +411,7 @@ export default function PublicWebsiteSettings() {
 
         <Panel title="Konsultasi WhatsApp" description="Nomor hanya menjadi jalur konsultasi; transaksi tetap diselesaikan di aplikasi.">
           <div className="grid gap-4 md:grid-cols-2">
-            <Toggle label="Tampilkan tombol WhatsApp" checked={settings.whatsapp_enabled} onChange={(checked) => updateSetting("whatsapp_enabled", checked)} />
+            <Toggle label="Tampilkan WhatsApp di header dan konten" checked={settings.whatsapp_enabled} onChange={(checked) => updateSetting("whatsapp_enabled", checked)} />
             <div className="hidden md:block" />
             <Field label="Nomor WhatsApp"><input value={nullable(settings.whatsapp_number)} onChange={(event) => updateSetting("whatsapp_number", sanitizePhoneInput(event.target.value))} placeholder="6281234567890" className="form-field" /></Field>
             <Field label="Jam layanan"><input value={nullable(settings.whatsapp_hours)} onChange={(event) => updateSetting("whatsapp_hours", event.target.value)} className="form-field" /></Field>
@@ -438,22 +434,7 @@ export default function PublicWebsiteSettings() {
           </div>
         </Panel>
 
-        <Panel title="Media brand" description="File lama baru dihapus setelah file pengganti berhasil tersimpan.">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {uploadLabels.map((item) => {
-              const currentUrl = settings[item.current];
-              return (
-                <label key={item.key} className="rounded-2xl border border-dashed border-stone-300 bg-stone-50 p-4 transition hover:border-orange-300">
-                  <span className="flex items-center gap-2 font-bold text-[#14213D]"><FileImage size={18} className="text-orange-600" /> {item.label}</span>
-                  <span className="mt-1 block text-xs text-slate-500">{item.hint}</span>
-                  {typeof currentUrl === "string" && currentUrl && <img src={currentUrl} alt={`Pratinjau ${item.label}`} loading="lazy" decoding="async" className="mt-3 h-20 w-full rounded-xl bg-white object-contain" />}
-                  <input type="file" accept={item.accept} onChange={selectFile(item.key)} className="mt-3 block w-full text-xs text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-orange-100 file:px-3 file:py-2 file:font-bold file:text-orange-800" />
-                  {files[item.key] && <span className="mt-2 block truncate text-xs font-semibold text-emerald-700">Dipilih: {files[item.key]?.name}</span>}
-                </label>
-              );
-            })}
-          </div>
-        </Panel>
+        <div className="flex flex-col gap-3 rounded-3xl border border-teal-200 bg-teal-50 p-5 sm:flex-row sm:items-center sm:justify-between"><p className="text-sm leading-6 text-teal-950"><strong>Ingin mengganti logo atau foto?</strong> Semua gambar aktif dan pratinjau penggantinya kini ada di halaman terpisah.</p><Link to="/admin/website-media" className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-teal-800 px-4 text-sm font-bold text-white">Buka Media Website</Link></div>
 
         <Panel title="Konten utama landing page" description="Teks penting dapat diperbarui tanpa mengubah struktur, alur transaksi, atau komponen desain.">
           <div className="space-y-5">
@@ -469,12 +450,7 @@ export default function PublicWebsiteSettings() {
                     <Field label="Status berhasil"><input value={nullable(section.content?.status_found)} onChange={(event) => updateSectionContent(index, { status_found: event.target.value })} maxLength={80} className="form-field" /></Field>
                     {[0, 1, 2].map((pointIndex) => <Field key={pointIndex} label={`Poin kepercayaan ${pointIndex + 1}`}><input value={section.content?.trust_points?.[pointIndex] || ""} onChange={(event) => { const points = [...(section.content?.trust_points || [])]; points[pointIndex] = event.target.value; updateSectionContent(index, { trust_points: points }); }} maxLength={80} className="form-field" /></Field>)}
                   </>}
-                  {section.section_key === "trust" && [0, 1, 2, 3, 4, 5].map((mediaIndex) => (
-                    <div key={mediaIndex} className="grid gap-3 rounded-2xl border border-stone-200 bg-white p-4 md:col-span-2 md:grid-cols-2">
-                      <Field label={`Nama tutor ${mediaIndex + 1}`}><input value={section.content?.trust_media_titles?.[mediaIndex] || ""} onChange={(event) => { const titles = [...(section.content?.trust_media_titles || [])]; titles[mediaIndex] = event.target.value; updateSectionContent(index, { trust_media_titles: titles }); }} maxLength={100} className="form-field" /></Field>
-                      <Field label="Jejak pendidikan / karier / prestasi"><input value={section.content?.trust_media_notes?.[mediaIndex] || ""} onChange={(event) => { const notes = [...(section.content?.trust_media_notes || [])]; notes[mediaIndex] = event.target.value; updateSectionContent(index, { trust_media_notes: notes }); }} maxLength={180} className="form-field" /></Field>
-                    </div>
-                  ))}
+                  {section.section_key === "trust" && <p className="rounded-xl bg-teal-50 p-4 text-sm text-teal-900 md:col-span-2">Foto, nama, gelar, dan jejak pendidikan tutor beranda dapat diisi manual di <Link to="/admin/website-media" className="font-black underline">Media Website → Galeri tutor</Link>. Pilihan akun tutor tersedia untuk mengisi data lebih cepat; animasi ticker tetap memakai desain sebelumnya.</p>}
                   {section.section_key === "programs" && <Field label="Placeholder pencarian" wide><input value={nullable(section.content?.search_placeholder)} onChange={(event) => updateSectionContent(index, { search_placeholder: event.target.value })} maxLength={120} className="form-field" /></Field>}
                   {section.section_key === "final_cta" && <Field label="Teks CTA konsultasi"><input value={nullable(section.content?.secondary_cta_label)} onChange={(event) => updateSectionContent(index, { secondary_cta_label: event.target.value })} maxLength={60} className="form-field" /></Field>}
                 </div>
@@ -510,17 +486,18 @@ export default function PublicWebsiteSettings() {
             {testimonials.map((item, index) => {
               const selected = testimonialFiles[item.client_key] || {};
               return <article key={item.client_key} className="rounded-2xl border border-stone-200 p-4 sm:p-5">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div className="flex min-w-0 items-center gap-3">{item.photo_url ? <img src={item.photo_url} alt="" className="h-16 w-16 rounded-2xl object-cover" /> : <span className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-stone-100 text-xs font-extrabold text-stone-400">FOTO</span>}<div><p className="font-extrabold text-[#14213D]">{item.display_name || `Testimoni baru ${index + 1}`}</p><p className="mt-1 text-xs font-semibold text-slate-500">{item.is_visible ? "Siap tampil setelah semua syarat terpenuhi" : "Draft / tidak tampil"}</p></div></div><button type="button" onClick={() => removeTestimonial(index)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-rose-200 px-3 text-xs font-extrabold text-rose-700"><Trash2 size={15} /> Hapus</button></div>
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div className="flex min-w-0 items-center gap-3">{item.photo_url ? <img src={item.photo_url} alt="" loading="lazy" decoding="async" className="h-16 w-16 rounded-2xl object-cover" /> : <span className="grid h-16 w-16 shrink-0 place-items-center rounded-2xl bg-stone-100 text-xs font-extrabold text-stone-400">FOTO</span>}<div><p className="font-extrabold text-[#14213D]">{item.display_name || `Testimoni baru ${index + 1}`}</p><p className="mt-1 text-xs font-semibold text-slate-500">{item.is_visible ? "Siap tampil setelah semua syarat terpenuhi" : "Draft / tidak tampil"}</p>{item.verified_at && <p className="mt-1 text-xs text-slate-500">Diperiksa {item.verified_by_name || "belum tercatat"} · {item.verified_at}</p>}</div></div><button type="button" onClick={() => removeTestimonial(index)} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-rose-200 px-3 text-xs font-extrabold text-rose-700"><Trash2 size={15} /> Hapus</button></div>
                 <div className="mt-5 grid gap-3 md:grid-cols-2">
                   <Field label="Nama publik"><input required value={item.display_name} onChange={(event) => updateTestimonial(index, { display_name: event.target.value })} maxLength={100} className="form-field" /></Field>
                   <Field label="Peran"><input value={nullable(item.audience_role)} onChange={(event) => updateTestimonial(index, { audience_role: event.target.value })} placeholder="Siswa kelas 12 / Orang tua murid" maxLength={120} className="form-field" /></Field>
-                  <Field label="Kutipan" wide><textarea required value={item.quote} onChange={(event) => updateTestimonial(index, { quote: event.target.value })} maxLength={1000} rows={3} className="form-textarea" /></Field>
+                  <Field label="Kutipan dari rating murid" wide><textarea required readOnly value={item.quote} maxLength={1000} rows={3} className="form-textarea bg-stone-50" /></Field>
                   <Field label="Program"><input value={nullable(item.program_name)} onChange={(event) => updateTestimonial(index, { program_name: event.target.value })} maxLength={150} className="form-field" /></Field>
+                  <Field label="Terkait halaman mapel (opsional)"><select value={item.curriculum_subject_id || ""} onChange={(event) => updateTestimonial(index, { curriculum_subject_id: event.target.value ? Number(event.target.value) : null })} className="form-field"><option value="">Testimoni umum</option>{subjectOptions.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}{subject.education_levels?.length ? ` · ${subject.education_levels.join("/")}` : ""}</option>)}</select></Field>
                   <Field label="Hasil terverifikasi"><input value={nullable(item.outcome)} onChange={(event) => updateTestimonial(index, { outcome: event.target.value })} placeholder="Contoh: Diterima melalui SNBT" maxLength={180} className="form-field" /></Field>
                   <Field label="Sekolah / kampus"><input value={nullable(item.institution)} onChange={(event) => updateTestimonial(index, { institution: event.target.value })} maxLength={150} className="form-field" /></Field>
                   <Field label="Jurusan"><input value={nullable(item.major)} onChange={(event) => updateTestimonial(index, { major: event.target.value })} maxLength={150} className="form-field" /></Field>
                   <Field label="Tahun hasil"><input type="number" min={2000} max={new Date().getFullYear() + 1} value={item.achievement_year || ""} onChange={(event) => updateTestimonial(index, { achievement_year: event.target.value ? Number(event.target.value) : null })} className="form-field" /></Field>
-                  <Field label="ID rating sistem (opsional)"><input type="number" min={1} value={item.rating_id || ""} onChange={(event) => updateTestimonial(index, { rating_id: event.target.value ? Number(event.target.value) : null })} className="form-field" /></Field>
+                  <Field label="Rating murid nyata (wajib saat tampil)"><select value={item.rating_id || ""} onChange={(event) => { const rating = ratingOptions.find((option) => option.id === Number(event.target.value)); updateTestimonial(index, { rating_id: rating?.id || null, quote: rating?.review || "" }); }} className="form-field"><option value="">Pilih ulasan sistem</option>{ratingOptions.map((rating) => <option key={rating.id} value={rating.id} disabled={!rating.review?.trim()}>{rating.rating}★ · {rating.student_name} → {rating.teacher_name}{rating.review ? ` · ${rating.review.slice(0, 60)}` : " · tanpa ulasan teks"}</option>)}</select></Field>
                   <Field label="Foto publik"><input type="file" accept=".png,.jpg,.jpeg,.webp" onChange={(event) => { const photo = event.target.files?.[0]; if (photo) setTestimonialFiles((current) => ({ ...current, [item.client_key]: { ...current[item.client_key], photo } })); }} className="block w-full text-xs file:mr-3 file:rounded-lg file:border-0 file:bg-orange-100 file:px-3 file:py-2 file:font-bold file:text-orange-800" />{selected.photo && <span className="mt-1 block truncate text-xs text-emerald-700">{selected.photo.name}</span>}</Field>
                   <Field label="Bukti privat"><input type="file" accept=".png,.jpg,.jpeg,.webp,.pdf" onChange={(event) => { const proof = event.target.files?.[0]; if (proof) setTestimonialFiles((current) => ({ ...current, [item.client_key]: { ...current[item.client_key], proof } })); }} className="block w-full text-xs file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-100 file:px-3 file:py-2 file:font-bold file:text-emerald-800" />{(selected.proof || item.has_proof) && <span className="mt-1 block truncate text-xs text-emerald-700">{selected.proof?.name || "Bukti tersimpan privat"}</span>}</Field>
                 </div>

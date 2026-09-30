@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import http, { getApiError } from "@/lib/http";
+import WorkspacePageIntro from "@/components/WorkspacePageIntro";
 
 interface TimeRange {
   start_time: string;
@@ -209,24 +210,7 @@ export default function ManageSchedule() {
   return (
     <TeacherLayout title="Jadwal Mengajar">
       <div className="mx-auto max-w-7xl space-y-7 pb-12">
-        <section className="relative overflow-hidden rounded-[1.7rem] bg-gradient-to-br from-slate-950 via-indigo-950 to-violet-900 p-5 text-white shadow-xl sm:rounded-[2rem] sm:px-7 sm:py-8">
-          <div className="absolute -right-16 -top-24 h-64 w-64 rounded-full bg-indigo-400/20 blur-3xl" />
-          <div className="relative flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-            <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-bold uppercase tracking-widest text-indigo-100">
-                <Sparkles size={14} /> Beberapa rentang per hari
-              </div>
-              <h1 className="mt-4 text-2xl font-black tracking-tight sm:text-3xl">Atur seluruh jam kosong tutor</h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-indigo-100/80">
-                Setiap waktu memakai jam penuh. Rentang dapat ditambah tanpa batas lima jam per hari.
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Stat value={String(activeDays)} label="Hari aktif" />
-              <Stat value={`${totalAvailableHours} jam`} label="Total mingguan" />
-            </div>
-          </div>
-        </section>
+        <WorkspacePageIntro eyebrow="Beberapa rentang per hari" title="Jadwal Mengajar" description="Atur jam yang benar-benar tersedia. Sistem menggunakan data ini untuk menyaring penawaran dan mencegah benturan kelas." icon={CalendarClock} metrics={[{ label: "Hari aktif", value: activeDays }, { label: "Total mingguan", value: `${totalAvailableHours} jam` }]} />
 
         <div data-tour="teacher-schedule-days" className="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm md:p-7">
           {loading ? (

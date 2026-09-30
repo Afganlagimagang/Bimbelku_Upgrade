@@ -27,7 +27,7 @@ expect(app.includes('<Route path="/search" element={<LegacyPackageRedirect />} /
 expect(app.includes('<Route path="/student/find" element={<LegacyPackageRedirect />} />'), "/student/find belum menjadi redirect");
 expect(app.indexOf('<Route path="/search" element={<LegacyPackageRedirect />} />') < app.indexOf('<Route element={<StudentPackageRoute />}>'), "/search harus dinormalisasi sebelum guard Paket Baru");
 expect(app.indexOf('<Route path="/student/find" element={<LegacyPackageRedirect />} />') < app.indexOf('<Route element={<StudentPackageRoute />}>'), "/student/find harus dinormalisasi sebelum guard Paket Baru");
-expect(app.includes('exactPath("/student/packages/new", "/search", "/student/find")'), "Chunk Paket Baru belum dipreload saat alias lama dibuka");
+expect(app.includes('exactPath("/student/packages/new", "/search", "/student/find", "/pesan")'), "Chunk Paket Baru belum dipreload saat alias lama dibuka");
 expect(app.includes('legacyParams.set("subject_name", subjectName)'), "Parameter mapel lama belum dipertahankan");
 expect(packageLink.includes('currentUser.role === "student"'), "Akses Paket Baru belum dijaga berdasarkan peran");
 expect(packageLink.includes("onNavigate?.()"), "Menu mobile belum ditutup setelah navigasi Paket Baru/ke dashboard");

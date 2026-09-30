@@ -31,7 +31,14 @@ type RefundItem = {
   external_funded_amount: number;
   reason: string;
   status: string;
-  destination_method?: "bank_transfer" | "bimbelku_balance" | null;
+  destination_method?: "bank_transfer" | "bimbelku_balance" | "xendit_original" | null;
+  payment_provider?: string | null;
+  gateway_status?: string | null;
+  gateway_failure_code?: string | null;
+  gateway_refund_id?: string | null;
+  gateway_submitted_at?: string | null;
+  gateway_processed_at?: string | null;
+  last_reconciled_at?: string | null;
   destination_selected_at?: string | null;
   destination_selection_version?: number;
   bank_destination: {
@@ -46,6 +53,7 @@ type RefundItem = {
   processor?: { id: number; name: string } | null;
   processed_at?: string | null;
   created_at: string;
+  updated_at?: string | null;
 };
 
 type RefundResponse = {
@@ -70,16 +78,33 @@ const dateTime = (value?: string | null) => value
   ? new Date(value).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })
   : "-";
 
-export default function RefundManagement() {
+export default function RefundManagement({ embedded = false }: { embedded?: boolean }) {
   const confirm = useConfirmDialog();
   const [data, setData] = useState<RefundResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"pending" | "history">("pending");
+  const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<RefundItem | null>(null);
   const [proof, setProof] = useState<File | null>(null);
   const [notes, setNotes] = useState("");
   const [processing, setProcessing] = useState(false);
+
+  const automaticAction = async (item: RefundItem, action: "reconcile" | "retry") => {
+    setProcessing(true);
+    try {
+      const response = await http.post(`/admin/refunds/${item.id}/${action}`, {}, {
+        headers: action === "retry" ? { "Idempotency-Key": `refund-retry-${item.id}-${item.updated_at || item.gateway_status}` } : undefined,
+      });
+      notify.success(response.data?.message || "Status refund diperbarui.");
+      await load(true);
+      window.dispatchEvent(new Event("bimbelku:data-changed"));
+    } catch (error) {
+      notify.error(getApiError(error, "Status refund belum dapat diperbarui."));
+    } finally {
+      setProcessing(false);
+    }
+  };
 
   const load = async (silent = false) => {
     if (!silent) setLoading(true);
@@ -99,7 +124,7 @@ export default function RefundManagement() {
     return () => window.clearInterval(timer);
   }, []);
 
-  const rows = useMemo(() => {
+  const filteredRows = useMemo(() => {
     const source = tab === "pending" ? data?.pending || [] : data?.history || [];
     const needle = search.trim().toLowerCase();
     if (!needle) return source;
@@ -107,6 +132,10 @@ export default function RefundManagement() {
       .filter(Boolean)
       .some((value) => String(value).toLowerCase().includes(needle)));
   }, [data, search, tab]);
+
+  useEffect(() => setPage(1), [search, tab]);
+  const lastPage = Math.max(1, Math.ceil(filteredRows.length / 25));
+  const rows = filteredRows.slice((page - 1) * 25, page * 25);
 
   const openProcess = (item: RefundItem) => {
     if (!item.destination_method || !item.destination_selected_at) {
@@ -141,6 +170,7 @@ export default function RefundManagement() {
       return;
     }
     const bankTransfer = selected.destination_method === "bank_transfer";
+    const xenditRefund = selected.destination_method === "xendit_original";
     if (bankTransfer && !selected.bank_destination.is_complete) {
       notify.error("Tujuan rekening/e-wallet refund belum lengkap.");
       return;
@@ -151,13 +181,15 @@ export default function RefundManagement() {
     }
 
     const approved = await confirm({
-      title: bankTransfer ? "Catat transfer refund?" : "Masukkan refund ke Saldo BimbelKu?",
-      description: bankTransfer
+      title: xenditRefund ? "Kembalikan ke metode pembayaran asal?" : bankTransfer ? "Catat transfer refund?" : "Masukkan refund ke Saldo BimbelKu?",
+      description: xenditRefund
+        ? `${rupiah(selected.external_funded_amount)} akan dikembalikan ke metode pembayaran asal. Status akhir diperbarui oleh sistem.`
+        : bankTransfer
         ? selected.wallet_funded_amount > 0.009
           ? `Pastikan ${rupiah(selected.external_funded_amount)} sudah ditransfer ke rekening/e-wallet. ${rupiah(selected.wallet_funded_amount)} yang semula dibayar dari Saldo BimbelKu akan otomatis kembali ke saldo murid.`
           : `Pastikan ${rupiah(selected.external_funded_amount)} sudah ditransfer ke rekening/e-wallet yang dipilih murid.`
         : `${rupiah(selected.amount)} akan masuk ke Saldo BimbelKu sesuai pilihan murid dan tercatat sebagai mutasi permanen.`,
-      confirmText: bankTransfer ? "Sudah ditransfer" : "Masukkan ke saldo",
+      confirmText: xenditRefund ? "Proses refund" : bankTransfer ? "Sudah ditransfer" : "Masukkan ke saldo",
       tone: "warning",
     });
     if (!approved) return;
@@ -173,6 +205,7 @@ export default function RefundManagement() {
       notify.success(response.data?.message || "Refund berhasil diselesaikan.");
       setSelected(null);
       await load();
+      window.dispatchEvent(new Event("bimbelku:data-changed"));
     } catch (error) {
       notify.error(getApiError(error, "Refund tidak dapat diproses."));
       await load(true);
@@ -182,7 +215,7 @@ export default function RefundManagement() {
   };
 
   return (
-    <AdminLayout title="Refund & Saldo BimbelKu" subtitle="Murid memilih tujuan refund; admin hanya mengeksekusi pilihan tersebut">
+    <FinanceSectionFrame embedded={embedded} title="Refund & Saldo BimbelKu" subtitle="Refund otomatis dipantau sistem; admin menangani kegagalan dan refund manual">
       <div className="space-y-6 pb-16">
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           <Metric icon={Clock3} label="Menunggu" value={String(data?.summary.pending_count || 0)} detail={rupiah(data?.summary.pending_amount || 0)} tone="amber" />
@@ -229,14 +262,18 @@ export default function RefundManagement() {
                       <><p className="mt-1 text-sm font-black text-amber-700">Belum dipilih</p><p className="mt-1 text-xs text-slate-500">Admin menunggu murid memilih tujuan refund.</p></>
                     ) : item.destination_method === "bimbelku_balance" ? (
                       <><p className="mt-1 text-sm font-black text-indigo-700">Saldo BimbelKu</p><p className="mt-1 text-xs text-slate-500">Tidak dapat ditarik tunai.</p></>
+                    ) : item.destination_method === "xendit_original" ? (
+                      <><p className="mt-1 text-sm font-black text-sky-700">Metode pembayaran asal</p><p className="mt-1 text-xs text-slate-500">Diproses otomatis oleh sistem{item.gateway_status ? ` · ${item.gateway_status}` : ""}.</p><p className="mt-1 break-all text-[11px] text-slate-400">Ref: {item.gateway_refund_id || "belum diterima"}</p><p className="mt-1 text-[11px] text-slate-400">Dikirim {dateTime(item.gateway_submitted_at)} · diperiksa {dateTime(item.last_reconciled_at)}</p>{item.gateway_failure_code && <p className="mt-1 text-xs font-bold text-rose-700">Alasan: {item.gateway_failure_code}</p>}</>
                     ) : (
                       <><p className="mt-1 text-sm font-bold text-slate-700">{item.bank_destination.bank_name || "Rekening/e-wallet"}</p><p className="mt-1 break-all text-xs text-slate-500">{item.bank_destination.account_name || "-"} · {item.bank_destination.account_number || "-"}</p>{item.wallet_funded_amount > 0 && <p className="mt-1 text-xs font-bold leading-5 text-indigo-600">Admin transfer {rupiah(item.external_funded_amount)} · {rupiah(item.wallet_funded_amount)} otomatis kembali ke saldo.</p>}</>
                     )}
                     {tab === "history" && <><p className="mt-2 text-xs text-slate-400">{item.processor?.name || "Admin"} · {dateTime(item.processed_at)}</p>{item.destination_method === "bimbelku_balance" && item.wallet_balance_after !== null && item.wallet_balance_after !== undefined && <p className="mt-1 text-xs font-bold text-indigo-600">Saldo setelah refund: {rupiah(item.wallet_balance_after)}</p>}</>}
                   </div>
                   <div className="flex flex-wrap gap-2 xl:justify-end">
-                    {tab === "pending" ? (
-                      <Button disabled={!item.destination_method || !item.destination_selected_at} onClick={() => openProcess(item)} className="h-10 rounded-xl bg-slate-950 disabled:bg-slate-300"><ArrowDownToLine size={15} className="mr-2" />{item.destination_method && item.destination_selected_at ? "Proses refund" : "Menunggu murid"}</Button>
+                    {tab === "pending" ? item.destination_method === "xendit_original" ? (
+                      <Button disabled={processing} onClick={() => void automaticAction(item, ["FAILED", "REJECTED", "SUBMITTING"].includes(item.gateway_status || "") ? "retry" : "reconcile")} className={`h-10 rounded-xl ${["FAILED", "REJECTED"].includes(item.gateway_status || "") ? "bg-rose-700 hover:bg-rose-800" : "bg-sky-700 hover:bg-sky-800"}`}><RefreshCw size={15} className="mr-2" />{["FAILED", "REJECTED", "SUBMITTING"].includes(item.gateway_status || "") ? "Coba ulang" : "Periksa status"}</Button>
+                    ) : (
+                      <Button disabled={!item.destination_method || !item.destination_selected_at} onClick={() => openProcess(item)} className="h-10 rounded-xl bg-slate-950 disabled:bg-slate-300"><ArrowDownToLine size={15} className="mr-2" />{item.destination_method && item.destination_selected_at ? "Proses refund manual" : "Menunggu murid"}</Button>
                     ) : (
                       <>{item.proof_url && <Button variant="outline" className="h-10 rounded-xl" onClick={() => void openProtectedFile(item.proof_url!, `bukti-refund-${item.id}`).catch(() => notify.error("Bukti refund tidak dapat dibuka."))}><FileText size={15} className="mr-2" />Bukti</Button>}<span className={`inline-flex h-10 items-center rounded-xl px-3 text-xs font-black ${item.destination_method === "bimbelku_balance" ? "bg-indigo-50 text-indigo-700" : "bg-emerald-50 text-emerald-700"}`}>{item.destination_method === "bimbelku_balance" ? "Masuk saldo" : "Refund selesai"}</span></>
                     )}
@@ -245,6 +282,7 @@ export default function RefundManagement() {
               ))}
             </div>
           )}
+          {!loading && filteredRows.length > 0 && <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3 text-sm"><span className="text-slate-500">Maksimal 25 data per halaman · total {filteredRows.length}</span><div className="flex items-center gap-2"><button type="button" disabled={page <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} className="rounded-lg border px-3 py-2 font-bold disabled:opacity-40">Sebelumnya</button><span className="font-black">{page} / {lastPage}</span><button type="button" disabled={page >= lastPage} onClick={() => setPage((value) => Math.min(lastPage, value + 1))} className="rounded-lg border px-3 py-2 font-bold disabled:opacity-40">Berikutnya</button></div></div>}
         </section>
       </div>
 
@@ -260,7 +298,7 @@ export default function RefundManagement() {
             <div className={`mt-5 rounded-2xl border p-4 ${selected.destination_method === "bimbelku_balance" ? "border-indigo-200 bg-indigo-50" : "border-emerald-200 bg-emerald-50"}`}>
               <div className="flex gap-3">
                 {selected.destination_method === "bimbelku_balance" ? <WalletCards className="shrink-0 text-indigo-700" /> : <Landmark className="shrink-0 text-emerald-700" />}
-                <div><p className="font-black text-slate-950">Tujuan dipilih murid: {selected.destination_method === "bimbelku_balance" ? "Saldo BimbelKu" : "Rekening/e-wallet"}</p><p className="mt-1 text-xs leading-5 text-slate-600">Admin tidak dapat mengganti tujuan refund. Bagian yang semula dibayar dari Saldo BimbelKu selalu kembali ke saldo dan tidak boleh dicairkan.</p></div>
+                <div><p className="font-black text-slate-950">Tujuan refund: {selected.destination_method === "bimbelku_balance" ? "Saldo BimbelKu" : selected.destination_method === "xendit_original" ? "Metode pembayaran asal" : "Rekening/e-wallet"}</p><p className="mt-1 text-xs leading-5 text-slate-600">Admin tidak dapat mengganti sumber tujuan refund. Bagian yang semula dibayar dari Saldo BimbelKu selalu kembali ke saldo.</p></div>
               </div>
             </div>
 
@@ -276,12 +314,16 @@ export default function RefundManagement() {
             )}
 
             <label className="mt-5 block text-xs font-black text-slate-600">Catatan admin<textarea value={notes} onChange={(event) => setNotes(event.target.value)} maxLength={1000} className="mt-2 min-h-24 w-full rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" placeholder="Opsional: nomor referensi transfer atau catatan pemeriksaan" /></label>
-            <div className="mt-5 flex justify-end gap-2"><Button variant="outline" onClick={() => setSelected(null)} className="rounded-xl">Batal</Button><Button onClick={() => void complete()} disabled={processing} className="rounded-xl bg-slate-950">{processing && <Loader2 size={15} className="mr-2 animate-spin" />}{selected.destination_method === "bimbelku_balance" ? "Masukkan ke saldo" : `Catat transfer ${rupiah(selected.external_funded_amount)}`}</Button></div>
+            <div className="mt-5 flex justify-end gap-2"><Button variant="outline" onClick={() => setSelected(null)} className="rounded-xl">Batal</Button><Button onClick={() => void complete()} disabled={processing} className="rounded-xl bg-slate-950">{processing && <Loader2 size={15} className="mr-2 animate-spin" />}{selected.destination_method === "bimbelku_balance" ? "Masukkan ke saldo" : selected.destination_method === "xendit_original" ? "Proses refund" : `Catat transfer ${rupiah(selected.external_funded_amount)}`}</Button></div>
           </div>
         </div>
       )}
-    </AdminLayout>
+    </FinanceSectionFrame>
   );
+}
+
+function FinanceSectionFrame({ embedded, title, subtitle, children }: { embedded: boolean; title: string; subtitle: string; children: React.ReactNode }) {
+  return embedded ? <>{children}</> : <AdminLayout title={title} subtitle={subtitle}>{children}</AdminLayout>;
 }
 
 function Metric({ icon: Icon, label, value, detail, tone }: { icon: typeof CreditCard; label: string; value: string; detail: string; tone: "amber" | "emerald" | "indigo" | "slate" | "rose" }) {

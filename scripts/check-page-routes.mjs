@@ -35,6 +35,8 @@ for (const file of files) {
     /\bnavigate\(\s*"(\/[^"#]*)"/g,
   ]) {
     for (const match of source.matchAll(pattern)) {
+      const afterMatch = source.slice((match.index || 0) + match[0].length).trimStart();
+      if (afterMatch.startsWith("+")) continue;
       literalLinks.push({ file, target: match[1].split("?")[0] || "/" });
     }
   }

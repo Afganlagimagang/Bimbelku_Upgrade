@@ -37,7 +37,8 @@ interface MatchingPreviewItem {
   status: string;
   status_label: string;
   teacher_name?: string | null;
-  search_radius_km: number;
+  learning_mode: "online" | "offline";
+  search_radius_km: number | null;
   scheduled_at: string;
   needs_attention: boolean;
 }
@@ -183,7 +184,8 @@ export default function DashboardOverview() {
     );
   }
 
-  const urgentCount = data.work_queue.filter((item) => item.count > 0).length;
+  const actionableQueue = data.work_queue.filter((item) => item.count > 0 && item.href);
+  const urgentCount = actionableQueue.length;
   const heroMetrics = [
     data.visible_sections.matching ? { label: "Pencarian aktif", value: data.counts.matching_active, icon: SearchCheck } : null,
     data.visible_sections.matching ? { label: "Perlu perhatian", value: data.counts.matching_attention, icon: AlertTriangle } : null,
@@ -194,11 +196,9 @@ export default function DashboardOverview() {
     data.visible_sections.payouts ? { label: "Pencairan", value: data.counts.payouts, icon: BadgeDollarSign } : null,
     data.visible_sections.teachers ? { label: "Verifikasi tutor", value: data.counts.teachers, icon: FileCheck2 } : null,
   ].filter(Boolean) as Array<{ label: string; value: number; icon: typeof SearchCheck }>;
-  const primaryQueue = data.visible_sections.matching
-    ? { href: "/admin/tutor-searches", label: "Buka pencarian tutor" }
-    : data.work_queue[0]
-      ? { href: data.work_queue[0].href, label: `Buka ${data.work_queue[0].label}` }
-      : null;
+  const primaryQueue = actionableQueue[0]
+    ? { href: actionableQueue[0].href, label: `Buka ${actionableQueue[0].label}` }
+    : null;
   const hasFinanceSummary = data.visible_sections.payments || data.visible_sections.refunds || data.visible_sections.payouts;
 
   return (
@@ -253,81 +253,39 @@ export default function DashboardOverview() {
 
         {data.operational_chart && (data.visible_sections.classes || data.visible_sections.payments) && <OperationalChart rows={data.operational_chart} showSessions={data.visible_sections.classes} showOrders={data.visible_sections.payments} />}
 
-        <section>
-          <div className="mb-4 flex items-end justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-black text-slate-950">Antrean pekerjaan</h2>
-              <p className="mt-1 text-sm text-slate-500">Urutan didasarkan pada tingkat urgensi dan jumlah pekerjaan.</p>
+        {actionableQueue.length > 0 && (
+          <section aria-labelledby="admin-action-queue-title">
+            <div className="mb-4 flex items-end justify-between gap-4">
+              <div>
+                <h2 id="admin-action-queue-title" className="text-xl font-black text-slate-950">Perlu tindakan</h2>
+                <p className="mt-1 text-sm text-slate-500">Hanya pekerjaan yang benar-benar membutuhkan keputusan atau tindak lanjut admin.</p>
+              </div>
+              {data.generated_at && (
+                <p className="hidden text-xs font-bold text-slate-400 md:block">Diperbarui {formatDateTime(data.generated_at)}</p>
+              )}
             </div>
-            {data.generated_at && (
-              <p className="hidden text-xs font-bold text-slate-400 md:block">
-                Diperbarui {formatDateTime(data.generated_at)}
-              </p>
-            )}
-          </div>
 
-          {data.work_queue.length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm font-bold text-slate-500">
-              Belum ada antrean yang termasuk dalam kewenangan akun ini.
-            </div>
-          ) : (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {data.work_queue.map((item) => {
-              const Icon = workIcons[item.key] || BookOpenCheck;
-              const urgent = item.tone === "urgent";
-              const warning = item.tone === "warning";
-              return (
-                <Link
-                  key={item.key}
-                  to={item.href}
-                  className={`group rounded-2xl border bg-white p-5 transition hover-rise-half hover-shadow-lg ${
-                    urgent
-                      ? "border-rose-200 shadow-rose-100"
-                      : warning
-                        ? "border-amber-200 shadow-amber-100"
-                        : "border-slate-200 shadow-slate-100"
-                  }`}
-                >
-                  <div className="flex items-start gap-4">
-                    <div
-                      className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl ${
-                        urgent
-                          ? "bg-rose-50 text-rose-600"
-                          : warning
-                            ? "bg-amber-50 text-amber-600"
-                            : "bg-emerald-50 text-emerald-600"
-                      }`}
-                    >
-                      <Icon size={23} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="font-black text-slate-950">{item.label}</p>
-                        <span
-                          className={`rounded-full px-2.5 py-1 text-xs font-black ${
-                            item.count > 0
-                              ? urgent
-                                ? "bg-rose-100 text-rose-700"
-                                : "bg-amber-100 text-amber-700"
-                              : "bg-emerald-100 text-emerald-700"
-                          }`}
-                        >
-                          {item.count}
-                        </span>
+            <div className="-mx-1 grid snap-x snap-mandatory auto-cols-[82%] grid-flow-col gap-3 overflow-x-auto px-1 pb-3 sm:auto-cols-[minmax(19rem,24rem)] lg:auto-cols-[minmax(20rem,1fr)]" tabIndex={0} aria-label="Daftar pekerjaan admin yang perlu ditindaklanjuti">
+              {actionableQueue.map((item) => {
+                const Icon = workIcons[item.key] || BookOpenCheck;
+                const urgent = item.tone === "urgent";
+                const warning = item.tone === "warning";
+                return (
+                  <Link key={item.key} to={item.href} className={`group snap-start rounded-2xl border bg-white p-5 transition hover-rise-half hover-shadow-lg ${urgent ? "border-rose-200 shadow-rose-100" : warning ? "border-amber-200 shadow-amber-100" : "border-slate-200 shadow-slate-100"}`}>
+                    <div className="flex items-start gap-4">
+                      <div className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl ${urgent ? "bg-rose-50 text-rose-600" : warning ? "bg-amber-50 text-amber-600" : "bg-indigo-50 text-indigo-600"}`}><Icon size={23} /></div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-3"><p className="font-black text-slate-950">{item.label}</p><span className={`rounded-full px-2.5 py-1 text-xs font-black ${urgent ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-700"}`}>{item.count}</span></div>
+                        <p className="mt-2 text-sm leading-5 text-slate-500">{item.description}</p>
+                        <span className="mt-4 inline-flex items-center gap-1 text-xs font-black text-slate-700 group-hover:text-orange-600">Buka tindakan <ArrowRight size={14} /></span>
                       </div>
-                      <p className="mt-2 text-sm leading-5 text-slate-500">{item.description}</p>
-                      <span className="mt-4 inline-flex items-center gap-1 text-xs font-black text-slate-700 group-hover:text-orange-600">
-                        Buka pekerjaan <ArrowRight size={14} />
-                      </span>
                     </div>
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-          )}
-        </section>
-
+                  </Link>
+                );
+              })}
+            </div>
+          </section>
+        )}
         {(data.visible_sections.matching || hasFinanceSummary) && (
         <section className={`grid gap-6 ${data.visible_sections.matching && hasFinanceSummary ? "xl:grid-cols-[minmax(0,1.45fr)_minmax(20rem,0.75fr)]" : "grid-cols-1"}`}>
           {data.visible_sections.matching && (
@@ -377,7 +335,7 @@ export default function DashboardOverview() {
                         </span>
                       </div>
                       <p className="mt-1 truncate text-sm text-slate-500">
-                        {item.student_name} · radius {item.search_radius_km} km
+                        {item.student_name} · {item.learning_mode === "offline" ? `radius ${item.search_radius_km ?? 3} km` : "kelas online"}
                         {item.teacher_name ? ` · ${item.teacher_name}` : ""}
                       </p>
                       <p className="mt-1 text-xs font-medium text-slate-400">{formatDateTime(item.scheduled_at)}</p>

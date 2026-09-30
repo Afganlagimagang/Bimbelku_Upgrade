@@ -25,7 +25,9 @@ use App\Services\TeacherMatchingService;
 use App\Services\TeacherOfferReleaseService;
 use App\Services\PackageCheckoutService;
 use App\Services\PaymentReconciliationService;
+use App\Services\XenditMoneyMovementService;
 use App\Support\AdminPermissionCatalog;
+use App\Support\XenditPayoutChannelCatalog;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB; 
 use Illuminate\Support\Facades\Cache;
@@ -61,6 +63,51 @@ class AdminController extends Controller
         return response()->json($teachers->map(fn (User $teacher) => $this->formatTeacherVerification($teacher)));
     }
 
+    public function updateTeacherVerificationStage(Request $request, User $teacher)
+    {
+        abort_unless($teacher->role === 'teacher' && $teacher->status === 'pending', 422, 'Tahap hanya dapat diubah untuk kandidat tutor yang masih menunggu.');
+        $validated = $request->validate([
+            'stage' => ['required', Rule::in(['documents_checked', 'whatsapp_scheduled', 'whatsapp_passed'])],
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        DB::transaction(function () use ($request, $teacher, $validated) {
+            $profile = TeacherProfile::query()->where('user_id', $teacher->id)->lockForUpdate()->firstOrFail();
+            $teacher->load('subjects');
+            $current = $profile->verification_stage ?: 'submitted';
+            $transitions = [
+                'submitted' => 'documents_checked',
+                'documents_checked' => 'whatsapp_scheduled',
+                'whatsapp_scheduled' => 'whatsapp_passed',
+            ];
+            abort_unless(($transitions[$current] ?? null) === $validated['stage'], 422, 'Tahap seleksi harus diselesaikan secara berurutan.');
+
+            if ($validated['stage'] === 'documents_checked') {
+                $requiredDocuments = [$profile->identity_document, $profile->live_selfie, $profile->qualification_document];
+                $subject = $teacher->subjects->first();
+                $documentsIncomplete = collect($requiredDocuments)->contains(fn ($path) => blank($path) || ! Storage::disk('local')->exists($path));
+                $subjectIncomplete = $teacher->subjects->count() !== 1 || ! $subject?->is_active
+                    || ! is_array($subject?->levels) || count($subject->levels) === 0
+                    || (! $subject->is_online && ! $subject->is_offline);
+                abort_if($documentsIncomplete || $subjectIncomplete, 422, 'Dokumen wajib, satu mapel aktif, jenjang, dan mode mengajar harus lengkap.');
+            }
+
+            if ($validated['stage'] === 'whatsapp_passed') {
+                abort_if(mb_strlen(trim((string) ($validated['notes'] ?? ''))) < 10, 422, 'Ringkasan hasil tes WhatsApp minimal 10 karakter.');
+            }
+
+            $updates = ['verification_stage' => $validated['stage'], 'verified_by' => $request->user()->id];
+            if ($validated['stage'] === 'documents_checked') $updates['documents_checked_at'] = now();
+            if ($validated['stage'] === 'whatsapp_scheduled') $updates['whatsapp_test_scheduled_at'] = now();
+            if ($validated['stage'] === 'whatsapp_passed') {
+                $updates['whatsapp_test_passed_at'] = now();
+                $updates['verification_notes'] = trim((string) $validated['notes']);
+            }
+            $profile->update($updates);
+        }, 3);
+
+        return response()->json(['message' => 'Tahap verifikasi tutor diperbarui.']);
+    }
     public function verifyTeacher(
         Request $request,
         TeacherOfferReleaseService $offerReleaseService,
@@ -74,6 +121,10 @@ class AdminController extends Controller
             'screening_passed' => 'nullable|boolean',
         ]);
 
+        if ($validated['status'] === 'active') {
+            $stage = TeacherProfile::query()->where('user_id', $validated['user_id'])->value('verification_stage');
+            abort_unless($stage === 'whatsapp_passed', 422, 'Selesaikan pemeriksaan dokumen dan tes WhatsApp secara berurutan sebelum mengaktifkan tutor.');
+        }
         if (
             $validated['status'] === 'active'
             && (
@@ -145,6 +196,7 @@ class AdminController extends Controller
                 'verified_at' => $validated['status'] === 'active' ? now() : null,
                 'verified_by' => $request->user()->id,
                 'is_accepting_requests' => $validated['status'] === 'active',
+                'verification_stage' => $validated['status'] === 'active' ? 'approved' : 'rejected',
             ]);
 
             if ($validated['status'] === 'rejected') {
@@ -194,6 +246,7 @@ class AdminController extends Controller
             'about' => $profile?->bio,
             'phone' => $profile?->phone ?? $profile?->whatsapp_number,
             'verification_notes' => $profile?->verification_notes,
+            'verification_stage' => $profile?->verification_stage ?? 'submitted',
             'photo_url' => \App\Support\PublicMedia::url($profile?->photo),
             'identity_document_url' => $documentUrl($profile?->identity_document, 'identity_document'),
             'live_selfie_url' => $documentUrl($profile?->live_selfie, 'live_selfie'),
@@ -258,6 +311,10 @@ class AdminController extends Controller
                 $u->setAttribute('subject_name', $activeSubjects->pluck('name')->first());
                 $u->setAttribute('subject_count', $activeSubjects->count());
                 $u->setAttribute('subject_data_warning', $activeSubjects->count() > 1 ? 'Tutor memiliki lebih dari satu mapel aktif dan perlu ditinjau.' : null);
+                $u->setAttribute('profile_cover_url', $u->profile_cover_use_default
+                    ? null
+                    : \App\Support\PublicMedia::url($u->profile_cover));
+                $u->setAttribute('personal_profile_cover_url', \App\Support\PublicMedia::url($u->profile_cover));
             }
             if ($u->role === 'teacher' && $u->teacherProfile) {
                 $u->photo_url = \App\Support\PublicMedia::url($u->teacherProfile->photo);
@@ -280,6 +337,63 @@ class AdminController extends Controller
                 'per_page' => $users->perPage(),
                 'total' => $users->total(),
             ],
+        ]);
+    }
+
+    public function updateTeacherProfileCover(Request $request, int $id)
+    {
+        $request->validate([
+            'profile_cover' => ['required', 'image', 'mimes:jpeg,jpg,png,webp', 'max:5120'],
+        ]);
+        $teacher = User::query()->where('role', 'teacher')->findOrFail($id);
+        $path = $request->file('profile_cover')->store('profile_covers', 'public');
+        try {
+            $oldPath = DB::transaction(function () use ($teacher, $path) {
+                $lockedTeacher = User::query()->where('role', 'teacher')->lockForUpdate()->findOrFail($teacher->id);
+                $oldPath = $lockedTeacher->profile_cover;
+                $lockedTeacher->profile_cover = $path;
+                $lockedTeacher->profile_cover_use_default = false;
+                $lockedTeacher->save();
+                return $oldPath;
+            }, 3);
+        } catch (\Throwable $exception) {
+            Storage::disk('public')->delete($path);
+            throw $exception;
+        }
+        if ($oldPath && $oldPath !== $path) {
+            Storage::disk('public')->delete($oldPath);
+        }
+
+        return response()->json([
+            'message' => 'Sampul tutor berhasil diperbarui.',
+            'profile_cover_url' => \App\Support\PublicMedia::url($path),
+        ]);
+    }
+
+    public function resetTeacherProfileCover(int $id)
+    {
+        $teacher = User::query()->where('role', 'teacher')->findOrFail($id);
+        $teacher->profile_cover_use_default = true;
+        $teacher->save();
+
+        return response()->json([
+            'message' => 'Tutor memakai sampul default. Sampul pribadi tetap tersimpan.',
+            'profile_cover_url' => null,
+        ]);
+    }
+
+    public function restoreTeacherProfileCover(int $id)
+    {
+        $teacher = User::query()->where('role', 'teacher')->findOrFail($id);
+        if (!$teacher->profile_cover || !Storage::disk('public')->exists($teacher->profile_cover)) {
+            return response()->json(['message' => 'Tutor belum mempunyai sampul pribadi yang dapat dipulihkan.'], 422);
+        }
+        $teacher->profile_cover_use_default = false;
+        $teacher->save();
+
+        return response()->json([
+            'message' => 'Sampul pribadi tutor kembali dipakai.',
+            'profile_cover_url' => \App\Support\PublicMedia::url($teacher->profile_cover),
         ]);
     }
     public function updateUserStatus(
@@ -683,6 +797,10 @@ class AdminController extends Controller
 
         return [
             'id' => $settings->id,
+            'provider' => 'xendit',
+            'xendit_configured' => (bool) config('xendit.enabled')
+                && filled(config('xendit.secret_key'))
+                && filled(config('xendit.webhook_token')),
             'merchant_name' => $settings->merchant_name,
             'bank_name' => $settings->bank_name,
             'account_number' => $settings->account_number,
@@ -701,32 +819,20 @@ class AdminController extends Controller
 
     public function getCommissionSetting()
     {
-        $fee = \App\Models\Setting::where('key', 'admin_fee')->value('value') ?? 20;
-        return response()->json(['admin_fee' => (int)$fee]);
+        return response()->json(['admin_fee' => 20, 'fixed' => true]);
     }
 
     public function updateCommissionSetting(Request $request)
     {
-        $request->validate([
-            'admin_fee' => 'required|numeric|min:0|max:100', 
-        ]);
-
-        \App\Models\Setting::firstOrCreate(['key' => 'admin_fee'], ['value' => '20']);
-        DB::transaction(function () use ($request) {
-            $setting = \App\Models\Setting::query()
-                ->where('key', 'admin_fee')
-                ->lockForUpdate()
-                ->firstOrFail();
-            $setting->update(['value' => $request->admin_fee]);
-        }, 3);
-
-        return response()->json(['message' => 'Persentase diperbarui. Akan berlaku untuk transaksi MENDATANG.']);
+        $request->validate(['admin_fee' => ['required', 'numeric', 'in:20']]);
+        \App\Models\Setting::query()->updateOrCreate(['key' => 'admin_fee'], ['value' => '20']);
+        return response()->json(['message' => 'Komisi tetap 20%; hak tutor tetap 80%.']);
     }
 
     public function getFinanceData(Request $request)
     {
         Carbon::setLocale('id');
-        $currentGlobalFee = (float) (\App\Models\Setting::where('key', 'admin_fee')->value('value') ?? 20);
+        $currentGlobalFee = 20.0;
         $history = Payout::with('user')->latest()->limit(200)->get()->map(function ($p) {
             return [
                 'id' => $p->id,
@@ -738,57 +844,34 @@ class AdminController extends Controller
                 'transferDate' => ($p->processed_at ?? $p->created_at)->format('d M Y H:i'),
                 'proof_url' => $p->proof_url ? "payouts/{$p->id}/proof" : null,
                 'bookingIds' => $p->booking_ids ?? ($p->booking_id ? [$p->booking_id] : []),
-                'status' => 'Berhasil',
+                'status' => match ($p->status) {
+                    'completed' => 'Berhasil',
+                    'processing' => 'Sedang diproses',
+                    'reversed' => 'Dikembalikan bank',
+                    default => 'Gagal',
+                },
             ];
         });
 
-        $readyBookings = Booking::query()
-            ->whereIn('payout_status', ['ready', 'requested'])
-            ->where('status', 'completed')
-            ->with(['teacher.teacherProfile', 'participants', 'payoutRequest'])
-            ->orderBy('completed_at')
-            ->get();
-
-        $pending = $readyBookings
-            ->groupBy(fn ($booking) => $booking->payout_request_id
-                ? 'request:'.$booking->payout_request_id
-                : 'teacher:'.$booking->teacher_id)
-            ->map(function ($bookings) {
-                $first = $bookings->first();
-                $teacher = $first->teacher;
-                $profile = $teacher?->teacherProfile;
-                $bookingIds = $bookings->pluck('id')->sort()->values()->all();
-                $netAmount = (float) $bookings->sum('teacher_net_amount');
-                return [
-                    'queueKey' => $first->payout_request_id
-                        ? 'request:'.$first->payout_request_id
-                        : 'teacher:'.$first->teacher_id,
-                    'teacherId' => $first->teacher_id,
-                    'bookingIds' => $bookingIds,
-                    'name' => $teacher?->name ?? 'Tutor',
-                    'period' => 'Saldo sampai '.now()->translatedFormat('d M Y'),
-                    'totalClasses' => $bookings->count(),
-                    'totalStudents' => $bookings->sum(fn ($booking) => max(1, $booking->participants->count())),
-                    'grossAmount' => (float) $bookings->sum('gross_amount'),
-                    'commissionAmount' => (float) $bookings->sum(
-                        fn ($booking) => (float) $booking->gross_amount - (float) $booking->teacher_net_amount
-                    ),
-                    'netAmount' => $netAmount,
-                    'payoutHoldUntil' => $profile?->payout_hold_until,
-                    'payoutBlocked' => (bool) $profile?->payout_hold_until?->isFuture(),
-                    'request' => optional($bookings->pluck('payoutRequest')->filter()->sortByDesc('requested_at')->first(), fn ($item) => [
-                        'id' => $item->id,
-                        'status' => $item->status,
-                        'requestedAt' => $item->requested_at,
-                    ]),
-                    'bankDetails' => [
-                        'bank' => $profile?->bank_name ?: 'Belum diatur',
-                        'number' => $profile?->account_number ?: '-',
-                        'name' => $profile?->account_name ?: ($teacher?->name ?? '-'),
-                    ],
-                ];
-            })
-            ->values();
+        $pending = Payout::query()
+            ->with('user:id,name')
+            ->where('status', 'processing')
+            ->latest()
+            ->limit(200)
+            ->get()
+            ->map(fn (Payout $payout) => [
+                'queueKey' => 'payout:'.$payout->id,
+                'id' => $payout->id,
+                'teacherId' => $payout->user_id,
+                'name' => $payout->user?->name ?? 'Tutor',
+                'period' => $payout->period,
+                'netAmount' => (float) $payout->amount,
+                'requestedAmount' => (float) ($payout->requested_amount ?? $payout->amount),
+                'taxAmount' => (float) ($payout->tax_amount ?? 0),
+                'status' => 'Sedang diproses',
+                'gatewayStatus' => $payout->gateway_status,
+                'createdAt' => $payout->created_at,
+            ]);
 
         $sevenDaysAgo = Carbon::now()->subDays(7);
         $paidPayouts7Days = Payout::query()
@@ -796,12 +879,11 @@ class AdminController extends Controller
             ->where('processed_at', '>=', $sevenDaysAgo);
         $readyAmount = (float) Booking::query()
             ->where('status', 'completed')
-            ->where('payout_status', 'ready')
-            ->sum('teacher_net_amount');
+            ->selectRaw('COALESCE(SUM(CASE WHEN teacher_net_amount - teacher_paid_amount - teacher_reserved_amount > 0 THEN teacher_net_amount - teacher_paid_amount - teacher_reserved_amount ELSE 0 END), 0) AS amount')
+            ->value('amount');
         $requestedAmount = (float) Booking::query()
             ->where('status', 'completed')
-            ->where('payout_status', 'requested')
-            ->sum('teacher_net_amount');
+            ->sum('teacher_reserved_amount');
 
         return response()->json([
             'pending' => $pending,
@@ -816,27 +898,29 @@ class AdminController extends Controller
         ]);
     }
 
-    public function processPayout(Request $request)
+    public function processPayout(Request $request, XenditMoneyMovementService $xendit)
     {
         $validated = $request->validate([
             'teacher_id' => 'required|exists:users,id',
             'booking_ids' => 'required|array|min:1|max:200',
             'booking_ids.*' => 'integer|distinct|exists:bookings,id',
-            'proof_file' => 'required|image|mimes:jpg,jpeg,png,webp|max:5120',
         ]);
 
         $teacher = User::query()
             ->where('role', 'teacher')
             ->with('teacherProfile')
             ->find($validated['teacher_id']);
+        $channelCode = $teacher?->teacherProfile?->payout_channel_code
+            ?: XenditPayoutChannelCatalog::inferCode($teacher?->teacherProfile?->bank_name);
         if (
             !$teacher
-            || blank($teacher->teacherProfile?->bank_name)
+            || blank($channelCode)
             || blank($teacher->teacherProfile?->account_number)
             || blank($teacher->teacherProfile?->account_name)
+            || blank($teacher->address)
         ) {
             return response()->json([
-                'message' => 'Rekening tutor belum lengkap. Minta tutor memperbarui data rekening sebelum pencairan.',
+                'message' => 'Rekening atau alamat tutor belum lengkap. Minta tutor memperbarui profil sebelum pencairan.',
             ], 422);
         }
         if ($teacher->teacherProfile?->payout_hold_until?->isFuture()) {
@@ -846,12 +930,11 @@ class AdminController extends Controller
             ], 422);
         }
 
-        $path = $request->file('proof_file')->store('payout_proofs', 'local');
         try {
             $payout = DB::transaction(function () use (
                 $request,
                 $validated,
-                $path
+                $channelCode
             ) {
                 $profile = TeacherProfile::query()
                     ->where('user_id', $validated['teacher_id'])
@@ -859,7 +942,7 @@ class AdminController extends Controller
                     ->first();
                 if (
                     !$profile
-                    || blank($profile->bank_name)
+                    || blank($channelCode)
                     || blank($profile->account_number)
                     || blank($profile->account_name)
                 ) {
@@ -873,6 +956,7 @@ class AdminController extends Controller
                         .' WIB.'
                     );
                 }
+                if (blank($profile->payout_channel_code)) $profile->forceFill(['payout_channel_code' => $channelCode])->save();
 
                 $bookings = Booking::query()
                     ->where('teacher_id', $validated['teacher_id'])
@@ -912,8 +996,9 @@ class AdminController extends Controller
                     'amount' => $net,
                     'period' => $bookings->min('completed_at')?->format('d M Y').' - '.now()->format('d M Y'),
                     'total_classes' => $bookings->count(),
-                    'proof_url' => $path,
-                    'status' => 'completed',
+                    'proof_url' => null,
+                    'status' => 'processing',
+                    'payment_provider' => 'xendit',
                     'gross_amount' => $gross,
                     'commission_amount' => $commission,
                     'processed_by' => $request->user()->id,
@@ -922,37 +1007,41 @@ class AdminController extends Controller
                     'bank_name' => $profile->bank_name,
                     'account_number' => $profile->account_number,
                     'account_name' => $profile->account_name,
+                    'payout_channel_code' => $channelCode,
                 ]);
 
-                $bookings->each->update([
-                    'payout_status' => 'paid',
-                ]);
+                $bookings->each->update(['payout_status' => 'requested']);
+
                 $teacherPayoutRequest?->update([
-                    'status' => 'completed',
+                    'status' => 'processing',
                     'payout_id' => $record->id,
-                    'processed_at' => now(),
                 ]);
 
                 Notification::create([
                     'user_id' => $validated['teacher_id'],
-                    'title' => 'Pendapatan telah ditransfer',
-                    'message' => 'Admin mencatat pencairan sebesar Rp'.number_format($net, 0, ',', '.').'.',
-                    'type' => 'success',
+                    'title' => 'Pencairan sedang diproses',
+                    'message' => 'Pencairan Rp'.number_format($net, 0, ',', '.').' sedang diproses otomatis.',
+                    'type' => 'info',
                     'target_url' => '/guru/gaji',
-                    'unique_key' => "payout-completed:{$record->id}",
+                    'unique_key' => "payout-processing:{$record->id}",
                 ]);
 
                 return $record;
             });
-        } catch (\Throwable $exception) {
-            Storage::disk('local')->delete($path);
-            throw $exception;
+            $xendit->createPayout($payout, $teacher);
+        } catch (\RuntimeException $exception) {
+            if (isset($payout)) {
+                DB::transaction(function () use ($payout, $exception) {
+                    $payout->forceFill(['status' => 'failed', 'gateway_status' => 'FAILED', 'gateway_failure_code' => 'CREATE_REQUEST_FAILED'])->save();
+                    Booking::query()->whereIn('id', $payout->booking_ids ?? [])->update(['payout_status' => 'ready', 'payout_request_id' => null]);
+                    TeacherPayoutRequest::query()->where('payout_id', $payout->id)->update(['status' => 'failed', 'processed_at' => now(), 'review_notes' => $exception->getMessage()]);
+                });
+            }
+            return response()->json(['message' => $exception->getMessage()], 502);
         }
 
         $payload = $payout->toArray();
-        $payload['proof_url'] = "payouts/{$payout->id}/proof";
-
-        return response()->json(['message' => 'Gaji berhasil dicairkan!', 'data' => $payload]);
+        return response()->json(['message' => 'Pencairan diterima dan sedang diproses.', 'data' => $payload], 202);
     }
 
     public function getDashboardStats(Request $request)
@@ -1042,7 +1131,18 @@ class AdminController extends Controller
                 ])
                 ->count()
             : 0;
-        $pendingRefunds = $canRefunds ? Refund::where('status', 'pending')->count() : 0;
+        $pendingRefunds = $canRefunds ? Refund::query()
+            ->where('status', 'pending')
+            ->whereNotNull('destination_selected_at')
+            ->where(function ($refunds) {
+                $refunds->whereIn('destination_method', ['bank_transfer', 'bimbelku_balance'])
+                    ->orWhereIn('gateway_status', ['FAILED', 'REJECTED'])
+                    ->orWhere(function ($stale) {
+                        $stale->where('destination_method', 'xendit_original')
+                            ->where('created_at', '<=', now()->subDay());
+                    });
+            })
+            ->count() : 0;
         $pendingPayouts = $canPayouts ? TeacherPayoutRequest::where('status', 'pending')->count() : 0;
 
         $matchingPreview = $canMatching
@@ -1073,7 +1173,8 @@ class AdminController extends Controller
                             default => $bookingRequest->status,
                         },
                         'teacher_name' => $bookingRequest->matchedTeacher?->name,
-                        'search_radius_km' => (int) $bookingRequest->search_radius_km,
+                        'learning_mode' => $bookingRequest->learning_mode,
+                        'search_radius_km' => $bookingRequest->learning_mode === 'offline' ? (int) $bookingRequest->search_radius_km : null,
                         'scheduled_at' => Carbon::parse(
                             $bookingRequest->scheduled_date->format('Y-m-d').' '.$bookingRequest->start_time,
                             config('app.timezone', 'Asia/Jakarta')
@@ -1119,19 +1220,11 @@ class AdminController extends Controller
             ] : null,
             $canRefunds ? [
                 'key' => 'refunds',
-                'label' => 'Refund',
-                'description' => 'Pengembalian dana menunggu penyelesaian.',
+                'label' => 'Refund perlu diperiksa',
+                'description' => 'Refund gagal, terlambat, atau manual yang memerlukan tindakan.',
                 'count' => $pendingRefunds,
-                'href' => '/admin/refunds',
+                'href' => '/admin/finance?tab=refunds',
                 'tone' => $pendingRefunds > 0 ? 'warning' : 'normal',
-            ] : null,
-            $canPayouts ? [
-                'key' => 'payouts',
-                'label' => 'Pencairan tutor',
-                'description' => 'Pengajuan tutor menunggu transfer admin.',
-                'count' => $pendingPayouts,
-                'href' => '/admin/finance',
-                'tone' => $pendingPayouts > 0 ? 'warning' : 'normal',
             ] : null,
             $canTeachers ? [
                 'key' => 'teachers',
@@ -1142,6 +1235,7 @@ class AdminController extends Controller
                 'tone' => $pendingTeachers > 0 ? 'warning' : 'normal',
             ] : null,
         ])->filter()
+            ->filter(fn (array $item) => $item['count'] > 0 && filled($item['href']))
             ->sortByDesc(fn (array $item) => ($item['tone'] === 'urgent' ? 2000 : ($item['tone'] === 'warning' ? 1000 : 0)) + $item['count'])
             ->values();
 

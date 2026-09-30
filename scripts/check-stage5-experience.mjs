@@ -148,13 +148,13 @@ expect(packages.includes("Hentikan & ajukan refund"), "Kelas Saya wajib menyedia
 expect(vouchers.includes("Klaim Penawaran"), "halaman voucher wajib menyediakan klaim penawaran");
 expect(payment.includes("line-through"), "harga normal promo wajib tampil dicoret");
 expect(payment.includes("discountAmount"), "pembayaran wajib menampilkan potongan");
-expect(navigation.includes("Kelas Saya"), "navigasi bawah wajib memuat Kelas Saya");
+expect(navigation.includes("Jadwal"), "navigasi bawah wajib memuat Jadwal");
 expect(navigation.includes("Cari Les") && navigation.includes("Pesan") && navigation.includes("Saya"), "navigasi bawah wajib memuat lima menu murid final");
 expect(adminPage.includes("Paket") && adminPage.includes("Promo") && adminPage.includes("Banner") && adminPage.includes("Tutorial"), "halaman admin wajib mengelola empat modul Tahap 5");
 expect(landing.includes("PackagePreviewSection"), "landing page wajib menampilkan pratinjau paket");
-expect(packagePreview.includes('getCached<PackagePlan[]>("/package-plans"'), "paket landing wajib memakai sumber paket aktif yang sama dengan pemesanan");
-expect(packagePreview.includes("Bulanan Intensif") && packagePreview.includes("session_count: 12"), "fallback landing wajib memuat paket pembelajaran lengkap");
-expect(packagePreview.includes('role="tablist"') && packagePreview.includes("lg:grid-cols-[.44fr_.56fr]"), "landing wajib menyediakan pemilih paket interaktif dan panel detail");
+expect(packagePreview.includes("Harga dihitung di formulir") && packagePreview.includes('<StudentPackageLink to="/student/packages/new"'), "paket landing wajib mengarahkan harga aktual ke formulir");
+expect(packagePreview.includes("Tidak ada harga contoh yang menyamar sebagai harga final"), "landing tidak boleh menampilkan harga paket contoh sebagai harga final");
+expect(packagePreview.includes("Jumlah sesi") && packagePreview.includes("Mapel dan Bab") && packagePreview.includes("Jadwal dan mode"), "landing wajib menjelaskan komponen penyusun paket");
 expect(landing.includes("DashboardPreviewSection"), "landing page wajib menampilkan pratinjau dashboard");
 expect(!landing.includes("Kelas Grup"), "landing page tidak boleh mempromosikan kelas grup yang ditunda");
 

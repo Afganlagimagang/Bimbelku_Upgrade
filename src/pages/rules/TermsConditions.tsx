@@ -27,17 +27,17 @@ const sections = [
       <>
         <p>Tarif ditetapkan admin dan dapat berbeda untuk mode online, offline, privat, atau kelompok. Nilai transaksi dan persentase komisi disimpan saat pemesanan sehingga perubahan tarif berikutnya tidak mengubah transaksi lama.</p>
         <p>Untuk pembayaran melalui transfer, murid mentransfer dana ke rekening yang ditampilkan oleh BimbelKu lalu mengunggah bukti. Bagian pembayaran yang berasal dari transfer belum dianggap diterima sebelum admin mencocokkannya dengan mutasi rekening. Bukti yang ditolak dapat dikirim ulang sebelum batas pembayaran.</p>
-        <p>Saldo BimbelKu adalah kredit belajar yang berasal dari refund dan tidak dapat ditarik tunai. Saldo dapat dipakai pada pembayaran Paket Belajar dan Kelas Kelompok. Jika saldo menutup seluruh tagihan, pembayaran dapat diselesaikan otomatis oleh sistem; jika hanya menutup sebagian, saldo ditahan untuk pesanan tersebut dan murid cukup mentransfer sisa tagihan. Saldo yang ditahan dikembalikan apabila pembayaran dibatalkan, kedaluwarsa, atau ditolak sesuai status transaksi.</p>
+        <p>Saldo BimbelKu adalah kredit belajar yang berasal dari refund dan tidak dapat ditarik tunai. Saldo dapat dipakai pada pembayaran Paket Belajar dan Kelas Bersama. Jika saldo menutup seluruh tagihan, pembayaran dapat diselesaikan otomatis oleh sistem; jika hanya menutup sebagian, saldo ditahan untuk pesanan tersebut dan murid cukup mentransfer sisa tagihan. Saldo yang ditahan dikembalikan apabila pembayaran dibatalkan, kedaluwarsa, atau ditolak sesuai status transaksi.</p>
         <p>Jika transaksi yang kemudian direfund sebelumnya dibayar menggunakan Saldo BimbelKu, bagian refund yang berasal dari saldo selalu dikembalikan ke Saldo BimbelKu dan tidak dapat dialihkan ke rekening atau e-wallet. Pada pembayaran campuran saldo + transfer, murid dapat memilih rekening/e-wallet hanya untuk bagian yang semula dibayar melalui transfer; bagian saldo tetap kembali ke saldo. Jika seluruh pembayaran berasal dari Saldo BimbelKu, refund seluruhnya kembali ke Saldo BimbelKu.</p>
-        <p>BimbelKu tidak memakai payment gateway. Pendapatan tutor dan refund ke rekening atau e-wallet tetap ditransfer manual oleh admin dengan bukti transfer yang dicatat pada sistem. Transaksi langsung di luar alur BimbelKu tidak dilindungi.</p>
+        <p>Pembayaran resmi diproses melalui metode yang tersedia di halaman tagihan BimbelKu. Status pembayaran, refund, dan pencairan diperbarui melalui sistem; beberapa metode dapat mengarahkan pengguna ke aplikasi pembayaran untuk konfirmasi. Transaksi langsung di luar alur BimbelKu tidak dilindungi.</p>
       </>
     ),
   },
   {
-    title: "Kelas Kelompok",
+    title: "Kelas Bersama",
     content: (
       <>
-        <p>Kelas Kelompok dibuat dan dijadwalkan oleh admin. Murid hanya dapat bergabung ketika pendaftaran terbuka, kuota masih tersedia, jadwal tidak bentrok, dan tutor kelas tersedia. Saat bergabung, kursi ditahan sementara sampai batas pembayaran yang ditampilkan sistem.</p>
+        <p>Kelas Bersama dibuat dan dijadwalkan oleh admin. Murid hanya dapat bergabung ketika pendaftaran terbuka, kuota masih tersedia, jadwal tidak bentrok, dan tutor kelas tersedia. Saat bergabung, kursi ditahan sementara sampai batas pembayaran yang ditampilkan sistem.</p>
         <p>Keikutsertaan menjadi terkonfirmasi setelah pembayaran dinyatakan valid. Pembatalan, pergantian tutor, penutupan pendaftaran, kelas yang dibatalkan, dan kondisi yang memerlukan pengembalian dana mengikuti status transaksi yang tercatat pada sistem. Dana yang sudah dinyatakan valid tetapi harus dikembalikan diproses melalui antrean refund admin.</p>
       </>
     ),

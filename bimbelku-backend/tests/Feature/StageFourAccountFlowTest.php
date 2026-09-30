@@ -18,6 +18,20 @@ class StageFourAccountFlowTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_duplicate_registration_email_explains_how_to_continue(): void
+    {
+        User::factory()->create(['email' => 'sudah.ada@example.com']);
+
+        $this->postJson('/api/register', [
+            'name' => 'Murid Baru', 'email' => 'sudah.ada@example.com',
+            'phone' => '081234567891', 'password' => 'password123',
+            'password_confirmation' => 'password123', 'role' => 'student',
+            'date_of_birth' => now()->subYears(20)->toDateString(),
+            'terms_accepted' => true, 'privacy_accepted' => true,
+        ])->assertUnprocessable()
+            ->assertJsonPath('errors.email.0', 'Email ini sudah terdaftar. Silakan masuk dengan akun tersebut atau gunakan email lain.');
+    }
+
     public function test_minor_student_registration_requires_guardian_consent(): void
     {
         $birthDate = now()->subYears(12)->toDateString();
@@ -165,6 +179,7 @@ class StageFourAccountFlowTest extends TestCase
             'terms_accepted' => '1',
             'privacy_accepted' => '1',
             'expertise' => 'Matematika',
+            'public_degree' => 'S.Pd.',
             'levels' => ['SD', 'SMP'],
             'teaching_method' => 'hybrid',
             'identity_document' => UploadedFile::fake()->image('identitas.jpg'),
@@ -183,6 +198,7 @@ class StageFourAccountFlowTest extends TestCase
 
         $teacher = User::query()->where('email', 'tutor.tahap4@example.com')->firstOrFail();
         $profile = $teacher->teacherProfile()->firstOrFail();
+        $this->assertSame('S.Pd.', $profile->public_degree);
 
         Storage::disk('local')->assertExists($profile->identity_document);
         Storage::disk('local')->assertExists($profile->live_selfie);
@@ -192,6 +208,21 @@ class StageFourAccountFlowTest extends TestCase
         $this->assertArrayNotHasKey('whatsapp_number', $profile->toArray());
         $this->assertArrayNotHasKey('latitude', $profile->toArray());
         $this->assertArrayNotHasKey('account_number', $profile->toArray());
+    }
+
+    public function test_teacher_registration_requires_degree_or_latest_education(): void
+    {
+        $this->postJson('/api/register', [
+            'name' => 'Calon Tutor',
+            'email' => 'calon-tutor@example.com',
+            'phone' => '081234567899',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'role' => 'teacher',
+            'terms_accepted' => true,
+            'privacy_accepted' => true,
+        ])->assertUnprocessable()
+            ->assertJsonPath('errors.public_degree.0', 'Gelar atau pendidikan terakhir wajib diisi untuk pendaftaran tutor.');
     }
 
     public function test_student_cannot_open_another_users_teacher_document(): void

@@ -22,7 +22,7 @@ export default function PendingPaymentPopup() {
   const returnPath = orderKind === "cheap_class"
     ? "/student/kelas-murah"
     : orderKind === "package"
-      ? "/student/my-classes?tab=process"
+      ? "/student/packages"
       : "/student/history";
 
   // 1. Cek Tagihan Aktif ke Backend (Dengan pengaman token)
@@ -165,7 +165,7 @@ export default function PendingPaymentPopup() {
         setOrder(null);
         setShowConfirmCancel(false);
         sessionStorage.removeItem("bimbelku_payment_order");
-        notify.success(isCheapClassOrder ? "Keikutsertaan Kelas Kelompok berhasil dibatalkan." : "Pesanan berhasil dibatalkan.");
+        notify.success(isCheapClassOrder ? "Keikutsertaan Kelas Bersama berhasil dibatalkan." : "Pesanan berhasil dibatalkan.");
         
         // Jika sedang di halaman payment, tendang ke luar
         if (location.pathname === '/payment') {
@@ -203,7 +203,7 @@ export default function PendingPaymentPopup() {
 
           <div className="mb-4 flex min-w-0 items-start justify-between gap-3">
              <div className="flex min-w-0 items-center gap-2 rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-black text-indigo-600">
-                <Clock size={14} className="animate-spin-slow" />
+                <Clock size={14} />
                 <span className="min-w-0 font-mono tracking-tighter">{formatTime(timeLeft)}</span>
              </div>
              <button aria-label="Tutup pengingat tagihan" onClick={() => setIsVisible(false)} className="p-1.5 hover:bg-slate-50 rounded-full text-slate-300 hover:text-slate-500 transition">

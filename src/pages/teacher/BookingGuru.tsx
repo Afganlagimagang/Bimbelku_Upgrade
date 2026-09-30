@@ -1,5 +1,6 @@
 import { notify } from "@/lib/notify";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
   BookOpen,
@@ -22,6 +23,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import http, { getApiError } from "@/lib/http";
+import WorkspacePageIntro from "@/components/WorkspacePageIntro";
 
 interface Offer {
   id: number;
@@ -86,6 +88,7 @@ const formatCurrency = (value?: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(value || 0);
 
 export default function BookingGuru() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const confirm = useConfirmDialog();
   const [offers, setOffers] = useState<Offer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -94,7 +97,7 @@ export default function BookingGuru() {
   const [reason, setReason] = useState("too_far");
   const [note, setNote] = useState("");
   const [now, setNow] = useState(Date.now());
-  const [scope, setScope] = useState<"active" | "history">("active");
+  const scope = searchParams.get("scope") === "history" ? "history" : "active";
   const [counts, setCounts] = useState({ active: 0, history: 0 });
 
   const pendingCount = useMemo(() => offers.filter((offer) => offer.status === "pending").length, [offers]);
@@ -171,35 +174,13 @@ export default function BookingGuru() {
   return (
     <TeacherLayout title="Permintaan Bimbel">
       <div className="max-w-7xl mx-auto space-y-7 pb-12">
-        <section data-tour="teacher-requests-hero" className="relative overflow-hidden rounded-[1.7rem] bg-gradient-to-br from-indigo-950 via-violet-950 to-slate-950 p-5 text-white shadow-xl animate-in fade-in slide-in-from-bottom-3 duration-500 sm:rounded-[2rem] sm:px-7 sm:py-8">
-          <div className="absolute -right-16 -top-20 h-64 w-64 rounded-full bg-violet-400/20 blur-3xl" />
-          <div className="relative flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
-            <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-bold uppercase tracking-widest text-indigo-100">
-                <TimerReset size={14} /> Persetujuan wajib
-              </div>
-              <h1 className="mt-4 text-2xl font-black tracking-tight sm:text-3xl">Permintaan mengajar masuk</h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-indigo-100/80">
-                Jadwal baru dikunci setelah permintaan diterima. Penolakan karena jarak tidak menurunkan rating.
-              </p>
-            </div>
-            <div className="grid grid-cols-[auto_1fr] items-center gap-3 sm:flex">
-              <div className="rounded-2xl border border-white/10 bg-white/10 px-5 py-3 text-center backdrop-blur">
-                <p className="text-2xl font-black">{pendingCount}</p>
-                <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-100">Menunggu</p>
-              </div>
-              <Button onClick={fetchOffers} variant="outline" className="h-12 rounded-2xl border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white">
-                <RefreshCw size={17} className={loading ? "mr-2 animate-spin" : "mr-2"} /> Muat ulang
-              </Button>
-            </div>
-          </div>
-        </section>
+        <div data-tour="teacher-requests-hero"><WorkspacePageIntro eyebrow="Persetujuan wajib" title="Permintaan Bimbel" description="Periksa kebutuhan, jadwal, dan lokasi sebelum menerima. Jadwal baru dikunci setelah permintaan disetujui." icon={TimerReset} metrics={[{ label: "Menunggu jawaban", value: pendingCount }]} actions={<Button onClick={fetchOffers} variant="outline" className="h-11 w-full rounded-xl sm:w-auto"><RefreshCw size={17} className={loading ? "mr-2 animate-spin" : "mr-2"} />Muat ulang</Button>} /></div>
 
         <section className="grid grid-cols-2 gap-2 rounded-2xl border border-slate-100 bg-white p-2 shadow-sm">
-          <button type="button" onClick={() => setScope("active")} className={`min-h-11 rounded-xl px-4 text-sm font-black transition ${scope === "active" ? "bg-indigo-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}>
+          <button type="button" onClick={() => setSearchParams({}, { replace: true })} className={`min-h-11 rounded-xl px-4 text-sm font-black transition ${scope === "active" ? "bg-indigo-600 text-white" : "text-slate-500 hover:bg-slate-50"}`}>
             Permintaan aktif ({counts.active})
           </button>
-          <button type="button" onClick={() => setScope("history")} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-black transition ${scope === "history" ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-50"}`}>
+          <button type="button" onClick={() => setSearchParams({ scope: "history" }, { replace: true })} className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-black transition ${scope === "history" ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-50"}`}>
             <History size={16} /> Riwayat ({counts.history})
           </button>
         </section>

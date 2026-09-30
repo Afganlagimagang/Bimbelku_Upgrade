@@ -1,9 +1,10 @@
+import DashboardBrand from "@/components/DashboardBrand";
 import { lazy, Suspense, useCallback, useState, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import ProfileQuickMenu from "@/components/ProfileQuickMenu";
 import { scheduleNonCriticalTask } from "@/lib/schedule";
 import { usePersistentSidebarScroll } from "@/hooks/usePersistentSidebarScroll";
-import { hasSidebarAttention, NAVIGATION_ATTENTION_CHANGED_EVENT, type AttentionNotification } from "@/lib/navigationAttention";
+import { announceNavigationAttentionChanged, hasSidebarAttention, NAVIGATION_ATTENTION_CHANGED_EVENT, unreadIdsForCurrentPage, type AttentionNotification } from "@/lib/navigationAttention";
 import {
   LayoutDashboard, BookOpen, Menu, X, Settings, Wallet, Banknote, 
   GraduationCap, CalendarClock, HelpCircle, Bell, MessageSquare, ClipboardCheck, BarChart3
@@ -199,6 +200,20 @@ export default function TeacherLayout({ children, title, lockContentScroll = fal
     onAttentionNotificationsChange?.(attentionNotifications);
   }, [attentionNotifications, onAttentionNotificationsChange]);
 
+  useEffect(() => {
+    const ids = unreadIdsForCurrentPage("teacher", `${location.pathname}${location.search}`, attentionNotifications);
+    if (!ids.length) return;
+
+    const idSet = new Set(ids);
+    setAttentionNotifications((current) => current.filter((item) => !idSet.has(item.id)));
+    setNotifications((current) => current.map((item) => idSet.has(item.id) ? { ...item, is_read: true } : item));
+    setUnreadCount((current) => Math.max(0, current - ids.length));
+    void import("@/lib/http")
+      .then(({ default: http }) => http.post("/notifications/read-batch", { ids }))
+      .then(announceNavigationAttentionChanged)
+      .catch(() => void fetchNotifications(true));
+  }, [attentionNotifications, fetchNotifications, location.pathname, location.search]);
+
   return (
     <div className="flex h-dvh w-full max-w-full overflow-hidden bg-[#F8FAFC] font-sans text-slate-800">
       <a href="#main-content" className="skip-link">Lewati ke konten utama</a>
@@ -207,7 +222,7 @@ export default function TeacherLayout({ children, title, lockContentScroll = fal
       {/* SIDEBAR */}
       <aside className={`fixed xl:static inset-y-0 left-0 z-40 w-[min(18rem,88vw)] bg-white border-r border-slate-100 transform transition-transform duration-300 ease-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full xl:translate-x-0'} shadow-xl xl:shadow-none flex flex-col`}>
         <div className="h-24 flex items-center px-8 border-b border-slate-50">
-             <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-violet-600 rounded-xl flex items-center justify-center mr-3 shadow-lg shadow-indigo-500/20 text-white transform rotate-3 hover:rotate-0 transition-all duration-300"><GraduationCap size={20} /></div>
+             <DashboardBrand className="mr-3 h-10 w-10" />
              <div><h1 className="text-xl font-black text-slate-900 tracking-tight leading-none">BimbelKu</h1><span className="text-[10px] font-bold text-indigo-500 uppercase tracking-widest bg-indigo-50 px-1.5 py-0.5 rounded mt-1 inline-block">Teacher</span></div>
              <button aria-label="Tutup menu" className="xl:hidden ml-auto text-slate-400 hover:text-indigo-600 transition" onClick={() => setSidebarOpen(false)}><X size={20} /></button>
         </div>
@@ -229,8 +244,7 @@ export default function TeacherLayout({ children, title, lockContentScroll = fal
             <div>
                 <div className="px-4 mb-3 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest flex items-center gap-2"><span className="w-1.5 h-1.5 bg-emerald-400 rounded-full"></span> Keuangan</div>
                 <div className="space-y-1">
-                    <NavItem to="/guru/rekening" icon={Wallet} label="Rekening" active={isActive('/guru/rekening')} attention={hasSidebarAttention("teacher", "/guru/rekening", attentionNotifications)} />
-                    <NavItem to="/guru/gaji" icon={Banknote} label="Dompet & Gaji" active={isActive('/guru/gaji')} attention={hasSidebarAttention("teacher", "/guru/gaji", attentionNotifications)} />
+                    <NavItem to="/guru/dompet" icon={Wallet} label="Dompet Tutor" active={isActive('/guru/dompet')} attention={hasSidebarAttention("teacher", "/guru/dompet", attentionNotifications)} />
                 </div>
             </div>
             <div>
@@ -285,7 +299,7 @@ export default function TeacherLayout({ children, title, lockContentScroll = fal
                  )}
              </div>
 
-             <ProfileQuickMenu
+              <ProfileQuickMenu
                user={userData}
                accent="teacher"
                roleLabel="Tutor"
@@ -297,7 +311,7 @@ export default function TeacherLayout({ children, title, lockContentScroll = fal
         </header>
 
         <div className={`mobile-app-content min-h-0 flex-1 basis-0 overflow-x-hidden scroll-smooth p-4 pb-[calc(7.25rem+env(safe-area-inset-bottom))] sm:p-6 sm:pb-24 xl:p-10 xl:pb-10 ${lockContentScroll ? "overflow-y-hidden" : "overflow-y-auto"}`}>
-          <div className={`mx-auto w-full min-w-0 max-w-7xl pb-10 ${lockContentScroll ? "flex h-full min-h-0 flex-col" : ""}`}>{children}</div>
+          <div className={`mx-auto w-full min-w-0 max-w-7xl pb-20 sm:pb-24 xl:pb-16 ${lockContentScroll ? "flex h-full min-h-0 flex-col" : ""}`}>{children}</div>
         </div>
         {!isDesktop && !sidebarOpen && (
           <Suspense fallback={null}>

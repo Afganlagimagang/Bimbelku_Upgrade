@@ -85,7 +85,7 @@ const initialForm = () => {
   use_custom_price: false,
   custom_price_per_student: "",
   minimum_participants: "2",
-  maximum_participants: "6",
+  maximum_participants: "8",
   registration_window_hours: "24",
   registration_closes_before_minutes: "60",
   payment_window_minutes: "60",
@@ -164,7 +164,7 @@ export default function CheapClassManagement() {
     && finalTotal >= 1000
     && Number(form.minimum_participants) >= 2
     && Number(form.maximum_participants) >= Number(form.minimum_participants)
-    && Number(form.maximum_participants) <= 30
+    && Number(form.maximum_participants) <= 12
     && Number(form.payment_window_minutes) >= 15
     && Number(form.payment_window_minutes) <= 240
     && Number(form.registration_closes_before_minutes) >= 30
@@ -191,7 +191,7 @@ export default function CheapClassManagement() {
       setClasses(listData?.classes || []);
       const errors = [
         formResult.status === "rejected" ? getApiError(formResult.reason, "Pilihan formulir belum dapat dimuat.") : "",
-        listResult.status === "rejected" ? getApiError(listResult.reason, "Daftar paket Kelas Kelompok belum dapat dimuat.") : "",
+        listResult.status === "rejected" ? getApiError(listResult.reason, "Daftar paket Kelas Bersama belum dapat dimuat.") : "",
       ].filter(Boolean);
       if (errors.length) {
         const message = errors.join(" ");
@@ -199,7 +199,7 @@ export default function CheapClassManagement() {
         notify.error(message);
       }
     } catch (error) {
-      const message = getApiError(error, "Data Kelas Kelompok belum dapat dimuat.");
+      const message = getApiError(error, "Data Kelas Bersama belum dapat dimuat.");
       setLoadError(message);
       notify.error(message);
     } finally {
@@ -249,15 +249,15 @@ export default function CheapClassManagement() {
     }
   };
 
-  return <AdminLayout title="Kelas Kelompok">
+  return <AdminLayout title="Kelas Bersama">
     <div className="w-full space-y-7 pb-12">
       <section className="rounded-[2rem] bg-gradient-to-br from-indigo-800 via-violet-800 to-fuchsia-800 px-7 py-8 text-white shadow-xl">
         <p className="text-xs font-black uppercase tracking-[.2em] text-indigo-100">Kelas online bersama</p>
-        <h1 className="mt-3 text-3xl font-black">Kelas Kelompok dikelola admin</h1>
+        <h1 className="mt-3 text-3xl font-black">Kelas Bersama dikelola admin</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-indigo-100">Admin memilih 1–3 mapel beserta babnya, hari belajar, jumlah sesi, harga, dan kuota. Sistem mencari satu tutor yang mampu mengajar seluruh mapel dan tersedia pada semua sesi.</p>
       </section>
 
-      {setup?.ready === false && <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-amber-950"><h2 className="font-black">Database Kelas Kelompok perlu diperbarui</h2><p className="mt-2 text-sm font-semibold leading-6">{setup.message}</p><code className="mt-3 block w-fit rounded-xl bg-amber-950 px-3 py-2 text-xs font-bold text-white">php artisan migrate</code>{setup.missing.length > 0 && <p className="mt-3 text-xs">Data yang belum tersedia: {setup.missing.join(", ")}</p>}</section>}
+      {setup?.ready === false && <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-amber-950"><h2 className="font-black">Database Kelas Bersama perlu diperbarui</h2><p className="mt-2 text-sm font-semibold leading-6">{setup.message}</p><code className="mt-3 block w-fit rounded-xl bg-amber-950 px-3 py-2 text-xs font-bold text-white">php artisan migrate</code>{setup.missing.length > 0 && <p className="mt-3 text-xs">Data yang belum tersedia: {setup.missing.join(", ")}</p>}</section>}
       {loadError && <section className="flex flex-col gap-4 rounded-2xl border border-rose-200 bg-rose-50 p-5 text-rose-950 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-black">Sebagian data belum dapat dimuat</h2><p className="mt-2 text-sm font-semibold leading-6">{loadError}</p></div><Button type="button" variant="outline" onClick={() => void load()} className="shrink-0 rounded-xl border-rose-200 bg-white text-rose-700 hover:bg-rose-100">Coba muat ulang</Button></section>}
 
       <div className="grid gap-7 xl:grid-cols-[.95fr_1.05fr]">
@@ -347,7 +347,7 @@ export default function CheapClassManagement() {
           </div>
 
           <div className="mt-5 grid gap-4 sm:grid-cols-2">
-            <Field label="Batas kuota"><div className="flex items-center gap-2"><Input required type="number" min="2" value={form.minimum_participants} onChange={(event) => setForm((current) => ({ ...current, minimum_participants: event.target.value }))} /><span className="font-bold text-slate-400">s.d.</span><Input required type="number" min="2" value={form.maximum_participants} onChange={(event) => setForm((current) => ({ ...current, maximum_participants: event.target.value }))} /></div></Field>
+            <Field label="Batas kuota (2–12 peserta)"><div className="flex items-center gap-2"><Input required type="number" min="2" max="12" value={form.minimum_participants} onChange={(event) => setForm((current) => ({ ...current, minimum_participants: event.target.value }))} /><span className="font-bold text-slate-400">s.d.</span><Input required type="number" min="2" max="12" value={form.maximum_participants} onChange={(event) => setForm((current) => ({ ...current, maximum_participants: event.target.value }))} /></div></Field>
             <Field label="Waktu pembayaran (menit)"><Input required type="number" min="15" max="240" value={form.payment_window_minutes} onChange={(event) => setForm((current) => ({ ...current, payment_window_minutes: event.target.value }))} /></Field>
             <Field label="Durasi pendaftaran"><div className="flex h-10 items-center rounded-md border border-slate-200 bg-slate-50 px-3 text-sm font-black text-slate-700">24 jam · tetap</div></Field>
             <Field label="Jeda setelah pendaftaran tutup (menit)"><Input required type="number" min="30" value={form.registration_closes_before_minutes} onChange={(event) => setForm((current) => ({ ...current, registration_closes_before_minutes: event.target.value }))} /></Field>
@@ -361,7 +361,7 @@ export default function CheapClassManagement() {
         <div className="space-y-7">
           <section className="rounded-[2rem] border border-slate-100 bg-white p-6 shadow-sm"><h2 className="text-xl font-black text-slate-900">Paket yang sudah dibuat</h2><p className="mt-1 text-xs text-slate-500">Label membedakan paket sekali dibuat dan paket dari pengaturan mingguan.</p>{loading ? <Loading /> : classes.length ? <div className="mt-5 space-y-3">{classes.slice(0, 4).map((item) => <div key={item.id} className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4"><div className="flex items-start justify-between gap-3"><div><div className="flex flex-wrap items-center gap-2"><p className="font-black text-slate-900">{item.subject_name} · {item.grade}</p><span className={`rounded-full px-2 py-1 text-[10px] font-black ${item.package_kind === "recurring" ? (item.recurrence_active ? "bg-violet-100 text-violet-700" : "bg-slate-200 text-slate-600") : "bg-white text-slate-500"}`}>{item.package_kind === "recurring" ? `Berulang · ${item.recurrence_active ? "Aktif" : "Nonaktif"}` : "Sekali dibuat"}</span></div><p className="mt-1 text-xs text-slate-500">{item.chapter} · {dateTime(item.starts_at)}</p><p className="mt-2 text-xs font-bold text-indigo-600">{item.session_count} sesi · {money(Number(item.price_per_student))} sekali bayar</p>{item.package_kind === "recurring" && item.recurrence_active && item.next_publish_at && <p className="mt-1 text-xs font-bold text-violet-700">Penerbitan berikutnya: {dateTime(item.next_publish_at)}</p>}<p className={`mt-2 text-xs font-bold ${item.teacher ? "text-emerald-700" : "text-amber-700"}`}>{item.teacher?.name ? `Tutor: ${item.teacher.name}` : "Tutor sedang dicari"}</p></div><span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-black text-slate-600">{item.occupied_seat_count}/{item.maximum_participants} kursi · {item.confirmed_participant_count} terverifikasi</span></div></div>)}</div> : <Empty text="Belum ada paket." />}</section>
           <section className="rounded-[2rem] border border-slate-100 bg-white p-6 shadow-sm">
-            <div className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-indigo-50 text-indigo-600"><CalendarRange size={19} /></span><div><h2 className="text-xl font-black text-slate-900">Jadwal Kelas Kelompok</h2><p className="text-xs text-slate-500">Ringkasan paket dan sesi mendatang.</p></div></div>
+            <div className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-xl bg-indigo-50 text-indigo-600"><CalendarRange size={19} /></span><div><h2 className="text-xl font-black text-slate-900">Jadwal Kelas Bersama</h2><p className="text-xs text-slate-500">Ringkasan paket dan sesi mendatang.</p></div></div>
             {loading ? <Loading /> : <>
               <div className="mt-5 grid grid-cols-3 gap-2 sm:gap-3">
                 <SummaryStat value={classes.length} label="Paket" />
@@ -442,7 +442,7 @@ function ScheduleReviewModal({
     <section role="dialog" aria-modal="true" aria-labelledby="cheap-class-review-title" className="flex max-h-[94dvh] w-full max-w-4xl flex-col overflow-hidden rounded-[2rem] bg-white shadow-2xl">
     <div className="shrink-0 bg-gradient-to-br from-slate-950 via-indigo-950 to-violet-900 p-5 text-white sm:p-6">
       <div className="flex items-start justify-between gap-4">
-        <div><p className="text-[10px] font-black uppercase tracking-[.2em] text-indigo-200">Langkah terakhir</p><h2 id="cheap-class-review-title" className="mt-2 text-xl font-black sm:text-2xl">Konfirmasi paket Kelas Kelompok</h2><p className="mt-1 text-xs leading-5 text-indigo-100/75">Periksa seluruh data sebelum paket dan sesinya dibuat.</p></div>
+        <div><p className="text-[10px] font-black uppercase tracking-[.2em] text-indigo-200">Langkah terakhir</p><h2 id="cheap-class-review-title" className="mt-2 text-xl font-black sm:text-2xl">Konfirmasi paket Kelas Bersama</h2><p className="mt-1 text-xs leading-5 text-indigo-100/75">Periksa seluruh data sebelum paket dan sesinya dibuat.</p></div>
         <span className="shrink-0 rounded-full bg-white/10 px-3 py-1 text-[10px] font-black text-indigo-100">Belum tersimpan</span>
       </div>
       <div className="mt-5 grid grid-cols-3 gap-2">

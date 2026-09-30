@@ -148,8 +148,8 @@ export default function Chapters() {
       </div>
 
       <Dialog open={editing !== undefined} onOpenChange={(open) => !open && setEditing(undefined)}>
-        <DialogContent className="rounded-[2rem] sm:max-w-lg">
-          <form onSubmit={save} className="space-y-4">
+        <DialogContent className="overflow-visible rounded-[2rem] sm:max-w-lg">
+          <form onSubmit={save} className="max-h-[calc(100dvh-5rem)] space-y-4 overflow-y-auto overscroll-contain">
             <DialogHeader><DialogTitle>{editing ? "Ubah bab" : "Tambah bab"}</DialogTitle><DialogDescription>Submateri opsional dan dapat ditulis murid pada catatan kebutuhan belajar.</DialogDescription></DialogHeader>
             <div><Label>Mata pelajaran</Label><SubjectCombobox options={subjects} value={form.subject_name} educationLevel={form.education_level} grade={form.grade} onChange={(value, option) => setForm((current) => ({ ...current, subject_name: value, curriculum_subject_id: option?.id || 0 }))} className="mt-2" /></div>
             <div className="grid grid-cols-2 gap-3"><div><Label>Jenjang</Label><Select value={form.education_level} onValueChange={(value) => setForm((current) => ({ ...current, education_level: value, grade: grades[value][0], curriculum_subject_id: 0, subject_name: "" }))}><SelectTrigger className="mt-2 h-11 rounded-xl"><SelectValue /></SelectTrigger><SelectContent>{Object.keys(grades).map((level) => <SelectItem key={level} value={level}>{level}</SelectItem>)}</SelectContent></Select></div><div><Label>{educationDetailLabel(form.education_level)}</Label><Select value={form.grade} onValueChange={(value) => setForm((current) => ({ ...current, grade: value, curriculum_subject_id: 0, subject_name: "" }))}><SelectTrigger className="mt-2 h-11 rounded-xl"><SelectValue /></SelectTrigger><SelectContent>{grades[form.education_level].map((grade) => <SelectItem key={grade} value={grade}>{grade}</SelectItem>)}</SelectContent></Select></div></div>

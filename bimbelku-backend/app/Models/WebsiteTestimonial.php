@@ -21,4 +21,14 @@ class WebsiteTestimonial extends Model
     {
         return $this->belongsTo(Rating::class);
     }
+
+    public function verifier()
+    {
+        return $this->belongsTo(User::class, 'verified_by');
+    }
+
+    public function curriculumSubject()
+    {
+        return $this->belongsTo(CurriculumSubject::class);
+    }
 }

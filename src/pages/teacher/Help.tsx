@@ -3,7 +3,7 @@ import HelpCenter from "@/pages/common/HelpCenter";
 
 export default function TeacherHelp() {
   return (
-    <TeacherLayout title="Pusat Bantuan" lockContentScroll>
+    <TeacherLayout title="Pusat Bantuan">
       <HelpCenter />
     </TeacherLayout>
   );

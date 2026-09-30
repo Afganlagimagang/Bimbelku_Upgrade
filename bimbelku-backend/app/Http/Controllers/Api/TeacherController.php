@@ -20,8 +20,11 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Services\TeacherMatchingService;
 use App\Support\EducationCatalog;
+use App\Support\XenditPayoutChannelCatalog;
 use App\Services\TeacherOfferReleaseService;
+use App\Services\BankAccountNameVerifier;
 use Carbon\Carbon;
+use Illuminate\Validation\Rule;
 
 class TeacherController extends Controller
 {
@@ -30,7 +33,7 @@ class TeacherController extends Controller
     // ==========================================
     public function getProfile(Request $request)
     {
-        $user = Auth::user();
+        $user = Auth::user()->fresh();
         
         $profile = $user->teacherProfile;
 
@@ -41,10 +44,16 @@ class TeacherController extends Controller
         $profile->load('subjects');
 
         $profileData = $profile->toArray();
+        $inferredChannel = $profile->payout_channel_code ?: XenditPayoutChannelCatalog::inferCode($profile->bank_name);
+        if (blank($profile->payout_channel_code) && filled($inferredChannel)) {
+            $profile->forceFill(['payout_channel_code' => $inferredChannel])->save();
+        }
         $profileData['whatsapp_number'] = $profile->whatsapp_number;
         $profileData['latitude'] = $profile->latitude;
         $profileData['longitude'] = $profile->longitude;
         $profileData['bank_name'] = $profile->bank_name;
+        $profileData['payout_channel_code'] = $inferredChannel;
+        $profileData['payout_channel_options'] = XenditPayoutChannelCatalog::options();
         $profileData['account_number'] = $profile->account_number;
         $profileData['account_name'] = $profile->account_name;
         $profileData['bank_account_changed_at'] = $profile->bank_account_changed_at;
@@ -55,13 +64,47 @@ class TeacherController extends Controller
         $profileData['live_selfie_url'] = $profile->live_selfie ? "/teachers/{$user->id}/documents/live_selfie" : null;
         $profileData['qualification_document_url'] = $profile->qualification_document ? "/teachers/{$user->id}/documents/qualification_document" : null;
         $profileData['certification_document_url'] = $profile->certification_document ? "/teachers/{$user->id}/documents/certification_document" : null;
-        $profileData['profile_cover_url'] = \App\Support\PublicMedia::url($user->profile_cover);
+        $profileData['profile_cover_url'] = $user->profile_cover_use_default
+            ? null
+            : \App\Support\PublicMedia::url($user->profile_cover);
 
         $user->subjects = $profile->subjects;
 
         return response()->json([
             'user' => $user,
             'profile' => $profileData
+        ]);
+    }
+
+    public function updateProfileCover(Request $request)
+    {
+        $request->validate([
+            'profile_cover' => ['required', 'image', 'mimes:jpeg,jpg,png,webp', 'max:5120'],
+        ]);
+
+        $user = $request->user();
+        $path = $request->file('profile_cover')->store('profile_covers', 'public');
+        try {
+            $oldPath = DB::transaction(function () use ($user, $path) {
+                $lockedUser = \App\Models\User::query()->lockForUpdate()->findOrFail($user->id);
+                $oldPath = $lockedUser->profile_cover;
+                $lockedUser->profile_cover = $path;
+                $lockedUser->profile_cover_use_default = false;
+                $lockedUser->save();
+                return $oldPath;
+            }, 3);
+        } catch (\Throwable $exception) {
+            Storage::disk('public')->delete($path);
+            throw $exception;
+        }
+
+        if ($oldPath && $oldPath !== $path) {
+            Storage::disk('public')->delete($oldPath);
+        }
+
+        return response()->json([
+            'message' => 'Sampul profil berhasil diperbarui.',
+            'profile_cover_url' => \App\Support\PublicMedia::url($path),
         ]);
     }
 
@@ -82,6 +125,9 @@ class TeacherController extends Controller
             'longitude' => ['nullable', 'required_with:latitude', 'numeric', 'between:-180,180'],
             'max_travel_km' => ['nullable', 'integer', 'min:1', 'max:12'],
             'is_accepting_requests' => ['nullable', 'boolean'],
+            'public_profile_enabled' => ['nullable', 'boolean'],
+            'public_credentials' => ['nullable', 'string', 'max:300'],
+            'public_degree' => ['nullable', 'string', 'max:120'],
             'photo' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:5120'],
             'profile_cover' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:5120'],
             'cv_file' => ['nullable', 'file', 'mimes:pdf', 'max:5120'],
@@ -118,6 +164,18 @@ class TeacherController extends Controller
         if ($request->has('longitude')) $profile->longitude = $request->filled('longitude') ? $request->longitude : null;
         if ($request->has('max_travel_km')) $profile->max_travel_km = max(1, min(12, (int) $request->max_travel_km));
         if ($request->has('is_accepting_requests')) $profile->is_accepting_requests = filter_var($request->is_accepting_requests, FILTER_VALIDATE_BOOLEAN);
+        if ($request->has('public_credentials')) $profile->public_credentials = trim((string) $request->public_credentials) ?: null;
+        if ($request->has('public_degree')) $profile->public_degree = trim((string) $request->public_degree) ?: null;
+        if ($request->has('public_profile_enabled')) {
+            $publicEnabled = filter_var($request->public_profile_enabled, FILTER_VALIDATE_BOOLEAN);
+            if ($publicEnabled && ! $profile->public_profile_enabled) {
+                $profile->public_profile_consent_at = now();
+            }
+            if (! $publicEnabled) {
+                $profile->public_directory_approved_at = null;
+            }
+            $profile->public_profile_enabled = $publicEnabled;
+        }
 
         $verificationDocuments = [
             'identity_document' => 'teacher_identity',
@@ -198,10 +256,18 @@ class TeacherController extends Controller
                         !== (bool) $lockedProfile->is_accepting_requests
                 );
 
-                $lockedProfile->forceFill($profile->getDirty());
+                $profileChanges = $profile->getDirty();
+                $lockedProfile->forceFill($profileChanges);
+                if (array_intersect(
+                    array_keys($profileChanges),
+                    ['title', 'experience', 'bio', 'public_credentials', 'public_degree', 'photo']
+                )) {
+                    $lockedProfile->public_directory_approved_at = null;
+                }
                 if ($reverificationRequired) {
                     $lockedProfile->verified_at = null;
                     $lockedProfile->verified_by = null;
+                    $lockedProfile->public_directory_approved_at = null;
                     $lockedProfile->is_accepting_requests = false;
                     $lockedUser->status = 'pending';
                 }
@@ -213,6 +279,7 @@ class TeacherController extends Controller
                 $lockedUser->phone = trim((string) $request->whatsapp_number);
                 if (isset($newFiles['profile_cover'])) {
                     $lockedUser->profile_cover = $newFiles['profile_cover'][1];
+                    $lockedUser->profile_cover_use_default = false;
                 }
                 $lockedUser->save();
 
@@ -412,6 +479,9 @@ class TeacherController extends Controller
             $expertise = mb_substr(implode(', ', array_column($normalizedSubjects, 'name')), 0, 255);
             $lockedProfile->update([
                 'expertise' => $expertise,
+                'public_directory_approved_at' => $competencyChanged
+                    ? null
+                    : $lockedProfile->public_directory_approved_at,
                 'is_accepting_requests' => $reverificationRequired
                     ? false
                     : $lockedProfile->is_accepting_requests,
@@ -446,12 +516,12 @@ class TeacherController extends Controller
 
     public function updateBank(Request $request) {
         $validated = $request->validate([
-            'bank_name' => ['required', 'string', 'max:100', 'regex:/\pL/u'],
+            'payout_channel_code' => ['nullable', 'required_without:bank_name', 'string', Rule::in(XenditPayoutChannelCatalog::codes())],
+            'bank_name' => ['nullable', 'required_without:payout_channel_code', 'string', 'max:100', 'regex:/\pL/u'],
             'account_number' => ['required', 'string', 'min:8', 'max:20', 'regex:/^[0-9]+$/'],
             'account_name' => ['required', 'string', 'max:150', 'regex:/\pL/u', 'not_regex:/\d/u'],
             'current_password' => ['required', 'string', 'max:200'],
         ], [
-            'bank_name.regex' => 'Nama bank atau e-wallet wajib mengandung huruf.',
             'account_number.min' => 'Nomor rekening atau e-wallet minimal 8 digit.',
             'account_number.max' => 'Nomor rekening atau e-wallet maksimal 20 digit.',
             'account_number.regex' => 'Nomor rekening atau e-wallet hanya boleh berisi angka.',
@@ -463,12 +533,18 @@ class TeacherController extends Controller
         if (!Hash::check($validated['current_password'], $user->password)) {
             return response()->json(['message' => 'Kata sandi akun tidak sesuai.'], 422);
         }
+        $normalizeName = static fn (string $name): string => mb_strtolower(trim(preg_replace('/\s+/u', ' ', $name) ?? $name));
+        if ($normalizeName($validated['account_name']) !== $normalizeName((string) $user->name)) {
+            return response()->json(['message' => 'Nama pemilik rekening harus sama dengan nama akun tutor. Pastikan nama akun sesuai KTP sebelum melanjutkan.'], 422);
+        }
 
         $holdHours = min(
             72,
             max(1, (int) (Setting::where('key', 'bank_change_hold_hours')->value('value') ?? 24))
         );
         $normalizedAccount = preg_replace('/\D+/', '', $validated['account_number']) ?? '';
+        $channelCode = $validated['payout_channel_code'] ?? XenditPayoutChannelCatalog::inferCode($validated['bank_name'] ?? null);
+        abort_unless($channelCode && ($channel = XenditPayoutChannelCatalog::get($channelCode)), 422, 'Bank belum mendukung pencairan otomatis. Pilih bank dari daftar yang tersedia.');
         $holdUntil = now()->addHours($holdHours);
 
         $result = DB::transaction(function () use (
@@ -476,6 +552,8 @@ class TeacherController extends Controller
             $validated,
             $normalizedAccount,
             $holdUntil
+            ,$channel,
+            $channelCode
         ) {
             $lockedUser = $user->newQuery()->lockForUpdate()->findOrFail($user->id);
             if (!Hash::check($validated['current_password'], $lockedUser->password)) {
@@ -486,7 +564,7 @@ class TeacherController extends Controller
                 ->firstOrCreate(['user_id' => $lockedUser->id]);
             $lockedProfile = TeacherProfile::query()->lockForUpdate()->findOrFail($profile->id);
             $fingerprint = hash_hmac('sha256', implode('|', [
-                mb_strtolower(trim($validated['bank_name'])),
+                $channelCode,
                 $normalizedAccount,
                 mb_strtolower(trim($validated['account_name'])),
             ]), (string) config('app.key'));
@@ -497,7 +575,8 @@ class TeacherController extends Controller
 
             if ($changed) {
                 $lockedProfile->forceFill([
-                    'bank_name' => trim($validated['bank_name']),
+                    'bank_name' => $channel['label'],
+                    'payout_channel_code' => $channelCode,
                     'account_number' => trim($validated['account_number']),
                     'account_name' => trim($validated['account_name']),
                     'bank_account_fingerprint' => $fingerprint,
@@ -532,7 +611,7 @@ class TeacherController extends Controller
                     'title' => 'Perubahan rekening tutor',
                     'message' => "Rekening pencairan {$user->name} berubah. Pencairan ditahan sementara.",
                     'type' => 'warning',
-                    'target_url' => '/admin/finance',
+                    'target_url' => '/admin/finance?tab=payouts',
                 ]));
         }
 
@@ -554,12 +633,13 @@ class TeacherController extends Controller
         $profile = TeacherProfile::query()->where('user_id', $user->id)->first();
         $completedBookings = Booking::query()
             ->where('teacher_id', $user->id)
-            ->where('status', 'completed');
+            ->where('status', 'completed')
+            ->whereDoesntHave('disputes', fn ($query) => $query->whereNull('resolved_at'));
         $balanceRows = (clone $completedBookings)
             ->selectRaw("COALESCE(SUM(CASE WHEN payout_status = 'locked' THEN teacher_net_amount ELSE 0 END), 0) AS held")
-            ->selectRaw("COALESCE(SUM(CASE WHEN payout_status = 'ready' THEN teacher_net_amount ELSE 0 END), 0) AS available")
-            ->selectRaw("COALESCE(SUM(CASE WHEN payout_status = 'requested' THEN teacher_net_amount ELSE 0 END), 0) AS requested")
-            ->selectRaw("COALESCE(SUM(CASE WHEN payout_status = 'paid' THEN teacher_net_amount ELSE 0 END), 0) AS paid")
+            ->selectRaw('COALESCE(SUM(CASE WHEN teacher_net_amount - teacher_paid_amount - teacher_reserved_amount > 0 THEN teacher_net_amount - teacher_paid_amount - teacher_reserved_amount ELSE 0 END), 0) AS available')
+            ->selectRaw('COALESCE(SUM(teacher_reserved_amount), 0) AS requested')
+            ->selectRaw('COALESCE(SUM(teacher_paid_amount), 0) AS paid')
             ->selectRaw("COALESCE(SUM(gross_amount), 0) AS total_gross")
             ->selectRaw("COALESCE(SUM(gross_amount - teacher_net_amount), 0) AS total_commission")
             ->first();
@@ -573,9 +653,11 @@ class TeacherController extends Controller
             ->where('user_id', $user->id)
             ->where('status', 'completed')
             ->sum('amount');
-        $readySessionCount = (clone $completedBookings)->where('payout_status', 'ready')->count();
+        $readySessionCount = (clone $completedBookings)
+            ->whereRaw('(teacher_net_amount - teacher_paid_amount - teacher_reserved_amount) > 0')
+            ->count();
         $readyBookings = (clone $completedBookings)
-            ->where('payout_status', 'ready')
+            ->whereRaw('(teacher_net_amount - teacher_paid_amount - teacher_reserved_amount) > 0')
             ->with('bookingRequest:id,subject_name')
             ->oldest('completed_at')
             ->get()
@@ -585,7 +667,8 @@ class TeacherController extends Controller
                 'completed_at' => $booking->completed_at,
                 'gross_amount' => (float) $booking->gross_amount,
                 'commission_amount' => max(0, (float) $booking->gross_amount - (float) $booking->teacher_net_amount),
-                'net_amount' => (float) $booking->teacher_net_amount,
+                'net_amount' => round(max(0, (float) $booking->teacher_net_amount - (float) $booking->teacher_paid_amount - (float) $booking->teacher_reserved_amount), 2),
+                'earned_amount' => (float) $booking->teacher_net_amount,
             ]);
         $newStudentsWeek = Booking::query()
             ->where('teacher_id', $user->id)
@@ -632,6 +715,8 @@ class TeacherController extends Controller
             'total_withdrawn' => round($totalWithdrawn),
             'history' => $formattedHistory,
             'share_percent' => 100 - $currentAdminFee,
+            'withholding_tax_percent' => min(100, max(0, (float) (Setting::query()->where('key', 'teacher_withholding_tax_percent')->value('value') ?? 0))),
+            'bank_name_validation_available' => app(BankAccountNameVerifier::class)->available(),
             'ready_sessions' => $readySessionCount,
             'ready_bookings' => $readyBookings,
             'bank' => [
@@ -656,6 +741,8 @@ class TeacherController extends Controller
                     'net_amount' => (float) $item->net_amount,
                     'gross_amount' => (float) $item->gross_amount,
                     'commission_amount' => (float) $item->commission_amount,
+                    'requested_amount' => (float) ($item->requested_amount ?? $item->net_amount),
+                    'tax_amount' => (float) ($item->tax_amount ?? 0),
                     'status' => $item->status,
                     'requested_at' => $item->requested_at,
                     'processed_at' => $item->processed_at,

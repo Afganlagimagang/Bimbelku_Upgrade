@@ -80,7 +80,7 @@ class CheckpointTwoOperationsAuditTest extends TestCase
         ));
     }
 
-    public function test_payment_destination_cannot_change_while_package_invoice_is_active(): void
+    public function test_retired_manual_payment_destination_cannot_change_while_package_invoice_is_active(): void
     {
         $admin = User::factory()->create(['role' => 'admin', 'status' => 'active']);
         $student = User::factory()->create(['role' => 'student', 'status' => 'active']);
@@ -129,7 +129,13 @@ class CheckpointTwoOperationsAuditTest extends TestCase
             'account_number' => '222222',
             'account_name' => 'BimbelKu Baru',
         ], ['Idempotency-Key' => 'cp2-payment-setting'])
-            ->assertUnprocessable();
+            ->assertNotFound();
+
+        $this->assertDatabaseHas('payment_settings', [
+            'singleton_key' => 1,
+            'bank_name' => 'BCA',
+            'account_number' => '111111',
+        ]);
     }
 
     public function test_student_dashboard_returns_real_unread_message_count(): void

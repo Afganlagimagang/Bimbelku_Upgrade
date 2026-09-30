@@ -1,0 +1,225 @@
+import { useEffect, useState, type FormEvent } from "react";
+import { Loader2, Pencil, Plus, ShieldCheck, Trash2, UserCog, X } from "lucide-react";
+
+import http, { getApiError } from "@/lib/http";
+import { notify } from "@/lib/notify";
+
+type AdminAccount = {
+  id: number;
+  name: string;
+  email: string;
+  status: string;
+  is_primary: boolean;
+  created_at?: string;
+};
+
+type EditForm = {
+  name: string;
+  email: string;
+  password: string;
+  superAdminPassword: string;
+};
+
+export default function AdminAccountsPanel() {
+  const [accounts, setAccounts] = useState<AdminAccount[]>([]);
+  const [allowed, setAllowed] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [primaryPassword, setPrimaryPassword] = useState("");
+
+  const [statusTarget, setStatusTarget] = useState<AdminAccount | null>(null);
+  const [statusPassword, setStatusPassword] = useState("");
+  const [editTarget, setEditTarget] = useState<AdminAccount | null>(null);
+  const [editForm, setEditForm] = useState<EditForm>({ name: "", email: "", password: "", superAdminPassword: "" });
+  const [deleteTarget, setDeleteTarget] = useState<AdminAccount | null>(null);
+  const [deletePassword, setDeletePassword] = useState("");
+
+  const reload = async () => {
+    setLoading(true);
+    try {
+      const response = await http.get<AdminAccount[]>("/admin/accounts");
+      setAccounts(response.data);
+      setAllowed(true);
+    } catch (error) {
+      const status = (error as { response?: { status?: number } }).response?.status;
+      if (status === 403) setAllowed(false);
+      else notify.error(getApiError(error, "Akun admin belum dapat dimuat."));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { void reload(); }, []);
+
+  const create = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      await http.post("/admin/accounts", { name, email, password, super_admin_password: primaryPassword });
+      notify.success("Akun admin berhasil dibuat.");
+      setName("");
+      setEmail("");
+      setPassword("");
+      setPrimaryPassword("");
+      await reload();
+    } catch (error) {
+      notify.error(getApiError(error, "Akun admin gagal dibuat."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openEdit = (admin: AdminAccount) => {
+    setEditTarget(admin);
+    setEditForm({ name: admin.name, email: admin.email, password: "", superAdminPassword: "" });
+  };
+
+  const update = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!editTarget) return;
+    setBusy(true);
+    try {
+      await http.put(`/admin/accounts/${editTarget.id}`, {
+        name: editForm.name,
+        email: editForm.email,
+        password: editForm.password || null,
+        super_admin_password: editForm.superAdminPassword,
+      });
+      notify.success("Akun admin berhasil diperbarui.");
+      setEditTarget(null);
+      await reload();
+    } catch (error) {
+      notify.error(getApiError(error, "Akun admin gagal diperbarui."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const changeStatus = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!statusTarget) return;
+    setBusy(true);
+    try {
+      await http.patch(`/admin/accounts/${statusTarget.id}/status`, {
+        status: statusTarget.status === "active" ? "banned" : "active",
+        super_admin_password: statusPassword,
+      });
+      notify.success("Status admin berhasil diperbarui.");
+      setStatusPassword("");
+      setStatusTarget(null);
+      await reload();
+    } catch (error) {
+      notify.error(getApiError(error, "Status admin gagal diperbarui."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!deleteTarget) return;
+    setBusy(true);
+    try {
+      await http.delete(`/admin/accounts/${deleteTarget.id}`, {
+        data: { super_admin_password: deletePassword },
+      });
+      notify.success("Akun admin berhasil dihapus.");
+      setDeletePassword("");
+      setDeleteTarget(null);
+      await reload();
+    } catch (error) {
+      notify.error(getApiError(error, "Akun admin gagal dihapus."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!allowed) {
+    return <section className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600">Hanya admin utama yang dapat melihat dan mengelola akun admin.</section>;
+  }
+
+  return (
+    <div className="grid min-w-0 gap-6 pb-8 xl:grid-cols-[minmax(0,1fr)_360px]">
+      {editTarget && (
+        <Modal title="Edit akun admin" onClose={() => setEditTarget(null)}>
+          <form onSubmit={update} className="space-y-4">
+            <Field label="Nama"><input required minLength={2} maxLength={120} value={editForm.name} onChange={(event) => setEditForm((value) => ({ ...value, name: event.target.value }))} className="form-field mt-1 min-h-11" /></Field>
+            <Field label="Email"><input required type="email" value={editForm.email} onChange={(event) => setEditForm((value) => ({ ...value, email: event.target.value }))} className="form-field mt-1 min-h-11" /></Field>
+            <Field label="Kata sandi baru (opsional)"><input type="password" minLength={12} autoComplete="new-password" value={editForm.password} onChange={(event) => setEditForm((value) => ({ ...value, password: event.target.value }))} className="form-field mt-1 min-h-11" /><span className="mt-1 block text-xs font-medium text-slate-500">Kosongkan jika kata sandi tidak diubah.</span></Field>
+            <Field label="Konfirmasi kata sandi admin utama"><input required type="password" autoComplete="current-password" value={editForm.superAdminPassword} onChange={(event) => setEditForm((value) => ({ ...value, superAdminPassword: event.target.value }))} className="form-field mt-1 min-h-11" /></Field>
+            <ModalActions busy={busy} onCancel={() => setEditTarget(null)} confirm="Simpan perubahan" />
+          </form>
+        </Modal>
+      )}
+
+      {statusTarget && (
+        <Modal title={`${statusTarget.status === "active" ? "Nonaktifkan" : "Aktifkan"} ${statusTarget.name}?`} onClose={() => setStatusTarget(null)}>
+          <form onSubmit={changeStatus} className="space-y-4">
+            <p className="text-sm leading-6 text-slate-600">Perubahan status langsung memengaruhi akses login dan dicatat di audit sistem.</p>
+            <Field label="Kata sandi admin utama"><input required type="password" autoComplete="current-password" value={statusPassword} onChange={(event) => setStatusPassword(event.target.value)} className="form-field mt-1 min-h-11" /></Field>
+            <ModalActions busy={busy} onCancel={() => setStatusTarget(null)} confirm="Konfirmasi status" />
+          </form>
+        </Modal>
+      )}
+
+      {deleteTarget && (
+        <Modal title={`Hapus akun ${deleteTarget.name}?`} onClose={() => setDeleteTarget(null)}>
+          <form onSubmit={remove} className="space-y-4">
+            <p className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold leading-6 text-rose-800">Akun tidak dapat login lagi dan hilang dari daftar. Riwayat audit/operasional tetap disimpan tanpa mengekspos identitas akun yang dihapus.</p>
+            <Field label="Kata sandi admin utama"><input required type="password" autoComplete="current-password" value={deletePassword} onChange={(event) => setDeletePassword(event.target.value)} className="form-field mt-1 min-h-11" /></Field>
+            <ModalActions busy={busy} onCancel={() => setDeleteTarget(null)} confirm="Hapus permanen" danger />
+          </form>
+        </Modal>
+      )}
+
+      <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5">
+        <div className="flex items-start gap-3">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-indigo-50 text-indigo-700"><UserCog size={20} /></span>
+          <div><h2 className="text-xl font-black text-slate-900">Akun admin</h2><p className="mt-1 text-sm leading-6 text-slate-600">Admin utama dapat menambah, melihat, mengedit, mengubah status, dan menghapus admin lain.</p></div>
+        </div>
+
+        <div className="mt-5 space-y-3">
+          {loading ? <div className="grid min-h-32 place-items-center text-sm font-bold text-slate-500"><Loader2 className="animate-spin" /></div> : accounts.map((admin) => (
+            <article key={admin.id} className="flex min-w-0 flex-col gap-4 rounded-2xl border border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2"><p className="truncate font-black text-slate-900">{admin.name}</p>{admin.is_primary && <span className="rounded-full bg-orange-100 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-orange-800">Admin utama</span>}</div>
+                <p className="mt-1 break-all text-sm text-slate-500">{admin.email}</p>
+                <span className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-[10px] font-black uppercase ${admin.status === "active" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>{admin.status === "active" ? "Aktif" : "Nonaktif"}</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" disabled={busy} onClick={() => openEdit(admin)} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-slate-200 px-3 text-xs font-black text-slate-700 hover:bg-slate-50 disabled:opacity-50"><Pencil size={14} />Edit</button>
+                {!admin.is_primary && <button type="button" disabled={busy} onClick={() => setStatusTarget(admin)} className="min-h-10 rounded-xl border border-slate-200 px-3 text-xs font-black text-slate-700 hover:bg-slate-50 disabled:opacity-50">{admin.status === "active" ? "Nonaktifkan" : "Aktifkan"}</button>}
+                {!admin.is_primary && <button type="button" disabled={busy} onClick={() => setDeleteTarget(admin)} className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-rose-200 px-3 text-xs font-black text-rose-700 hover:bg-rose-50 disabled:opacity-50"><Trash2 size={14} />Hapus</button>}
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <form onSubmit={create} className="min-w-0 self-start space-y-4 rounded-2xl border border-slate-200 bg-white p-5 pb-7">
+        <div className="flex items-center gap-3"><span className="grid h-10 w-10 place-items-center rounded-2xl bg-orange-100 text-orange-700"><Plus size={18} /></span><div><h2 className="text-lg font-black text-slate-900">Tambah admin</h2><p className="text-xs font-medium text-slate-500">Akses operasional penuh, tanpa hak mengelola admin lain.</p></div></div>
+        <Field label="Nama"><input required minLength={2} maxLength={120} value={name} onChange={(event) => setName(event.target.value)} className="form-field mt-1 min-h-11" /></Field>
+        <Field label="Email"><input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} className="form-field mt-1 min-h-11" /></Field>
+        <Field label="Kata sandi admin baru"><input required type="password" minLength={12} autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} className="form-field mt-1 min-h-11" /></Field>
+        <Field label="Konfirmasi kata sandi admin utama"><input required type="password" autoComplete="current-password" value={primaryPassword} onChange={(event) => setPrimaryPassword(event.target.value)} className="form-field mt-1 min-h-11" /></Field>
+        <button type="submit" disabled={busy} className="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-orange-600 px-4 font-black text-white hover:bg-orange-700 disabled:opacity-50">{busy ? <Loader2 className="animate-spin" size={17} /> : <Plus size={17} />}{busy ? "Menyimpan…" : "Buat akun admin"}</button>
+      </form>
+    </div>
+  );
+}
+
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return <div className="fixed inset-0 z-[var(--layer-modal)] grid place-items-center bg-slate-950/65 p-4"><section role="dialog" aria-modal="true" aria-label={title} className="max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto rounded-3xl bg-white p-5 shadow-2xl sm:p-6"><div className="mb-5 flex items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-wider text-orange-700">Kelola admin</p><h2 className="mt-1 text-xl font-black text-slate-900">{title}</h2></div><button type="button" onClick={onClose} aria-label="Tutup" className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-600"><X size={18} /></button></div>{children}</section></div>;
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return <label className="block text-sm font-bold text-slate-700">{label}{children}</label>;
+}
+
+function ModalActions({ busy, onCancel, confirm, danger = false }: { busy: boolean; onCancel: () => void; confirm: string; danger?: boolean }) {
+  return <div className="flex gap-2 pt-2"><button type="button" onClick={onCancel} className="min-h-11 flex-1 rounded-xl border border-slate-300 font-bold text-slate-700">Batal</button><button disabled={busy} className={`min-h-11 flex-1 rounded-xl px-3 font-black text-white disabled:opacity-50 ${danger ? "bg-rose-600 hover:bg-rose-700" : "bg-orange-600 hover:bg-orange-700"}`}>{busy ? "Memproses…" : confirm}</button></div>;
+}

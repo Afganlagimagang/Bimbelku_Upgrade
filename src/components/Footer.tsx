@@ -35,32 +35,31 @@ export default function Footer() {
   const phone = settings.whatsapp_number?.trim() || legacy.footer_phone?.trim() || null;
   const mapHref = settings.google_maps_url || (address ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}` : null);
   const consultationHref = phone ? buildWhatsappHref(phone, settings.whatsapp_default_message) : null;
-  const teacherApplicationHref = phone ? buildWhatsappHref(phone, "Halo BimbelKu, saya ingin mendaftar sebagai tutor dan mengikuti tes/screening. Mohon informasi tahap selanjutnya.") : null;
   const logo = settings.logo_light_url || settings.logo_url;
   const navItems = settings.navigation_items.filter((item) => item.is_visible !== false);
 
   return (
     <footer id="footer" className="border-t border-slate-800 bg-[#101A31] text-white">
       <div className="mx-auto max-w-[1200px] px-5 pb-8 pt-14 sm:px-8 sm:pt-16">
-        <div className="grid gap-12 border-b border-white/10 pb-12 sm:grid-cols-2 lg:grid-cols-[1.3fr_.8fr_.8fr_1fr]">
+        <div className={`grid gap-12 border-b border-white/10 pb-12 sm:grid-cols-2 ${navItems.length ? "lg:grid-cols-[1.3fr_.8fr_.8fr_1fr]" : "lg:grid-cols-[1.3fr_.8fr_1fr]"}`}>
           <div>
             <Link to="/" className="inline-flex items-center gap-3" aria-label={`${settings.brand_name}, halaman utama`}>
               {logo ? <img src={logo} alt="" loading="lazy" decoding="async" className="h-11 w-auto max-w-[11rem] object-contain" /> : <span className="grid h-11 w-11 place-items-center rounded-xl bg-orange-500 text-white"><BookOpenCheck size={23} /></span>}
               {!logo && <span className="text-2xl font-extrabold">{settings.brand_name}</span>}
             </Link>
             <p className="mt-5 max-w-sm text-sm leading-7 text-slate-300">{settings.brand_description || "Bimbingan belajar SD–SMA di Yogyakarta dengan pilihan belajar online dan offline."}</p>
-            {socials.length > 0 && <div className="mt-6 flex flex-wrap gap-2">{socials.map((social) => <a key={social.id} href={social.link} target="_blank" rel="noreferrer" aria-label={social.name} className="grid h-10 w-10 place-items-center rounded-xl border border-white/15 text-slate-300 transition hover:border-orange-400 hover:text-white"><SocialLogo iconKey={social.icon_key} iconUrl={social.icon_url} className="h-5 w-5 object-contain" /></a>)}</div>}
+            {socials.length > 0 && <div className="mt-6 flex flex-wrap gap-2">{socials.map((social) => <a key={social.id} href={social.link} target="_blank" rel="noreferrer" aria-label={social.name} className="grid h-10 w-10 place-items-center rounded-xl border border-white/15 bg-white text-slate-900 transition hover:bg-orange-100 hover:border-orange-400"><SocialLogo iconKey={social.icon_key} iconUrl={social.icon_url} className="h-5 w-5 object-contain" /></a>)}</div>}
           </div>
 
-          <FooterGroup title="Jelajahi">
+          {navItems.length > 0 && <FooterGroup title="Jelajahi">
             {navItems.slice(0, 5).map((item) => <li key={item.key}><a href={item.url} className="footer-public-link">{item.label}</a></li>)}
-          </FooterGroup>
+          </FooterGroup>}
 
           <FooterGroup title="Program populer">
             <li><StudentPackageLink to="/student/packages/new?subject_name=Matematika" className="footer-public-link">Matematika</StudentPackageLink></li>
             <li><StudentPackageLink to="/student/packages/new?subject_name=Bahasa%20Inggris" className="footer-public-link">Bahasa Inggris</StudentPackageLink></li>
             <li><StudentPackageLink to="/student/packages/new?subject_name=Fisika" className="footer-public-link">Fisika</StudentPackageLink></li>
-            {teacherApplicationHref && <li><a href={teacherApplicationHref} target="_blank" rel="noreferrer" className="footer-public-link">Gabung jadi tutor</a></li>}
+            <li><Link to="/jadi-tutor" className="footer-public-link">Gabung jadi tutor</Link></li>
           </FooterGroup>
 
           <div>
