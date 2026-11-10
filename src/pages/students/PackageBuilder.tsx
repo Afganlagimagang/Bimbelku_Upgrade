@@ -833,10 +833,15 @@ export default function PackageBuilder() {
       notify.error("Pilih mapel, jenjang, mode, tanggal mulai, dan hari belajar terlebih dahulu.");
       return;
     }
+    if (mode === "offline" && (selectedLocation?.latitude == null || selectedLocation?.longitude == null || (isGuest && !guestLocation.location_consent))) {
+      notify.error("Lengkapi titik lokasi dan persetujuan lokasi sebelum mencari jam terbaik untuk kelas tatap muka.");
+      openLocationSetup();
+      return;
+    }
     setRecommendationLoading((current) => ({ ...current, [item.key]: true }));
     const { default: http, getApiError } = await import("@/lib/http");
     try {
-      const response = await http.post<ScheduleRecommendationResponse>("/student/schedule-recommendations", {
+      const response = await http.post<ScheduleRecommendationResponse>(isGuest ? "/guest/schedule-recommendations" : "/student/schedule-recommendations", {
         curriculum_subject_id: item.curriculum_subject_id,
         education_level: level,
         grade,
@@ -846,6 +851,11 @@ export default function PackageBuilder() {
         weekdays: item.weekdays,
         session_count: item.session_count,
         current_time: item.schedule_time || undefined,
+        ...(isGuest && mode === "offline" ? {
+          latitude: guestLocation.latitude,
+          longitude: guestLocation.longitude,
+          location_consent: guestLocation.location_consent,
+        } : {}),
       });
       setScheduleRecommendations((current) => ({ ...current, [item.key]: response.data }));
     } catch (error) {

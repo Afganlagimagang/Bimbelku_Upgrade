@@ -16,6 +16,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Support\XenditPayoutChannelCatalog;
 use App\Services\TeacherPayoutService;
+use App\Services\TeacherBankAccountService;
 use RuntimeException;
 
 class TeacherOperationsController extends Controller
@@ -172,24 +173,33 @@ class TeacherOperationsController extends Controller
             ]));
     }
 
-    public function requestPayout(Request $request, TeacherPayoutService $payouts)
+    public function requestPayout(Request $request, TeacherPayoutService $payouts, TeacherBankAccountService $bankAccounts)
     {
+        $includesBank = $request->hasAny(['payout_channel_code', 'bank_name', 'account_number', 'account_name', 'address', 'current_password']);
+        if ($includesBank && ! $request->filled('address')) {
+            $savedAddress = $request->user()->fresh()->address;
+            if (filled($savedAddress)) {
+                $request->merge(['address' => $savedAddress]);
+            }
+        }
         $validated = $request->validate([
             'amount' => ['nullable', 'numeric', 'min:'.TeacherPayoutService::MINIMUM_AMOUNT],
-        ]);
+            ...($includesBank ? $bankAccounts->rules() : []),
+            ...($includesBank ? ['address' => ['required', 'string', 'max:255', 'regex:/\pL/u']] : []),
+        ], $bankAccounts->messages());
         $teacher = $request->user();
         $amount = isset($validated['amount'])
             ? round((float) $validated['amount'], 2)
             : $payouts->availableAmount((int) $teacher->id);
 
         try {
-            $result = $payouts->request($teacher, $amount);
+            $result = $payouts->request($teacher, $amount, $includesBank ? $validated : null);
         } catch (RuntimeException $exception) {
             return response()->json(['message' => $exception->getMessage()], 422);
         }
 
         return response()->json([
-            'message' => 'Pencairan sedang dikirim otomatis ke rekening terdaftar.',
+            'message' => 'Permintaan pencairan tercatat. Pantau status transfer di Dompet Tutor.',
             'data' => [
                 'id' => $result['request']->id,
                 'requested_amount' => (float) $result['request']->requested_amount,

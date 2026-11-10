@@ -31,7 +31,7 @@ Path backend di bawah relatif ke `bimbelku-backend/`. Route resmi: `routes/api.p
 | 11 Perpanjangan | paket lama -> /student/packages/new; StudentPackageController, PackageCheckoutService | DemoPackageRenewalCommandTest, PaymentJourneyDemoTest |
 | 12 Kelas bersama | /student/kelas-murah, /guru/kelas, /admin/kelas-murah; CheapClassController, TeacherCheapClassController, AdminCheapClassController, CheapClassService | CheapClassWorkflowTest, CheapClassPaymentLifecycleTest, CheapClassRecurringEngineTest, CheapClassTutorIsolationTest |
 | 13 Refund | /student/history, /admin/finance?tab=refunds; StudentRefundController, RefundSettlementService | XenditMoneyFlowTest, TeacherReplacementWorkflowTest, StageSixCFinanceOperationsTest |
-| 14 Pencairan | /guru/dompet, /guru/pencairan/rekening; TeacherOperationsController, TeacherPayoutService, BankAccountNameVerifier | XenditMoneyFlowTest, StageThreeFinanceSecurityTest, StageSixBTeacherOperationsTest |
+| 14 Pencairan | /guru/dompet, /guru/pencairan/rekening; TeacherOperationsController, TeacherPayoutService, XenditMoneyMovementService | XenditMoneyFlowTest, StageThreeFinanceSecurityTest, StageSixBTeacherOperationsTest |
 | 15 Progress/ulasan | /student/progress, /guru/progress/package-subject/:id; RatingController, LearningSessionController | SessionRatingSubmissionTest, LearningProgramProductTest, PublicWebsiteCmsTest |
 | 16 Voucher | /student/vouchers dan ringkasan pesanan; StudentPackageController, PackageCheckoutService | StageFivePackageExperienceTest, StageTwoCustomerWalletPaymentTest |
 | ADM Operasional | /admin/users, /admin/subjects, /admin/stage-five, /admin/finance, /admin/website-media, /admin/public-tutors | StageSixCAdminOperationsTest, CurriculumSubjectGroupTest, AdminFinanceAndTeacherScheduleTest, WebsiteTutorGalleryTest, TeacherCoverSettingsTest |
@@ -183,9 +183,9 @@ Nama controller/service merujuk `app/Http/Controllers/Api/`, `app/Services/`, at
 | CASH-01 | 8 | 14 | TUTOR | API+UI | Sesi approved/unapproved/disputed | Hanya hak pendapatan yang sah dapat ditarik | BELUM | — |
 | CASH-02 | 8 | 14 | TUTOR | API+UI | Nominal 9999/10000/saldo/lebih saldo | Batas minimum dan saldo ditegakkan server | BELUM | — |
 | CASH-03 | 8 | 14 | TUTOR | API+UI | Nominal -> rekening -> ajukan langsung | Tidak perlu tombol simpan terpisah/persetujuan admin rutin | BELUM | — |
-| CASH-04 | 8 | 14 | TUTOR | API+UI | Nama rekening beda/alamat kosong/hold rekening | Ditahan dengan alasan jelas, saldo aman | BELUM | — |
+| CASH-04 | 8 | 14 | TUTOR | API+UI | Nama rekening berbeda dari akun, alamat kosong atau password salah | Nama rekening sesuai input tutor; alamat/password wajib; satu tombol mengirim tanpa hold 24 jam | BELUM | Tes API simulasi lulus; uji browser penyedia belum selesai |
 | CASH-05 | 8 | 14 | TUTOR | API+UI | Name verifier belum tersedia | Fail closed, bukan membandingkan teks sebagai bukti bank | BELUM | — |
-| CASH-06 | 8 | 14 | TUTOR | API+UI+SANDBOX | Transfer bank dengan verifikasi nama nyata | Nama diperiksa provider dan transfer sukses tanpa admin rutin | TERHALANG | BankAccountNameVerifier selalu false |
+| CASH-06 | 8 | 14 | TUTOR | API+UI+SANDBOX | Transfer bank lewat Xendit tanpa pemeriksaan kepemilikan otomatis | Nama sesuai input tutor, transfer final mengikuti webhook Xendit | BELUM | Tes simulasi lulus; uji akun penyedia nyata belum selesai |
 | CASH-07 | 8 | 14 | SISTEM | API | Payout gagal atau respons ambigu | Gagal terminal melepas saldo; ambigu tetap reserved sampai pasti | BELUM | — |
 | CASH-08 | 8 | 14 | TUTOR | API+UI | Tarik sebagian/berulang/dua request bersamaan | Sisa saldo benar; tidak mengalokasikan pendapatan dua kali | BELUM | — |
 | CASH-09 | 8 | 14 | SISTEM | API | Potongan pajak dan callback duplikat | Nominal kirim dan laporan benar, penyelesaian satu kali | BELUM | — |
@@ -233,7 +233,7 @@ Nama controller/service merujuk `app/Http/Controllers/Api/`, `app/Services/`, at
 | E2E-05 | 9 | QA | PEMILIK | UI+SANDBOX+CLOCK | Renewal paket sampai selesai | Satu tagihan baru, riwayat lama utuh | BELUM | — |
 | E2E-06 | 9 | QA | PEMILIK | UI+SANDBOX+CLOCK | Ganti tutor lalu kelas selesai | Tanpa tagihan kedua, pembagian pendapatan benar | BELUM | — |
 | E2E-07 | 9 | QA | MURID | UI+SANDBOX | No teacher -> cari lagi/jadwal/batal/refund | Seluruh cabang memiliki hasil akhir yang konsisten | BELUM | — |
-| E2E-08 | 9 | QA | TUTOR | UI+SANDBOX | Saldo sesi -> penarikan -> bank | Verifikasi bank nyata dan status transfer final | TERHALANG | BankAccountNameVerifier selalu false |
+| E2E-08 | 9 | QA | TUTOR | UI+SANDBOX | Saldo sesi -> penarikan -> bank | Tujuan dikonfirmasi tutor, status transfer final dari webhook Xendit | BELUM | Tes simulasi lulus; uji akun penyedia nyata belum selesai |
 
 ## Partisi data dan kombinasi yang wajib
 

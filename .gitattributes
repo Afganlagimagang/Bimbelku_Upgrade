@@ -1,0 +1,7 @@
+# Keep source tests in Git; omit development-only files from git archive.
+/e2e export-ignore
+/bimbelku-backend/tests export-ignore
+/bimbelku-backend/phpunit.xml export-ignore
+/bimbelku-backend/database/factories export-ignore
+/bimbelku-backend/resources/demo export-ignore
+/bimbelku-backend/app/Console/Commands/Demo*.php export-ignore

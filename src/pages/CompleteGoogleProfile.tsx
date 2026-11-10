@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowRight, Check, Loader2, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpenCheck, Check, Loader2, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import http, { getApiError } from "@/lib/http";
@@ -15,6 +15,7 @@ export default function CompleteGoogleProfile() {
   const [privacy, setPrivacy] = useState(false);
 
   const finish = async () => {
+    if (loading || !terms || !privacy) return;
     setLoading(true);
     try {
       const response = await http.post("/auth/google/complete-profile", { terms_accepted: terms, privacy_accepted: privacy });
@@ -31,8 +32,63 @@ export default function CompleteGoogleProfile() {
     finally { setLoading(false); }
   };
 
-  return <main className="min-h-screen bg-[#F7F1E8] px-4 py-10"><div className="mx-auto grid max-w-4xl overflow-hidden rounded-3xl bg-white shadow-2xl lg:grid-cols-2"><aside className="bg-[#14213D] p-8 text-white sm:p-10"><ShieldCheck size={32} className="text-orange-300" /><p className="mt-10 text-xs font-extrabold uppercase tracking-wider text-orange-300">Email sudah diverifikasi Google</p><h1 className="mt-3 text-3xl font-extrabold">Akunmu siap dipakai tanpa mengisi formulir panjang.</h1><div className="mt-7 space-y-3">{["Pesanan dengan email yang sama dapat dihubungkan", "Data sekolah dan alamat dapat diisi di Profil", "Lokasi baru wajib ketika memilih kelas tatap muka"].map((item) => <p key={item} className="flex gap-3 text-sm font-bold text-slate-200"><Check size={17} className="shrink-0 text-orange-300" />{item}</p>)}</div></aside><section className="p-7 sm:p-10"><p className="text-xs font-extrabold uppercase tracking-wider text-orange-700">Persetujuan akun</p><h2 className="mt-3 text-3xl font-extrabold text-[#14213D]">Satu langkah singkat.</h2><p className="mt-3 text-sm leading-6 text-slate-600">Data tambahan tidak ditahan di halaman ini. Setelah masuk, buka menu Profil untuk melengkapinya.</p><div className="mt-8 space-y-4"><Consent checked={terms} onChange={setTerms}>Saya menyetujui <Link className="font-extrabold text-orange-700" to="/terms">Syarat dan Ketentuan</Link>.</Consent><Consent checked={privacy} onChange={setPrivacy}>Saya menyetujui <Link className="font-extrabold text-orange-700" to="/privacy">Kebijakan Privasi</Link>.</Consent></div><Button type="button" onClick={finish} disabled={loading || !terms || !privacy} className="mt-8 w-full rounded-xl bg-orange-600 py-6 font-extrabold hover:bg-orange-700">{loading ? <Loader2 className="mr-2 animate-spin" size={18} /> : <ArrowRight className="mr-2" size={18} />}Masuk dan lengkapi profil</Button></section></div></main>;
+  return (
+    <main className="min-h-dvh bg-[#f7f1e8] px-4 py-5 text-[#14213d] sm:px-6 sm:py-8 lg:grid lg:place-items-center lg:py-12">
+      <div className="mx-auto w-full max-w-4xl">
+        <header className="mb-5 flex items-center justify-between gap-3 sm:mb-6">
+          <Link to="/" aria-label="BimbelKu, kembali ke beranda" className="inline-flex min-h-11 items-center gap-2.5 rounded-xl font-extrabold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-600 focus-visible:ring-offset-4">
+            <span className="grid h-10 w-10 place-items-center rounded-xl bg-[#14213d] text-[#f6ba89]"><BookOpenCheck size={21} /></span>
+            <span className="text-lg tracking-tight">Bimbel<span className="text-orange-700">Ku</span></span>
+          </Link>
+          <span className="rounded-full border border-[#e5d9ca] bg-white/70 px-3 py-2 text-[11px] font-bold text-slate-600">Langkah 2 dari 2</span>
+        </header>
+
+        <div className="overflow-hidden rounded-[1.5rem] border border-[#e7ded2] bg-white shadow-[0_12px_40px_-16px_rgba(20,33,61,0.2)] sm:rounded-[2rem] lg:grid lg:grid-cols-[0.9fr_1.1fr]">
+          <aside className="relative overflow-hidden bg-[#14213d] p-5 text-white sm:p-7 lg:flex lg:flex-col lg:p-9">
+            <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-20 h-52 w-52 rounded-full border border-white/10" />
+            <div aria-hidden="true" className="pointer-events-none absolute -right-6 -top-10 h-32 w-32 rounded-full border border-[#f6ba89]/20" />
+            <div className="relative flex items-center gap-2 text-xs font-bold text-[#c3e8d7]"><ShieldCheck size={17} className="shrink-0" />Email terverifikasi oleh Google</div>
+            <h2 className="relative mt-3 max-w-xs text-xl font-extrabold leading-snug tracking-tight sm:text-2xl lg:mt-8 lg:text-3xl">Tinggal satu langkah lagi.</h2>
+            <p className="relative mt-2 max-w-sm text-[13px] leading-6 text-slate-300 lg:mt-4 lg:text-sm">Setujui ketentuan akun, lalu mulai perjalanan belajarmu.</p>
+            <ul className="relative mt-8 hidden space-y-5 lg:block">
+              {["Pesanan dengan email yang sama dapat dihubungkan", "Profil sekolah dan alamat bisa dilengkapi nanti", "Lokasi diperlukan saat memilih kelas tatap muka"].map((item) => <li key={item} className="flex items-start gap-3 text-sm leading-6 text-slate-200"><Check size={17} className="mt-1 shrink-0 text-[#f6ba89]" /><span>{item}</span></li>)}
+            </ul>
+            <BookOpenCheck aria-hidden="true" size={64} strokeWidth={1} className="relative mt-auto hidden pt-8 text-[#f6ba89]/50 lg:block lg:h-28 lg:w-20" />
+          </aside>
+
+          <section aria-labelledby="consent-title" className="p-5 sm:p-7 lg:p-9">
+            <p className="text-[10px] font-extrabold uppercase tracking-[.16em] text-orange-700">Persetujuan akun</p>
+            <h1 id="consent-title" className="mt-2 text-2xl font-extrabold leading-tight tracking-tight sm:text-[1.75rem]">Siap mulai belajar?</h1>
+            <p className="mt-3 text-sm leading-6 text-slate-500">Baca dan setujui kedua kebijakan berikut untuk mengaktifkan akunmu.</p>
+
+            <div className="mt-5 space-y-3">
+              <Consent checked={terms} onChange={setTerms} disabled={loading}>
+                <span className="block text-xs font-medium text-slate-500">Saya menyetujui</span>
+                <Link className="mt-0.5 inline-block font-bold text-[#14213d] underline decoration-slate-300 underline-offset-4 hover:text-orange-700 focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-600" to="/terms" target="_blank" rel="noopener noreferrer">Syarat dan Ketentuan<span className="sr-only"> (buka di tab baru)</span></Link>
+              </Consent>
+              <Consent checked={privacy} onChange={setPrivacy} disabled={loading}>
+                <span className="block text-xs font-medium text-slate-500">Saya menyetujui</span>
+                <Link className="mt-0.5 inline-block font-bold text-[#14213d] underline decoration-slate-300 underline-offset-4 hover:text-orange-700 focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-600" to="/privacy" target="_blank" rel="noopener noreferrer">Kebijakan Privasi<span className="sr-only"> (buka di tab baru)</span></Link>
+              </Consent>
+            </div>
+
+            <p aria-live="polite" className="mt-4 text-xs leading-5 text-slate-500">{terms && privacy ? "Kedua persetujuan sudah dipilih. Kamu bisa melanjutkan." : "Centang kedua persetujuan untuk melanjutkan."}</p>
+            <Button type="button" onClick={finish} disabled={loading || !terms || !privacy} aria-busy={loading} className="mt-4 min-h-[3.25rem] w-full rounded-xl bg-[#df622b] px-4 py-4 text-sm font-extrabold text-white shadow-none hover:bg-[#c44f1d] disabled:bg-slate-200 disabled:text-slate-500 disabled:opacity-100">
+              {loading ? <Loader2 className="animate-spin" size={18} /> : null}
+              {loading ? "Menyiapkan akun..." : "Setuju & lanjutkan"}
+              {!loading && <ArrowRight size={18} />}
+            </Button>
+            <p className="mt-4 text-center text-xs leading-5 text-slate-500">Data sekolah dan alamat bisa diisi nanti di Profil.</p>
+          </section>
+        </div>
+
+        <Link to="/" className="mx-auto mt-4 flex min-h-11 w-fit items-center gap-2 rounded-lg px-3 text-xs font-bold text-slate-500 hover:text-[#14213d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-600"><ArrowLeft size={14} />Kembali ke beranda</Link>
+      </div>
+    </main>
+  );
 }
 
-function Consent({ checked, onChange, children }: { checked: boolean; onChange: (value: boolean) => void; children: React.ReactNode }) { return <label className="flex cursor-pointer items-start gap-3 text-sm leading-6 text-slate-600"><Checkbox checked={checked} onCheckedChange={(value) => onChange(value === true)} className="mt-1" /><span>{children}</span></label>; }
+function Consent({ checked, onChange, disabled, children }: { checked: boolean; onChange: (value: boolean) => void; disabled: boolean; children: ReactNode }) {
+  return <label className={`flex min-h-[4.5rem] cursor-pointer items-center gap-3 rounded-xl border p-3.5 text-sm leading-6 transition-colors focus-within:ring-2 focus-within:ring-orange-600/30 ${checked ? "border-orange-300 bg-orange-50/70" : "border-slate-200 bg-white hover:border-orange-200"} ${disabled ? "cursor-wait" : ""}`}><Checkbox checked={checked} onCheckedChange={(value) => onChange(value === true)} disabled={disabled} className="h-5 w-5 rounded-md border-2 border-slate-300 data-[state=checked]:border-orange-600 data-[state=checked]:bg-orange-600" /><span className="min-w-0">{children}</span></label>;
+}
 function safeRedirect(value: string | null) { if (!value?.startsWith("/") || value.startsWith("//")) return null; const path = value.split(/[?#]/, 1)[0]; return path === "/search" || path === "/payment" || path.startsWith("/student/") || path.startsWith("/pesanan/") ? value : null; }

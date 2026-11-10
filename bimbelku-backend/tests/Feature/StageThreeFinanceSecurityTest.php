@@ -91,7 +91,7 @@ class StageThreeFinanceSecurityTest extends TestCase
         $journal->update(['description' => 'Tidak boleh diubah']);
     }
 
-    public function test_teacher_bank_change_requires_password_and_holds_payout(): void
+    public function test_teacher_bank_change_requires_password_without_delaying_payout(): void
     {
         $teacher = User::factory()->create([
             'role' => 'teacher',
@@ -111,12 +111,12 @@ class StageThreeFinanceSecurityTest extends TestCase
             ->assertJsonStructure(['payout_hold_until']);
 
         $profile = $teacher->teacherProfile()->firstOrFail();
-        $this->assertTrue($profile->payout_hold_until->isFuture());
+        $this->assertNull($profile->payout_hold_until);
         $this->assertSame(1, $profile->bank_details_version);
         $this->assertNotNull($profile->bank_account_fingerprint);
     }
 
-    public function test_teacher_cannot_save_bank_holder_name_different_from_account_name(): void
+    public function test_teacher_can_save_bank_holder_name_different_from_display_name_with_password(): void
     {
         $teacher = User::factory()->create([
             'role' => 'teacher', 'status' => 'active', 'password' => Hash::make('TeacherPass123!'),
@@ -128,9 +128,28 @@ class StageThreeFinanceSecurityTest extends TestCase
             'bank_name' => 'BCA', 'account_number' => '1234567890',
             'account_name' => 'Nama Berbeda', 'current_password' => 'TeacherPass123!',
         ], ['Idempotency-Key' => 'bank-name-mismatch-0001'])
-            ->assertStatus(422)
-            ->assertJsonPath('message', 'Nama pemilik rekening harus sama dengan nama akun tutor. Pastikan nama akun sesuai KTP sebelum melanjutkan.');
-        $this->assertNull($teacher->teacherProfile()->firstOrFail()->account_number);
+            ->assertOk();
+        $profile = $teacher->teacherProfile()->firstOrFail();
+        $this->assertSame('Nama Berbeda', $profile->account_name);
+        $this->assertSame('1234567890', $profile->account_number);
+        $this->assertNull($profile->payout_hold_until);
+    }
+
+    public function test_bank_change_still_requires_the_correct_password(): void
+    {
+        $teacher = User::factory()->create([
+            'role' => 'teacher', 'status' => 'active', 'password' => Hash::make('TeacherPass123!'),
+        ]);
+        $profile = TeacherProfile::create(['user_id' => $teacher->id, 'bank_name' => 'BCA',
+            'account_number' => '0012345678', 'account_name' => 'Nama Pemilik Lama']);
+        Sanctum::actingAs($teacher);
+        $this->postJson('/api/teacher/bank', [
+            'payout_channel_code' => 'BCA', 'account_number' => '9988776655',
+            'account_name' => 'Nama Pemilik Baru', 'current_password' => 'WrongPassword!',
+        ], ['Idempotency-Key' => 'bank-wrong-password-0001'])
+            ->assertStatus(422)->assertJsonPath('message', 'Kata sandi akun tidak sesuai.');
+        $this->assertSame('0012345678', $profile->fresh()->account_number);
+        $this->assertSame('Nama Pemilik Lama', $profile->fresh()->account_name);
     }
 
     public function test_admin_cannot_manually_trigger_teacher_payout(): void

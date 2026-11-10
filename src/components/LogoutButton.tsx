@@ -16,7 +16,7 @@ export default function LogoutButton({ accent = "student", className = "" }: Log
       : "focus-visible:ring-blue-500";
 
   return (
-    <section className={`rounded-[1.75rem] border border-slate-100 bg-white p-4 shadow-sm sm:p-5 ${className}`}>
+    <section className={`rounded-[1.75rem] border border-slate-100 bg-white p-4 pb-6 shadow-sm sm:p-5 sm:pb-7 ${className}`}>
       <div className="flex items-start gap-3">
         <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-rose-50 text-rose-600"><LogOut size={19} /></span>
         <div className="min-w-0">

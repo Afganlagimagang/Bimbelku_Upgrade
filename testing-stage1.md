@@ -143,7 +143,7 @@ Validator matriks: **190 ID unik**, 16 alur layanan + PRE/ADM/PUB/QA, semua semb
 | ID temuan | Kondisi | Dampak / tahap pemilik |
 | --- | --- | --- |
 | READY-01 | Satu migrasi program belum diterapkan | Sebelum UI tahap 3, backup database lokal dan terapkan migrasi yang sudah ada secara terarah; jangan migrate:fresh/reset. Schema memiliki prasyarat education_levels untuk kode baru. Belum diterapkan pada tahap 1 ini. |
-| READY-02 | BankAccountNameVerifier::available dan matches selalu false | **Implementasi verifikasi nama bank belum tersedia**, bukan cukup mengaktifkan env. CASH-06/E2E-08 terhalang; tahap 8 harus menghubungkan layanan provider sebelum mengklaim transfer sungguhan lulus. Guard tidak boleh dimatikan. |
+| READY-02 | Pencairan tutor tanpa Iluma | Satu tombol menyimpan rekening/alamat dan mengirim ke Xendit tanpa hold 24 jam. Kepemilikan tidak diperiksa otomatis; password, konfirmasi tujuan, saldo dan idempotensi tetap berlaku. CASH-06/E2E-08 menunggu uji penyedia nyata; ikuti PANDUAN-VERIFIKASI-REKENING.md. |
 | READY-03 | Frontend/backend tidak sedang berjalan | Jalankan preview sebelum uji browser tahap 2. Jangan klaim halaman UI sudah diperiksa dari audit ini. |
 | READY-04 | SMTP + queue database, worker tidak terdeteksi | Tahap 2 perlu memastikan pengiriman email tes dan worker dengan penerima aman. Tidak mengubah konfigurasi mail lokal atau mengirim email nyata di tahap ini. |
 | READY-05 | Scheduler tidak terdeteksi | Tenggat/matching/refund tidak boleh dinilai hanya dari tunggu UI. Uji scheduler/handler terisolasi dan jalankan runtime demo dengan batas scope yang jelas. |

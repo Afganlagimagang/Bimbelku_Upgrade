@@ -40,7 +40,7 @@ type Shortcut = {
 };
 
 const Group = ({ title, items }: { title: string; items: Shortcut[] }) => (
-  <section className="overflow-hidden rounded-[1.75rem] border border-slate-100 bg-white shadow-sm">
+  <section className="overflow-hidden rounded-[1.75rem] border border-slate-100 bg-white pb-5 shadow-sm sm:pb-6">
     <h2 className="border-b border-slate-100 px-5 py-4 text-sm font-black text-slate-900 sm:px-6">{title}</h2>
     <div className="divide-y divide-slate-100">
       {items.map(({ label, description, to, icon: Icon, action, state, attention, attentionCount }) => {
@@ -106,7 +106,7 @@ export default function Account() {
 
   return (
     <StudentLayout title="Saya">
-      <div className="mx-auto max-w-5xl space-y-5">
+      <div className="mx-auto max-w-5xl space-y-5 pb-6">
         <section data-tour="student-account-card" className="overflow-hidden rounded-[1.75rem] border border-orange-100 bg-gradient-to-br from-[#FFF7ED] via-white to-indigo-50 p-5 shadow-sm sm:rounded-[2rem] sm:p-8">
           {loading ? (
             <div className="h-24 animate-pulse rounded-3xl bg-white/10" role="status" aria-label="Memuat profil" />

@@ -367,7 +367,7 @@ npm run preview -- --port 8080
 
 ## 13. Integrasi yang masih perlu dituntaskan
 
-- **Pencairan tutor:** BankAccountNameVerifier belum terhubung ke layanan validasi bank. Mengisi key Xendit belum membuat penarikan dana tutor aktif. Jangan meloloskan verifikasi secara palsu.
+- **Pencairan tutor:** memakai Xendit Payout v3 tanpa Iluma. Pastikan key memiliki izin MONEY-OUT, webhook payout dikonfigurasi dan saldo operasional mencukupi. Nama pemilik rekening diisi sesuai data bank; kepemilikan tidak diperiksa otomatis. Ikuti [panduan pencairan](PANDUAN-VERIFIKASI-REKENING.md).
 - **Embedded payment:** belum dinyatakan lulus sebelum diuji pada HTTPS dengan kanal aktif dan CSP sesuai.
 - **Program bebas jenjang:** belum diimplementasikan; rancangan tersimpan pada panduan-hosting-untuk-teknisi.md.
 

@@ -60,6 +60,7 @@ interface ProfileState {
   email: string;
   title: string;
   location: string;
+  address: string;
   experience: string;
   bio: string;
   whatsapp_number: string;
@@ -84,6 +85,7 @@ const initialState: ProfileState = {
   email: "",
   title: "",
   location: "",
+  address: "",
   experience: "",
   bio: "",
   whatsapp_number: "",
@@ -153,6 +155,7 @@ export default function TeacherProfile() {
         email: user.email || "",
         title: teacherProfile.title || "",
         location: teacherProfile.location || "",
+        address: user.address || "",
         experience: teacherProfile.experience || "",
         bio: teacherProfile.bio || "",
         whatsapp_number: sanitizePhoneInput(teacherProfile.whatsapp_number || user.phone || ""),
@@ -274,6 +277,7 @@ export default function TeacherProfile() {
       formData.append("name", profile.name);
       formData.append("title", profile.title);
       formData.append("location", profile.location);
+      formData.append("address", profile.address);
       formData.append("experience", profile.experience);
       formData.append("bio", profile.bio);
       formData.append("whatsapp_number", profile.whatsapp_number);
@@ -497,6 +501,7 @@ export default function TeacherProfile() {
               <Field label="Pengalaman"><Input value={profile.experience} onChange={(event) => setProfile((current) => ({ ...current, experience: event.target.value }))} className="h-12 rounded-xl" placeholder="Contoh: 4 tahun" /></Field>
               <div className="md:col-span-2"><Field label="Nomor WhatsApp/telepon"><Input required inputMode="tel" autoComplete="tel" maxLength={16} value={profile.whatsapp_number} onChange={(event) => setProfile((current) => ({ ...current, whatsapp_number: sanitizePhoneInput(event.target.value) }))} className="h-12 rounded-xl" placeholder="Contoh: 0812 3456 7890" /></Field></div>
               <div className="md:col-span-2"><Field label="Kota atau wilayah tinggal"><Input value={profile.location} onChange={(event) => setProfile((current) => ({ ...current, location: event.target.value }))} className="h-12 rounded-xl" placeholder="Contoh: Jakarta Selatan" /></Field></div>
+              <div className="md:col-span-2"><Field label="Alamat lengkap untuk pencairan"><Textarea value={profile.address} onChange={(event) => setProfile((current) => ({ ...current, address: event.target.value }))} maxLength={255} autoComplete="street-address" className="min-h-24 rounded-xl" placeholder="Jalan, nomor rumah, kelurahan, kecamatan, dan kota" /><p className="mt-1 text-xs leading-5 text-slate-500">Disimpan sebagai data pribadi untuk transfer bank. Alamat ini berbeda dari kota atau wilayah tinggal.</p></Field></div>
               <div className="md:col-span-2 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4 sm:p-5">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex min-w-0 items-start gap-3">

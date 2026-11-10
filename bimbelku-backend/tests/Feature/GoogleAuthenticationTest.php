@@ -121,6 +121,70 @@ class GoogleAuthenticationTest extends TestCase
         ]);
     }
 
+    public function test_new_google_cookie_session_survives_until_policies_are_accepted(): void
+    {
+        config()->set('services.google.client_id', 'test-client');
+        config()->set('services.google.client_secret', 'test-secret');
+        config()->set('session.secure', false);
+        $origin = 'http://127.0.0.1:8080';
+        $state = 'state-for-google-cookie-onboarding';
+        Cache::put('google_oauth_state:'.hash('sha256', $state), ['redirect' => null], now()->addMinutes(10));
+        Socialite::fake('google', SocialiteUser::fake([
+            'id' => 'google-cookie-onboarding',
+            'name' => 'Murid Baru Google',
+            'email' => 'google.cookie.onboarding@example.test',
+            'verified_email' => true,
+        ]));
+
+        $callback = $this->get('/api/auth/google/callback?state='.$state)->assertRedirect();
+        parse_str((string) parse_url($callback->headers->get('Location'), PHP_URL_QUERY), $query);
+        $exchange = $this->postJson('/api/auth/google/exchange', ['code' => $query['code'] ?? ''])
+            ->assertOk()->assertJsonPath('requires_profile_completion', true);
+        $cookie = collect($exchange->headers->getCookies())
+            ->first(fn ($item) => $item->getName() === 'bimbelku_session');
+        $this->assertNotNull($cookie);
+        $this->withCredentials()->withUnencryptedCookie('bimbelku_session', $cookie->getValue())
+            ->withHeader('Origin', $origin);
+
+        $this->getJson('/api/user')->assertOk()
+            ->assertJsonPath('status', 'pending')
+            ->assertJsonPath('role', 'student')
+            ->assertJsonPath('google_onboarding_required_at', fn ($value) => $value !== null);
+        foreach (['/api/session-action/next', '/api/active-order'] as $endpoint) {
+            $this->getJson($endpoint)->assertForbidden()
+                ->assertJsonPath('error_code', 'google_onboarding_required');
+        }
+        $this->postJson('/api/auth/google/complete-profile', [
+            'terms_accepted' => false, 'privacy_accepted' => false,
+        ])->assertUnprocessable();
+        $this->getJson('/api/user')->assertOk()->assertJsonPath('status', 'pending');
+
+        $this->postJson('/api/auth/google/complete-profile', [
+            'terms_accepted' => true, 'privacy_accepted' => true,
+        ])->assertOk()->assertJsonPath('user.status', 'active');
+        $this->getJson('/api/user')->assertOk()
+            ->assertJsonPath('status', 'active')
+            ->assertJsonPath('google_onboarding_required_at', null);
+        $this->getJson('/api/session-action/next')->assertOk();
+    }
+
+    public function test_pending_or_blocked_accounts_cannot_use_google_onboarding_to_bypass_account_checks(): void
+    {
+        foreach (['pending', 'banned', 'rejected'] as $status) {
+            $user = User::factory()->create([
+                'role' => 'student',
+                'status' => $status,
+                'google_onboarding_required_at' => $status === 'pending' ? null : now(),
+            ]);
+            $token = $user->createToken('account-check')->plainTextToken;
+            $this->withHeader('Authorization', 'Bearer '.$token)->getJson('/api/user')->assertUnauthorized();
+            $this->postJson('/api/auth/google/complete-profile', [
+                'terms_accepted' => true, 'privacy_accepted' => true,
+            ])->assertForbidden();
+            $this->assertSame($status, $user->fresh()->status);
+        }
+    }
+
     public function test_verified_teacher_can_login_with_existing_google_email(): void
     {
         config()->set('services.google.client_id', 'test-client');

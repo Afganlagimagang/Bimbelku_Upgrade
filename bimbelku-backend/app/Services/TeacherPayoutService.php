@@ -20,7 +20,7 @@ class TeacherPayoutService
 
     public function __construct(
         private readonly XenditMoneyMovementService $gateway,
-        private readonly BankAccountNameVerifier $bankNameVerifier,
+        private readonly TeacherBankAccountService $bankAccounts,
     ) {}
 
     public function availableAmount(int $teacherId): float
@@ -34,42 +34,53 @@ class TeacherPayoutService
     }
 
     /** @return array{request:TeacherPayoutRequest,payout:Payout} */
-    public function request(User $teacher, float $requestedAmount): array
+    public function request(User $teacher, float $requestedAmount, ?array $bankData = null): array
     {
         if ($requestedAmount < self::MINIMUM_AMOUNT) {
             throw new RuntimeException('Nominal pencairan minimal Rp10.000.');
         }
-
-        $teacher->loadMissing('teacherProfile');
-        $profile = $teacher->teacherProfile;
-        $channelCode = $profile?->payout_channel_code ?: XenditPayoutChannelCatalog::inferCode($profile?->bank_name);
-        if (! $profile || blank($channelCode) || blank($profile->account_number) || blank($profile->account_name)) {
-            throw new RuntimeException('Lengkapi rekening pencairan yang didukung sebelum menarik saldo.');
-        }
-        if (blank($teacher->address)) {
-            throw new RuntimeException('Lengkapi alamat asli pada profil tutor sebelum menarik saldo. Data ini diperlukan untuk transfer bank.');
-        }
-        if ($profile->payout_hold_until?->isFuture()) {
-            throw new RuntimeException('Pencairan ditahan sampai '.$profile->payout_hold_until->translatedFormat('d M Y, H:i').' WIB setelah perubahan rekening.');
-        }
-        $normalizeName = static fn (string $name): string => mb_strtolower(trim(preg_replace('/\s+/u', ' ', $name) ?? $name));
-        if ($normalizeName((string) $profile->account_name) !== $normalizeName((string) $teacher->name)) {
-            throw new RuntimeException('Nama pada rekening tersimpan berbeda dari nama akun tutor. Periksa identitas dan rekening tujuan.');
-        }
-        if (! $this->bankNameVerifier->available() || ! $this->bankNameVerifier->matches((string) $channelCode, (string) $profile->account_number, (string) $teacher->name)) {
-            throw new RuntimeException('Pencairan belum dapat dikirim: verifikasi nama pemilik rekening langsung dari bank belum tersedia atau belum cocok. Saldo Anda tetap aman.');
-        }
         if (! $this->gateway->configured()) {
             throw new RuntimeException('Layanan pencairan otomatis belum siap. Hubungi pengelola BimbelKu.');
         }
+        if ($requestedAmount > $this->availableAmount($teacher->id) + 0.009) {
+            throw new RuntimeException('Nominal pencairan melebihi saldo tersedia.');
+        }
+        if ($bankData !== null) {
+            $this->bankAccounts->save($teacher, $bankData);
+        }
 
-        $records = DB::transaction(function () use ($teacher, $requestedAmount, $channelCode) {
+        $teacher->load('teacherProfile');
+        $profile = $teacher->teacherProfile;
+        $channelCode = $profile?->payout_channel_code ?: XenditPayoutChannelCatalog::inferCode($profile?->bank_name);
+        if (! $profile || blank($channelCode) || ! XenditPayoutChannelCatalog::get((string) $channelCode)
+            || ! preg_match('/^[0-9]{8,20}$/D', (string) $profile->account_number) || blank($profile->account_name)) {
+            throw new RuntimeException('Lengkapi rekening pencairan yang didukung sebelum menarik saldo.');
+        }
+        if (blank($teacher->address)) {
+            throw new RuntimeException('Isi alamat lengkap pada formulir pencairan. Alamat ini diperlukan untuk transfer bank.');
+        }
+        $normalizeName = static fn (string $name): string => mb_strtolower(trim(preg_replace('/\s+/u', ' ', $name) ?? $name));
+        // Use the bank holder supplied by the tutor, not their display name.
+        // Ownership is not verified automatically; keep the confirmed destination
+        // stable while reserving funds and creating the transfer snapshot.
+        $confirmedAccount = (string) ($bankData['account_number'] ?? $profile->account_number);
+        $confirmedHolder = $normalizeName((string) ($bankData['account_name'] ?? $profile->account_name));
+        $confirmedChannel = $bankData !== null
+            ? ($bankData['payout_channel_code'] ?? XenditPayoutChannelCatalog::inferCode($bankData['bank_name'] ?? null))
+            : $channelCode;
+        $records = DB::transaction(function () use ($teacher, $requestedAmount, $confirmedChannel, $confirmedAccount, $confirmedHolder, $normalizeName) {
+            $lockedTeacher = User::query()->lockForUpdate()->findOrFail($teacher->id);
             $profile = TeacherProfile::query()->where('user_id', $teacher->id)->lockForUpdate()->firstOrFail();
-            if ($profile->payout_hold_until?->isFuture()) {
-                throw new RuntimeException('Pencairan masih ditahan setelah perubahan rekening.');
+            $currentChannel = $profile->payout_channel_code ?: XenditPayoutChannelCatalog::inferCode($profile->bank_name);
+            if ($lockedTeacher->role !== 'teacher' || $lockedTeacher->status !== 'active') {
+                throw new RuntimeException('Akun tutor sedang tidak aktif. Pencairan belum dapat dikirim.');
+            }
+            if ($currentChannel !== $confirmedChannel || (string) $profile->account_number !== $confirmedAccount
+                || $normalizeName((string) $profile->account_name) !== $confirmedHolder) {
+                throw new RuntimeException('Data rekening berubah saat pencairan diproses. Muat ulang dan periksa tujuan transfer kembali.');
             }
             if (blank($profile->payout_channel_code)) {
-                $profile->forceFill(['payout_channel_code' => $channelCode])->save();
+                $profile->forceFill(['payout_channel_code' => $confirmedChannel])->save();
             }
 
             $bookings = Booking::query()
@@ -126,7 +137,7 @@ class TeacherPayoutService
                 'tax_amount' => $taxAmount,
                 'net_amount' => $transferAmount,
                 'bank_name' => $profile->bank_name,
-                'payout_channel_code' => $channelCode,
+                'payout_channel_code' => $confirmedChannel,
                 'account_number' => $profile->account_number,
                 'account_name' => $profile->account_name,
                 'bank_details_version' => (int) $profile->bank_details_version,
@@ -152,7 +163,7 @@ class TeacherPayoutService
                 'bank_name' => $profile->bank_name,
                 'account_number' => $profile->account_number,
                 'account_name' => $profile->account_name,
-                'payout_channel_code' => $channelCode,
+                'payout_channel_code' => $confirmedChannel,
             ]);
             $payoutRequest->update(['payout_id' => $payout->id]);
 
@@ -175,8 +186,11 @@ class TeacherPayoutService
             // reserved until an authenticated terminal webhook reconciles it.
             if ($records['payout']->fresh()->gateway_status === 'FAILED') {
                 $this->release($records['payout'], $exception->getMessage());
+                throw $exception;
             }
-            throw $exception;
+            // The request already exists and may have reached Xendit. Return
+            // its processing state instead of prompting a new withdrawal.
+            report($exception);
         }
 
         return ['request' => $records['request']->fresh(), 'payout' => $records['payout']->fresh()];

@@ -35,10 +35,10 @@ Pastikan `.env` backend memakai `APP_ENV=local`, `XENDIT_ENABLED=true`, kunci **
 ```powershell
 cd bimbelku-backend
 php artisan demo:gateway-connectivity start
-php artisan demo:gateway-connectivity status ID_TAGIHAN_DARI_START
+php artisan demo:gateway-connectivity status ID_TAGIHAN_DARI_START   PKG-20261109113721-26-13
 ```
 
-`start` membuat satu tagihan demo Rp15.000 dan meminta Payment Session langsung ke API Xendit test mode. `status` membaca status session langsung dari Xendit; ganti `ID_TAGIHAN_DARI_START` dengan angka yang dicetak perintah `start`, misalnya `9`. Ini **hanya tes koneksi**: tagihan tersebut tidak punya paket/kelas dan tidak akan berubah menjadi kelas setelah dibayar. Untuk memvalidasi kelas sampai selesai jalankan bagian 1, lalu lakukan uji browser bagian 3 bila perlu. Jangan menyimpulkan bahwa webhook, matching, atau refund sudah lulus hanya karena URL checkout muncul.
+`start` membuat satu tagihan demo Rp15.000 dan meminta Payment Session langsung ke API Xendit test mode. `status` membaca status session langsung dari Xendit; ganti `ID_TAGIHAN_DARI_START` dengan angka yang dicetak perintah `start`, misalnya `9`. Ini **hanya tes koneksi**: tagihan tersebut tidak punya paket/kelas dan tidak akan berubah menjadi kelas setelah dibayar. Untuk memvalidasi kelas sampai selesai jalankan bagian 1, lalu lakukan uji browser bagian 3 bila perlu. Jangan menyimpulkan bahwa webhook, matching, atau refund sudah lulus hanya karena URL checkout muncul.   
 
 ## 3. Uji manual lewat web dengan checkout sandbox
 

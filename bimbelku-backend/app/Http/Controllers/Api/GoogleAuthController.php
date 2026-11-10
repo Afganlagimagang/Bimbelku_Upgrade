@@ -149,7 +149,9 @@ class GoogleAuthController extends Controller
     public function completeProfile(Request $request): JsonResponse
     {
         $user = $request->user();
-        abort_unless($user && $user->role === 'student' && $user->google_onboarding_required_at, 403, 'Profil ini tidak memerlukan onboarding Google.');
+        abort_unless($user && $user->role === 'student' && $user->status === 'pending'
+            && $user->email_verified_at && $user->google_onboarding_required_at,
+            403, 'Profil ini tidak memerlukan onboarding Google.');
 
         $data = $request->validate([
             'phone' => ['nullable', 'regex:/^[0-9+() .-]{8,20}$/'],

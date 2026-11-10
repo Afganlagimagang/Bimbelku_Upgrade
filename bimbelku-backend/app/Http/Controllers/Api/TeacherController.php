@@ -9,7 +9,6 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB; 
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Hash;
 use App\Models\TeacherSubject;
 use App\Models\TeacherProfile;
 use App\Models\Order;
@@ -22,7 +21,7 @@ use App\Services\TeacherMatchingService;
 use App\Support\EducationCatalog;
 use App\Support\XenditPayoutChannelCatalog;
 use App\Services\TeacherOfferReleaseService;
-use App\Services\BankAccountNameVerifier;
+use App\Services\XenditMoneyMovementService;
 use Carbon\Carbon;
 use Illuminate\Validation\Rule;
 
@@ -71,7 +70,7 @@ class TeacherController extends Controller
         $user->subjects = $profile->subjects;
 
         return response()->json([
-            'user' => $user,
+            'user' => [...$user->toArray(), 'address' => $user->address],
             'profile' => $profileData
         ]);
     }
@@ -118,6 +117,7 @@ class TeacherController extends Controller
             'name' => ['nullable', 'string', 'max:255', 'regex:/\pL/u', 'not_regex:/\d/u'],
             'title' => ['nullable', 'string', 'max:150'],
             'location' => ['nullable', 'string', 'max:255', 'regex:/\pL/u'],
+            'address' => ['sometimes', 'nullable', 'string', 'max:255', 'regex:/\pL/u'],
             'experience' => ['nullable', 'string', 'max:255'],
             'bio' => ['nullable', 'string', 'max:3000'],
             'whatsapp_number' => ['required', 'string', 'max:16', 'regex:/^\+?[0-9]{8,15}$/'],
@@ -277,6 +277,9 @@ class TeacherController extends Controller
                     $lockedUser->name = $request->name;
                 }
                 $lockedUser->phone = trim((string) $request->whatsapp_number);
+                if ($request->has('address')) {
+                    $lockedUser->address = trim((string) $request->address) ?: null;
+                }
                 if (isset($newFiles['profile_cover'])) {
                     $lockedUser->profile_cover = $newFiles['profile_cover'][1];
                     $lockedUser->profile_cover_use_default = false;
@@ -514,112 +517,14 @@ class TeacherController extends Controller
         ]);
     }
 
-    public function updateBank(Request $request) {
-        $validated = $request->validate([
-            'payout_channel_code' => ['nullable', 'required_without:bank_name', 'string', Rule::in(XenditPayoutChannelCatalog::codes())],
-            'bank_name' => ['nullable', 'required_without:payout_channel_code', 'string', 'max:100', 'regex:/\pL/u'],
-            'account_number' => ['required', 'string', 'min:8', 'max:20', 'regex:/^[0-9]+$/'],
-            'account_name' => ['required', 'string', 'max:150', 'regex:/\pL/u', 'not_regex:/\d/u'],
-            'current_password' => ['required', 'string', 'max:200'],
-        ], [
-            'account_number.min' => 'Nomor rekening atau e-wallet minimal 8 digit.',
-            'account_number.max' => 'Nomor rekening atau e-wallet maksimal 20 digit.',
-            'account_number.regex' => 'Nomor rekening atau e-wallet hanya boleh berisi angka.',
-            'account_name.regex' => 'Nama pemilik rekening wajib mengandung huruf.',
-            'account_name.not_regex' => 'Nama pemilik rekening tidak boleh memuat angka.',
-        ]);
-
-        $user = Auth::user();
-        if (!Hash::check($validated['current_password'], $user->password)) {
-            return response()->json(['message' => 'Kata sandi akun tidak sesuai.'], 422);
-        }
-        $normalizeName = static fn (string $name): string => mb_strtolower(trim(preg_replace('/\s+/u', ' ', $name) ?? $name));
-        if ($normalizeName($validated['account_name']) !== $normalizeName((string) $user->name)) {
-            return response()->json(['message' => 'Nama pemilik rekening harus sama dengan nama akun tutor. Pastikan nama akun sesuai KTP sebelum melanjutkan.'], 422);
-        }
-
-        $holdHours = min(
-            72,
-            max(1, (int) (Setting::where('key', 'bank_change_hold_hours')->value('value') ?? 24))
-        );
-        $normalizedAccount = preg_replace('/\D+/', '', $validated['account_number']) ?? '';
-        $channelCode = $validated['payout_channel_code'] ?? XenditPayoutChannelCatalog::inferCode($validated['bank_name'] ?? null);
-        abort_unless($channelCode && ($channel = XenditPayoutChannelCatalog::get($channelCode)), 422, 'Bank belum mendukung pencairan otomatis. Pilih bank dari daftar yang tersedia.');
-        $holdUntil = now()->addHours($holdHours);
-
-        $result = DB::transaction(function () use (
-            $user,
-            $validated,
-            $normalizedAccount,
-            $holdUntil
-            ,$channel,
-            $channelCode
-        ) {
-            $lockedUser = $user->newQuery()->lockForUpdate()->findOrFail($user->id);
-            if (!Hash::check($validated['current_password'], $lockedUser->password)) {
-                abort(422, 'Kata sandi akun tidak sesuai.');
-            }
-
-            $profile = TeacherProfile::query()
-                ->firstOrCreate(['user_id' => $lockedUser->id]);
-            $lockedProfile = TeacherProfile::query()->lockForUpdate()->findOrFail($profile->id);
-            $fingerprint = hash_hmac('sha256', implode('|', [
-                $channelCode,
-                $normalizedAccount,
-                mb_strtolower(trim($validated['account_name'])),
-            ]), (string) config('app.key'));
-            $changed = !hash_equals(
-                (string) ($lockedProfile->bank_account_fingerprint ?? ''),
-                $fingerprint
-            );
-
-            if ($changed) {
-                $lockedProfile->forceFill([
-                    'bank_name' => $channel['label'],
-                    'payout_channel_code' => $channelCode,
-                    'account_number' => trim($validated['account_number']),
-                    'account_name' => trim($validated['account_name']),
-                    'bank_account_fingerprint' => $fingerprint,
-                    'bank_account_changed_at' => now(),
-                    'payout_hold_until' => $holdUntil,
-                    'bank_details_version' => (int) $lockedProfile->bank_details_version + 1,
-                ])->save();
-            }
-
-            return [
-                'changed' => $changed,
-                'payout_hold_until' => $changed
-                    ? $holdUntil
-                    : $lockedProfile->payout_hold_until,
-            ];
-        }, 3);
-
-        if ($result['changed']) {
-            Notification::create([
-                'user_id' => $user->id,
-                'title' => 'Rekening pencairan diubah',
-                'message' => 'Pencairan ditahan sementara untuk melindungi saldo setelah perubahan rekening.',
-                'type' => 'warning',
-                'target_url' => '/guru/rekening',
-            ]);
-            User::query()
-                ->where('role', 'admin')
-                ->where('status', 'active')
-                ->pluck('id')
-                ->each(fn ($adminId) => Notification::create([
-                    'user_id' => $adminId,
-                    'title' => 'Perubahan rekening tutor',
-                    'message' => "Rekening pencairan {$user->name} berubah. Pencairan ditahan sementara.",
-                    'type' => 'warning',
-                    'target_url' => '/admin/finance?tab=payouts',
-                ]));
-        }
+    public function updateBank(Request $request, \App\Services\TeacherBankAccountService $bankAccounts)
+    {
+        $validated = $request->validate($bankAccounts->rules(), $bankAccounts->messages());
+        $result = $bankAccounts->save($request->user(), $validated);
 
         return response()->json([
-            'message' => $result['changed']
-                ? 'Rekening disimpan. Pencairan ditahan sementara demi keamanan.'
-                : 'Data rekening tidak berubah.',
-            'payout_hold_until' => $result['payout_hold_until'],
+            'message' => $result['changed'] ? 'Rekening pencairan berhasil disimpan.' : 'Data rekening tidak berubah.',
+            'payout_hold_until' => null,
         ]);
     }
 
@@ -716,7 +621,11 @@ class TeacherController extends Controller
             'history' => $formattedHistory,
             'share_percent' => 100 - $currentAdminFee,
             'withholding_tax_percent' => min(100, max(0, (float) (Setting::query()->where('key', 'teacher_withholding_tax_percent')->value('value') ?? 0))),
-            'bank_name_validation_available' => app(BankAccountNameVerifier::class)->available(),
+            'bank_name_validation_available' => false,
+            'payout_available' => app(XenditMoneyMovementService::class)->configured(),
+            'payout_unavailable_reason' => ! app(XenditMoneyMovementService::class)->configured()
+                ? 'Layanan pencairan belum siap. Hubungi admin BimbelKu.'
+                : null,
             'ready_sessions' => $readySessionCount,
             'ready_bookings' => $readyBookings,
             'bank' => [

@@ -33,3 +33,11 @@ dist-ssr
 # Local database dumps
 bimbelku-backend/bimbelku_db
 *.sql
+
+# Generated QA output and development caches (not application source)
+/.sokudo/
+/.npm-audit-cache/
+/__PATCH_INFO__/
+/testing-evidence.local/
+/laporan-pkl/
+/bimbelku-backend/.composer-audit-cache

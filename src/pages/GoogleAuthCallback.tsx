@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { API_BASE_URL } from "@/lib/apiBase";
-import { storeBrowserSession } from "@/lib/session";
+import { requiresGoogleOnboarding, storeBrowserSession } from "@/lib/session";
 
 type GoogleExchangeResponse = {
   access_token: string;
@@ -47,8 +47,8 @@ export default function GoogleAuthCallback() {
     const consumedMarker = sessionStorage.getItem("google_auth_consumed_marker");
     if (consumedMarker === codeMarker && localStorage.getItem("token")) {
       try {
-        const storedRole = JSON.parse(localStorage.getItem("user") || "null")?.role;
-        navigate(storedRole === "teacher" ? "/guru" : "/student/dashboard", { replace: true });
+        const user = JSON.parse(localStorage.getItem("user") || "null");
+        navigate(requiresGoogleOnboarding(user) ? "/complete-profile" : user?.role === "teacher" ? "/guru" : "/student/dashboard", { replace: true });
       } catch {
         navigate("/student/dashboard", { replace: true });
       }
@@ -95,8 +95,10 @@ export default function GoogleAuthCallback() {
         // A successful first exchange can be followed by a duplicate callback
         // after a browser reload/remount. Never show a false failure when the
         // authenticated token from that successful exchange is already stored.
-        if (localStorage.getItem("token")) {
-          navigate("/student/dashboard", { replace: true });
+        if (sessionStorage.getItem("google_auth_consumed_marker") === codeMarker && localStorage.getItem("token")) {
+          let user = null;
+          try { user = JSON.parse(localStorage.getItem("user") || "null"); } catch { /* The route guard handles invalid stored users. */ }
+          navigate(requiresGoogleOnboarding(user) ? "/complete-profile" : user?.role === "teacher" ? "/guru" : "/student/dashboard", { replace: true });
           return;
         }
 

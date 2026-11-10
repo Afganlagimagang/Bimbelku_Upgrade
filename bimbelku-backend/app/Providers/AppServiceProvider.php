@@ -116,6 +116,7 @@ class AppServiceProvider extends ServiceProvider
         $registerIsolatedLimiter('auth-email-verification-resend', 5, 'Permintaan kode verifikasi terlalu sering. Tunggu :seconds detik lalu coba lagi.');
         $registerIsolatedLimiter('auth-email-verification-verify', 10, 'Percobaan kode verifikasi terlalu sering. Tunggu :seconds detik lalu coba lagi.');
         $registerIsolatedLimiter('guest-package-quote', 20, 'Harga paket terlalu sering dihitung. Tunggu :seconds detik lalu coba lagi.');
+        $registerIsolatedLimiter('guest-schedule-recommendations', 20, 'Rekomendasi jadwal terlalu sering diminta. Tunggu :seconds detik lalu coba lagi.');
         $registerIsolatedLimiter('guest-package-create', 5, 'Pembuatan pesanan dilakukan terlalu sering. Tunggu :seconds detik lalu coba lagi.');
         $registerIsolatedLimiter('guest-package-status', 20, 'Status pesanan terlalu sering diperiksa. Tunggu :seconds detik lalu coba lagi.', ['code']);
         $registerIsolatedLimiter('guest-package-claim', 5, 'Penyambungan pesanan dilakukan terlalu sering. Tunggu :seconds detik lalu coba lagi.', ['code']);

@@ -8,6 +8,7 @@ import DeferredToaster from "./components/DeferredToaster";
 import { WebsiteContentProvider } from "./components/WebsiteContentProvider";
 import { scheduleNonCriticalTask } from "./lib/schedule";
 import RouteSeoManager from "./components/RouteSeoManager";
+import { requiresGoogleOnboarding } from "./lib/session";
 
 // =================================================================
 // KONFIGURASI LAZY LOAD (Code Splitting)
@@ -195,7 +196,8 @@ const StudentRuntime = () => {
   const [ready, setReady] = useState(false);
   let role = "";
   try {
-    role = JSON.parse(localStorage.getItem("user") || "null")?.role || "";
+    const user = JSON.parse(localStorage.getItem("user") || "null");
+    role = requiresGoogleOnboarding(user) ? "" : user?.role || "";
   } catch {
     role = "";
   }
@@ -222,7 +224,8 @@ const SessionActionRuntime = () => {
   const [ready, setReady] = useState(false);
   let role = "";
   try {
-    role = JSON.parse(localStorage.getItem("user") || "null")?.role || "";
+    const user = JSON.parse(localStorage.getItem("user") || "null");
+    role = requiresGoogleOnboarding(user) ? "" : user?.role || "";
   } catch {
     role = "";
   }
@@ -235,7 +238,7 @@ const SessionActionRuntime = () => {
     return scheduleNonCriticalTask(() => setReady(true));
   }, [role]);
 
-  return ready ? (
+  return role && ready ? (
     <Suspense fallback={null}>
       <SessionActionReminder />
     </Suspense>

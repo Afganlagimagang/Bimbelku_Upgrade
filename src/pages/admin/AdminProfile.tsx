@@ -54,8 +54,8 @@ export default function AdminProfile() {
       {loading ? (
         <div className="grid min-h-72 place-items-center"><Loader2 className="animate-spin text-orange-600" /></div>
       ) : (
-        <div className="mx-auto grid max-w-5xl gap-5 pb-12 lg:grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)]">
-          <section className="rounded-[1.75rem] border border-slate-100 bg-white p-5 shadow-sm sm:p-7">
+        <div className="mx-auto grid w-full max-w-5xl shrink-0 gap-5 pb-12 lg:grid-cols-[minmax(0,.9fr)_minmax(0,1.1fr)]">
+          <section className="rounded-[1.75rem] border border-slate-100 bg-white p-5 pb-7 shadow-sm sm:p-7 sm:pb-9">
             <div className="flex min-w-0 items-center gap-4">
               <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-2xl bg-gradient-to-br from-orange-500 to-rose-600 text-xl font-black text-white">
                 {profile?.avatar_url ? <img src={profile.avatar_url} alt="Foto profil admin" loading="lazy" decoding="async" className="h-full w-full object-cover" /> : (profile?.name || "A").charAt(0).toUpperCase()}
@@ -71,7 +71,7 @@ export default function AdminProfile() {
             <p className="mt-5 rounded-2xl bg-slate-50 p-4 text-xs font-semibold leading-5 text-slate-500">Perubahan identitas admin dilakukan melalui pengelolaan akun server agar jejak keamanan tetap terkontrol.</p>
           </section>
 
-          <form onSubmit={updatePassword} className="rounded-[1.75rem] border border-slate-100 bg-white p-5 shadow-sm sm:p-7">
+          <form onSubmit={updatePassword} className="rounded-[1.75rem] border border-slate-100 bg-white p-5 pb-7 shadow-sm sm:p-7 sm:pb-9">
             <div className="flex items-center gap-3"><span className="grid h-11 w-11 place-items-center rounded-2xl bg-orange-50 text-orange-700"><KeyRound size={20} /></span><div><h2 className="font-black text-slate-950">Keamanan akun</h2><p className="text-xs text-slate-500">Ganti kata sandi dan tutup sesi lama.</p></div></div>
             <div className="mt-6 space-y-4">
               <div><Label htmlFor="admin-current-password">Kata sandi saat ini</Label><Input id="admin-current-password" type="password" autoComplete="current-password" required value={form.current_password} onChange={(event) => setForm((value) => ({ ...value, current_password: event.target.value }))} className="mt-2 h-12 rounded-xl" /></div>

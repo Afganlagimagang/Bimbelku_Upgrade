@@ -404,17 +404,57 @@ export default function LearningSessionHub({ bookingId, open, onOpenChange, init
     }
   };
 
-  const waitingForStudent = Boolean(hub?.booking.tutor_ready_at && !hub?.booking.student_confirmed_at);
-  const sessionLive = Boolean(hub?.booking.student_confirmed_at && hub?.attendance && !hub.attendance.check_out_at);
+  const sessionEnded = Boolean(hub?.booking.session_ended_at || hub?.attendance?.check_out_at);
+  const waitingForStudent = Boolean(hub?.booking.status === "confirmed" && hub.booking.tutor_ready_at && !hub.booking.student_confirmed_at);
+  const sessionLive = Boolean(hub?.booking.status === "in_progress" && hub.booking.student_confirmed_at && !sessionEnded);
   const reportSaved = Boolean(hub?.progress_reports.length);
   const statusLabel = useMemo(() => {
     if (!hub) return "";
-    if (hub.booking.status === "awaiting_student_approval") return "Menunggu konfirmasi murid";
+    const labels: Record<string, string> = {
+      awaiting_student_approval: "Menunggu konfirmasi murid",
+      completed: "Sesi selesai",
+      disputed: "Keberatan sedang diperiksa",
+      absence_review: "Kehadiran sedang diperiksa",
+      admin_review_required: "Menunggu pemeriksaan admin",
+      cancelled: "Sesi dibatalkan",
+      emergency_refund_pending: "Refund sedang diproses",
+      refund_pending: "Refund sedang diproses",
+      refunded: "Dana dikembalikan",
+    };
+    if (labels[hub.booking.status]) return labels[hub.booking.status];
     if (reportSaved) return "Hasil belajar tersimpan";
+    if (sessionEnded) return "Pembelajaran telah berakhir";
     if (sessionLive) return "Sesi sedang berjalan";
     if (waitingForStudent) return "Menunggu murid";
-    return "Siap dijadwalkan";
-  }, [hub, reportSaved, sessionLive, waitingForStudent]);
+    if (hub.booking.status === "confirmed") return "Sesi terjadwal";
+    return "Status sesi";
+  }, [hub, reportSaved, sessionEnded, sessionLive, waitingForStudent]);
+
+  const sessionGuidance = useMemo(() => {
+    if (!hub) return "";
+    const { booking, permissions, role } = hub;
+    if (booking.status === "completed") return "Sesi ini sudah selesai. Ringkasan materi dan hasil belajar dapat dilihat di tab Hasil.";
+    if (["disputed", "absence_review", "admin_review_required"].includes(booking.status)) return "Sesi ini sedang ditinjau oleh admin. Periksa perkembangan dan keputusan penanganannya di halaman Kelas Saya.";
+    if (["cancelled", "emergency_refund_pending", "refund_pending", "refunded"].includes(booking.status)) return "Sesi ini tidak dapat dimulai. Periksa detail status dan pengembalian dana di halaman Kelas Saya.";
+    if (booking.status === "awaiting_student_approval") return "Hasil belajar sudah tersimpan di tab Hasil. Murid dapat memilih Sesi Sesuai atau Ada masalah dari halaman Kelas Saya.";
+    if (sessionEnded) return role === "teacher"
+      ? "Waktu selesai sudah dicatat. Buka tab Hasil untuk mengisi atau melihat hasil belajar murid."
+      : "Pembelajaran telah berakhir. Hasil belajar akan tersedia di tab Hasil setelah disimpan oleh tutor.";
+    if (sessionLive) return `Kehadiran sudah terkonfirmasi. Sesi dimulai ${dateTime(booking.session_started_at || booking.student_confirmed_at)}. Setelah belajar, tutor mencatat waktu selesai dan mengisi hasil belajar.`;
+    if (waitingForStudent) return role === "teacher"
+      ? "Kesiapan mengajar sudah tercatat. Sesi dimulai setelah murid menekan Saya Sudah Hadir."
+      : permissions.can_confirm_presence
+        ? "Tutor sudah siap. Tekan Saya Sudah Hadir di bawah saat kamu sudah bersama tutor atau siap di kelas online."
+        : "Tutor sudah menyatakan siap, tetapi konfirmasi kehadiran belum tersedia. Konfirmasi hanya dapat dilakukan dalam rentang waktu yang diizinkan di sekitar jadwal sesi.";
+    if (role === "teacher" && permissions.can_mark_ready) return "Saat sudah siap, tekan Saya Siap Mengajar di bawah. Sesi dimulai setelah murid mengonfirmasi kehadiran.";
+    if (booking.status === "confirmed") {
+      if (new Date(booking.end_at).getTime() < Date.now()) return "Jadwal sesi ini sudah lewat, tetapi kehadiran belum terkonfirmasi. Periksa jadwal bersama tutor atau murid melalui tab Chat. Jika membutuhkan bantuan penanganan sesi, hubungi admin.";
+      return role === "student"
+        ? "Menunggu tutor menyatakan siap mengajar. Tombol Saya Sudah Hadir akan muncul setelah tutor siap dan waktu konfirmasi kehadiran dibuka. Kamu bisa berkoordinasi melalui tab Chat."
+        : "Tombol Saya Siap Mengajar tersedia dalam rentang waktu yang diizinkan di sekitar jadwal sesi. Sambil menunggu, periksa materi dan berkoordinasi dengan murid melalui tab Chat.";
+    }
+    return "Periksa detail dan langkah berikutnya di halaman Kelas Saya. Ringkasan pembelajaran yang sudah disimpan tersedia di tab Hasil.";
+  }, [hub, sessionEnded, sessionLive, waitingForStudent]);
 
   return (
     <>
@@ -460,6 +500,13 @@ export default function LearningSessionHub({ bookingId, open, onOpenChange, init
 
             {tab === "session" && (
               <div className="space-y-4">
+                <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-5">
+                  <div className="flex items-start gap-3">
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-indigo-600"><ClipboardCheck size={20} /></span>
+                    <div className="min-w-0"><h4 className="font-black text-[#102b3f]">{statusLabel}</h4><p className="mt-2 text-sm leading-6 text-slate-600">{sessionGuidance}</p></div>
+                  </div>
+                  {hub.role === "student" && sessionLive && hub.booking.learning_mode === "online" && hub.booking.meeting_link && <Button asChild className="mt-4 w-full rounded-xl bg-emerald-600 font-black hover:bg-emerald-700"><a href={hub.booking.meeting_link} target="_blank" rel="noreferrer">Masuk ke Zoom</a></Button>}
+                </section>
                 {hub.booking.requested_goal && <section className="rounded-2xl border border-indigo-100 bg-indigo-50 p-4"><h4 className="text-sm font-black text-indigo-950">Target atau materi yang ingin difokuskan</h4><p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-indigo-800">{hub.booking.requested_goal}</p></section>}
                 {hub.role === "teacher" && hub.permissions.can_mark_ready && (
                   <section className="rounded-2xl border border-indigo-200 bg-indigo-50 p-5">
@@ -482,14 +529,6 @@ export default function LearningSessionHub({ bookingId, open, onOpenChange, init
 
                 {waitingForStudent && hub.role === "teacher" && (
                   <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-800"><b>Menunggu murid.</b> Tidak perlu kode atau form tambahan. Sesi akan aktif setelah murid menekan “Saya Sudah Hadir”.</div>
-                )}
-
-                {hub.booking.student_confirmed_at && (
-                  <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
-                    <div className="flex items-center gap-2 font-black text-emerald-950"><CheckCircle2 size={19} />Kehadiran sudah terkonfirmasi</div>
-                    <p className="mt-2 text-sm leading-6 text-emerald-800">Sesi resmi dimulai {dateTime(hub.booking.session_started_at || hub.booking.student_confirmed_at)}. Selama belajar, BimbelKu tidak meminta langkah administrasi tambahan.</p>
-                    {hub.role === "student" && hub.booking.learning_mode === "online" && hub.booking.meeting_link && (<Button asChild className="mt-4 w-full rounded-xl bg-emerald-600 font-black hover:bg-emerald-700"><a href={hub.booking.meeting_link} target="_blank" rel="noreferrer">Masuk ke Zoom</a></Button>)} 
-                  </section>
                 )}
 
                 {hub.role === "teacher" && hub.booking.student_confirmed_at && hub.permissions.can_check_out && (

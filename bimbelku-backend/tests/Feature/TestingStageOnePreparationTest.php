@@ -85,6 +85,17 @@ class TestingStageOnePreparationTest extends TestCase
         Mail::assertNothingSent();
     }
 
+    public function test_production_database_seeder_does_not_create_student_or_teacher_demo_accounts(): void
+    {
+        app()->instance('env', 'production');
+        $this->artisan('db:seed', ['--class' => \Database\Seeders\DatabaseSeeder::class, '--force' => true])->assertSuccessful();
+        $this->assertSame(0, User::query()->whereIn('role', ['student', 'teacher'])->count());
+        $this->assertDatabaseMissing('users', ['email' => 'budi@guru.com']);
+        $this->assertDatabaseMissing('users', ['email' => 'murid@bimbelku.com']);
+        $this->assertSame(0, Order::query()->count());
+        Http::assertNothingSent();
+    }
+
     public function test_local_time_skip_refuses_a_production_payment_key(): void
     {
         app()->instance('env', 'local');

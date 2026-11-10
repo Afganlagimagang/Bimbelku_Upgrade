@@ -67,6 +67,8 @@ Route::get('/auth/google/callback', [GoogleAuthController::class, 'callback'])->
 Route::post('/auth/google/exchange', [GoogleAuthController::class, 'exchange'])->middleware('throttle:auth-login');
 Route::post('/auth/google/complete-profile', [GoogleAuthController::class, 'completeProfile'])
     ->middleware(['auth:sanctum', 'throttle:auth-register']);
+Route::get('/user', [UserController::class, 'show'])
+    ->middleware(['auth:sanctum', 'active.account:google-onboarding', 'persistent.session']);
 Route::post('/forgot-password', [PasswordResetController::class, 'sendResetLink'])->middleware('throttle:auth-forgot-password');
 Route::post('/reset-password', [PasswordResetController::class, 'reset'])->middleware('throttle:auth-reset-password');
 Route::post('/email/verification/resend', [EmailVerificationController::class, 'resend'])->middleware('throttle:auth-email-verification-resend');
@@ -86,6 +88,8 @@ Route::get('/learning-time-slots', [StudentPackageController::class, 'timeSlots'
 Route::get('/package-booking-rules', [StudentPackageController::class, 'bookingRules'])->middleware('throttle:public-read');
 Route::get('/private-participant-pricing', [PrivateParticipantPricingController::class, 'show'])->middleware('throttle:public-read');
 Route::post('/guest/packages/quote', [StudentPackageController::class, 'previewPromotion'])->middleware('throttle:guest-package-quote');
+Route::post('/guest/schedule-recommendations', [ScheduleRecommendationController::class, 'guest'])
+    ->middleware('throttle:guest-schedule-recommendations');
 Route::post('/guest/packages', [GuestPackageOrderController::class, 'store'])->middleware('throttle:guest-package-create');
 Route::get('/guest/packages/{code}', [GuestPackageOrderController::class, 'show'])->middleware('throttle:guest-package-status');
 Route::get('/content/banners', [StageFiveContentController::class, 'banners'])->middleware('throttle:public-read');
@@ -100,7 +104,6 @@ Route::get('/public-media/{path}', PublicMediaController::class)
 Route::post('/webhooks/xendit', [XenditPaymentController::class, 'webhook']);
 
 Route::middleware(['auth:sanctum', 'active.account', 'persistent.session'])->group(function () {
-    Route::get('/user', [UserController::class, 'show']);
     Route::post('/guest/packages/{code}/claim', [GuestPackageOrderController::class, 'claim'])->middleware(['role:student', 'throttle:guest-package-claim']);
     Route::get('/student/guest-packages/pending', [GuestPackageOrderController::class, 'pendingForUser'])->middleware('role:student');
     Route::put('/user', [UserController::class, 'update']);

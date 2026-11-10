@@ -19,6 +19,16 @@ class ScheduleRecommendationController extends Controller
 {
     public function __invoke(Request $request, TeacherMatchingService $matchingService)
     {
+        return $this->recommend($request, $matchingService, false);
+    }
+
+    public function guest(Request $request, TeacherMatchingService $matchingService)
+    {
+        return $this->recommend($request, $matchingService, true);
+    }
+
+    private function recommend(Request $request, TeacherMatchingService $matchingService, bool $guest)
+    {
         $validated = $request->validate([
             'curriculum_subject_id' => ['required', 'integer', 'exists:curriculum_subjects,id'],
             'education_level' => ['required', Rule::in(EducationCatalog::LEVELS)],
@@ -30,14 +40,23 @@ class ScheduleRecommendationController extends Controller
             'weekdays.*' => ['required', 'integer', 'between:1,7', 'distinct'],
             'session_count' => ['required', 'integer', 'between:1,60'],
             'current_time' => ['nullable', 'date_format:H:i'],
+            ...($guest ? [
+                'latitude' => ['required_if:learning_mode,offline', 'nullable', 'numeric', 'between:-90,90'],
+                'longitude' => ['required_if:learning_mode,offline', 'nullable', 'numeric', 'between:-180,180'],
+                'location_consent' => ['accepted_if:learning_mode,offline'],
+            ] : []),
         ]);
 
-        $student = $request->user();
+        $student = $guest ? null : $request->user();
+        $latitude = $guest ? ($validated['latitude'] ?? null) : $student->latitude;
+        $longitude = $guest ? ($validated['longitude'] ?? null) : $student->longitude;
         if ($validated['learning_mode'] === 'offline') {
             abort_if(
-                $student->latitude === null || $student->longitude === null,
+                $latitude === null || $longitude === null,
                 422,
-                'Lengkapi titik lokasi profil sebelum meminta rekomendasi jadwal offline.'
+                $guest
+                    ? 'Lengkapi titik lokasi pemesanan sebelum meminta rekomendasi jadwal offline.'
+                    : 'Lengkapi titik lokasi profil sebelum meminta rekomendasi jadwal offline.'
             );
         }
 
@@ -59,6 +78,8 @@ class ScheduleRecommendationController extends Controller
             ->map(function (LearningTimeSlot $slot) use (
                 $validated,
                 $student,
+                $latitude,
+                $longitude,
                 $subject,
                 $duration,
                 $threshold,
@@ -82,7 +103,7 @@ class ScheduleRecommendationController extends Controller
 
                 $preview = new BookingRequest();
                 $preview->forceFill([
-                    'student_id' => $student->id,
+                    'student_id' => $student?->id,
                     'package_subject_id' => -1,
                     'curriculum_subject_id' => $subject->id,
                     'subject_name' => $subject->name,
@@ -94,8 +115,8 @@ class ScheduleRecommendationController extends Controller
                     'start_time' => $starts->first()->format('H:i:s'),
                     'end_time' => $starts->first()->copy()->addHours($duration)->format('H:i:s'),
                     'duration_hours' => $duration,
-                    'latitude' => $validated['learning_mode'] === 'offline' ? $student->latitude : null,
-                    'longitude' => $validated['learning_mode'] === 'offline' ? $student->longitude : null,
+                    'latitude' => $validated['learning_mode'] === 'offline' ? $latitude : null,
+                    'longitude' => $validated['learning_mode'] === 'offline' ? $longitude : null,
                     'search_radius_km' => $validated['learning_mode'] === 'offline' ? 3 : null,
                 ]);
                 $packageSubject = new PackageSubject();

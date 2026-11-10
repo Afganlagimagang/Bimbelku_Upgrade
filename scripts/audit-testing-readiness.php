@@ -36,7 +36,11 @@ $report = [
         'webhook_delivery' => 'not_tested',
         'embedded_https_browser' => 'not_tested',
     ],
-    'bank_name_verifier_available' => app(App\Services\BankAccountNameVerifier::class)->available(),
+    'payout' => [
+        'configured' => app(App\Services\XenditMoneyMovementService::class)->configured(),
+        'bank_ownership_automatically_verified' => false,
+        'remote_payout_creation' => 'not_tested',
+    ],
     'database' => ['connected' => false],
     'demo_accounts' => [],
     'warnings' => [],
@@ -140,8 +144,8 @@ if (in_array('--gateway-status', $argv, true)) {
     }
 }
 
-if (! $report['bank_name_verifier_available']) {
-    $report['warnings'][] = 'BankAccountNameVerifier currently returns false; real withdrawal cannot pass name verification.';
+if (! $report['payout']['configured']) {
+    $report['warnings'][] = 'Xendit payouts are not configured; verify enabled, secret key and webhook token settings.';
 }
 echo json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES).PHP_EOL;
 exit($report['database']['connected'] && ($report['database']['pending_migrations'] ?? []) === [] ? 0 : 1);

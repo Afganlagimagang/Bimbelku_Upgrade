@@ -1,13 +1,15 @@
 import { notify } from "@/lib/notify";
 import React, { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import TeacherLayout from "../../components/TeacherLayout"; 
 import { 
-  CreditCard, Save, Send, Building, User, Wallet,
+  CreditCard, Save, Send, Building, User, Wallet, MapPin,
   AlertCircle, ShieldCheck, CheckCircle2, Loader2
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useConfirmDialog } from "@/components/ConfirmDialogProvider";
 import http, { getApiError, getCached } from "@/lib/http";
 import { isValidAccountNumber, sanitizeDigits } from "@/lib/validation";
@@ -24,19 +26,20 @@ const PAYOUT_CHANNELS = [
   ["BSI", "Bank Syariah Indonesia (BSI)"],
 ] as const;
 
-export function TeacherBankSettings({ onSaved, payoutAmount, payoutAvailable = false, onPayoutCompleted }: {
+export function TeacherBankSettings({ onSaved, payoutAmount, payoutAvailable = false, payoutUnavailableMessage, onPayoutCompleted }: {
   onSaved?: () => void;
   payoutAmount?: number;
   payoutAvailable?: boolean;
+  payoutUnavailableMessage?: string;
   onPayoutCompleted?: () => void;
 }) {
   const confirm = useConfirmDialog();
   const [payoutChannelCode, setPayoutChannelCode] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [accountHolder, setAccountHolder] = useState("");
-  const [legalName, setLegalName] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
-  const [payoutHoldUntil, setPayoutHoldUntil] = useState<string | null>(null);
+  const [address, setAddress] = useState("");
+  const [profileAddress, setProfileAddress] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -46,15 +49,14 @@ export function TeacherBankSettings({ onSaved, payoutAmount, payoutAvailable = f
 
   const fetchBankData = async () => {
     try {
-        const response = await getCached("/teacher/profile", { maxAgeMs: 60_000 });
+        const response = await getCached("/teacher/profile", { force: true });
         
         const profileData = response.data.profile;
-        setLegalName(String(response.data.user?.name || "").trim());
+        setProfileAddress(String(response.data.user?.address || "").trim());
         if (profileData) {
             setPayoutChannelCode(profileData.payout_channel_code || "");
             setAccountNumber(sanitizeDigits(profileData.account_number || "", 50));
             setAccountHolder(String(profileData.account_name || "").trim());
-            setPayoutHoldUntil(profileData.payout_hold_until || null);
         }
     } catch (error) {
         console.error("Gagal load data bank", error);
@@ -65,12 +67,19 @@ export function TeacherBankSettings({ onSaved, payoutAmount, payoutAvailable = f
   };
 
   const handleSave = async () => {
+    const wantsPayout = payoutAmount !== undefined;
     if (isSaving) return;
-    if (payoutAmount !== undefined && !payoutAvailable) {
-        notify.error("Pencairan belum dapat dikirim karena verifikasi nama pemilik rekening dari bank belum aktif. Saldo tetap aman; rekening tidak diubah.");
+    if (wantsPayout && !payoutAvailable) {
+        notify.error(payoutUnavailableMessage || "Layanan pencairan belum siap. Hubungi admin BimbelKu.");
         return;
     }
-    if(!payoutChannelCode || !accountNumber || !legalName || !currentPassword) {
+    const holderName = accountHolder.trim().replace(/\s+/g, " ");
+    if (wantsPayout && !profileAddress && !address.trim()) {
+        notify.error("Isi alamat lengkap pada formulir pencairan.");
+        document.getElementById("payout-address")?.focus();
+        return;
+    }
+    if(!payoutChannelCode || !accountNumber || !holderName || !currentPassword) {
         notify.error("Mohon lengkapi semua data rekening.");
         return;
     }
@@ -83,48 +92,44 @@ export function TeacherBankSettings({ onSaved, payoutAmount, payoutAvailable = f
         return;
     }
     const approved = await confirm({
-        title: payoutAmount !== undefined ? "Konfirmasi pencairan dana?" : "Simpan rekening pencairan?",
-        description: payoutAmount !== undefined
-          ? `Cairkan Rp${new Intl.NumberFormat("id-ID").format(payoutAmount)} ke rekening ${payoutChannelCode} berakhir ${accountNumber.slice(-4)}. Pastikan rekening ini milik Anda.`
-          : "Sistem akan memakai data ini untuk pencairan otomatis. Pastikan bank, nomor, dan nama pemilik sudah tepat.",
-        confirmText: payoutAmount !== undefined ? "Cairkan dana" : "Simpan rekening",
+        title: wantsPayout ? "Konfirmasi pencairan dana?" : "Simpan rekening pencairan?",
+        description: wantsPayout
+          ? `Cairkan Rp${new Intl.NumberFormat("id-ID").format(payoutAmount)} ke ${payoutChannelCode}, nomor ${accountNumber}, atas nama ${holderName}. Kepemilikan rekening belum diverifikasi otomatis. Pastikan seluruh data tujuan transfer benar.`
+          : `Simpan rekening ${payoutChannelCode}, nomor ${accountNumber}, atas nama ${holderName}. Pastikan data sesuai rekening bank Anda.`,
+        confirmText: wantsPayout ? "Cairkan dana" : "Simpan rekening",
         tone: "warning",
     });
     if (!approved) return;
 
     setIsSaving(true);
     try {
-        const response = await http.post("/teacher/bank", {
+        const bankData = {
             payout_channel_code: payoutChannelCode,
             account_number: accountNumber,
-            account_name: legalName,
+            account_name: holderName,
             current_password: currentPassword,
-        });
-        setCurrentPassword("");
-        const holdUntil = response.data?.payout_hold_until || null;
-        setPayoutHoldUntil(holdUntil);
-        onSaved?.();
+            address: profileAddress ? undefined : address.trim() || undefined,
+        };
 
-        if (payoutAmount !== undefined) {
-            if (holdUntil && new Date(holdUntil).getTime() > Date.now()) {
-                notify.warning(`Rekening baru tercatat. Demi keamanan, pencairan baru dapat dicoba setelah ${new Date(holdUntil).toLocaleString("id-ID")}. Saldo belum dipotong.`);
-                return;
-            }
-            await http.post("/teacher/payout-requests", { amount: payoutAmount });
-            notify.success("Permintaan pencairan dikirim. Pantau status transfer di Dompet Tutor.");
-            onPayoutCompleted?.();
+        if (wantsPayout) {
+            await http.post("/teacher/payout-requests", { ...bankData, amount: payoutAmount });
+            setCurrentPassword("");
+            notify.success("Permintaan pencairan tercatat. Pantau status transfer di Dompet Tutor.");
+            if (onPayoutCompleted) onPayoutCompleted();
+            else onSaved?.();
             return;
         }
 
+        await http.post("/teacher/bank", bankData);
+        setCurrentPassword("");
         notify.success("Rekening Berhasil Disimpan!", {
-            description: holdUntil
-              ? `Perubahan rekening ditahan sampai ${new Date(holdUntil).toLocaleString("id-ID")}. Verifikasi nama bank tetap diperlukan sebelum transfer.`
-              : "Data rekening tidak berubah. Verifikasi nama bank tetap diperlukan sebelum transfer.",
+            description: "Periksa kembali tujuan transfer sebelum mencairkan dana.",
             icon: <CheckCircle2 className="text-emerald-600" />,
             style: { background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#047857' }
         });
+        onSaved?.();
     } catch (error) {
-        notify.error(getApiError(error, payoutAmount !== undefined ? "Pencairan belum dapat diproses. Saldo tetap aman." : "Gagal menyimpan rekening."));
+        notify.error(getApiError(error, wantsPayout ? "Pencairan belum dapat diproses. Saldo tetap aman." : "Gagal menyimpan rekening."));
     } finally {
         setIsSaving(false);
     }
@@ -179,14 +184,14 @@ export function TeacherBankSettings({ onSaved, payoutAmount, payoutAvailable = f
                         onChange={(e) => setCurrentPassword(e.target.value)}
                         className="h-12 rounded-xl border-slate-200 focus:bg-white bg-slate-50 transition"
                      />
-                     <p className="text-xs leading-5 text-slate-500">Kata sandi diperlukan untuk mengamankan data rekening. Perubahan rekening menahan pencairan sementara.</p>
+                     <p className="text-xs leading-5 text-slate-500">Masukkan kata sandi akun tutor untuk mengonfirmasi data rekening dan pencairan.</p>
                   </div>
 
-                  {payoutHoldUntil && new Date(payoutHoldUntil) > new Date() && (
-                     <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">
-                        Pencairan ditahan sampai {new Date(payoutHoldUntil).toLocaleString("id-ID")}.
-                     </div>
-                  )}
+                  {profileAddress ? <div className="rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-600"><p className="font-bold text-slate-700">Alamat dari profil digunakan otomatis.</p><p className="mt-1 break-words">{profileAddress}</p><Link to="/guru/profil" className="mt-1 inline-block font-bold text-indigo-700 underline">Ubah di profil</Link></div> : <div className="space-y-2">
+                     <label htmlFor="payout-address" className="flex items-center gap-2 text-sm font-bold text-slate-700"><MapPin size={16} className="text-slate-400" />Alamat lengkap tutor</label>
+                     <Textarea id="payout-address" value={address} onChange={(event) => setAddress(event.target.value)} maxLength={255} autoComplete="street-address" placeholder="Jalan, nomor rumah, kelurahan, kecamatan, dan kota" className="min-h-24 rounded-xl border-slate-200 bg-slate-50" />
+                     <p className="text-xs leading-5 text-slate-500">Alamat diperlukan untuk transfer bank dan disimpan ke profil Anda. Kolom ini berbeda dari wilayah mengajar.</p>
+                  </div>}
 
                   <div className="space-y-2">
                      <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
@@ -209,22 +214,21 @@ export function TeacherBankSettings({ onSaved, payoutAmount, payoutAvailable = f
 
                   <div className="space-y-2">
                      <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
-                        <User size={16} className="text-slate-400" /> Atas Nama (Wajib Sesuai KTP)
+                        <User size={16} className="text-slate-400" /> Nama pemilik rekening
                      </label>
-                     <Input value={legalName} readOnly className="h-12 rounded-xl border-slate-200 bg-slate-100 text-slate-700" />
-                     {accountHolder && accountHolder.toLocaleLowerCase("id-ID") !== legalName.toLocaleLowerCase("id-ID") && <p className="text-xs text-amber-700">Nama pada rekening tersimpan berbeda dari nama akun. Periksa kembali sebelum melanjutkan.</p>}
-                     <p className="text-xs leading-5 text-slate-500">Nama ini diambil dari akun tutor. Jika tidak sama dengan KTP atau rekening bank, perbaiki identitas akun terlebih dahulu.</p>
+                     <Input value={accountHolder} onChange={(event) => setAccountHolder(event.target.value)} maxLength={150} autoComplete="off" placeholder="Nama lengkap sesuai rekening bank" className="h-12 rounded-xl border-slate-200 bg-slate-50 text-slate-700" />
+                     <p className="text-xs leading-5 text-slate-500">Isi sesuai data bank. Nama ini dapat berbeda dari nama tampilan akun tutor.</p>
                   </div>
 
                   <div className="pt-4">
                      <Button 
-                        onClick={handleSave} 
+                        onClick={() => void handleSave()}
                         disabled={isSaving || (payoutAmount !== undefined && !payoutAvailable)}
-                        title={payoutAmount !== undefined && !payoutAvailable ? "Menunggu aktivasi verifikasi nama rekening dari bank" : undefined}
+                        title={payoutAmount !== undefined && !payoutAvailable ? payoutUnavailableMessage || "Layanan pencairan belum siap" : undefined}
                         className="w-full h-12 rounded-xl bg-slate-900 hover:bg-indigo-600 font-bold text-base shadow-lg shadow-slate-900/20 transition-all"
                      >
-                        {isSaving ? <span className="flex items-center gap-2"><Loader2 className="animate-spin"/> {payoutAmount !== undefined ? "Memproses pencairan..." : "Menyimpan..."}</span> : (
-                           <span className="flex items-center gap-2">{payoutAmount !== undefined ? <Send size={18}/> : <Save size={18}/>} {payoutAmount !== undefined ? (payoutAvailable ? "Cairkan dana" : "Cairkan dana · menunggu verifikasi") : "Simpan Rekening"}</span>
+                        {isSaving ? <span className="flex items-center gap-2"><Loader2 className="animate-spin"/> Memproses...</span> : (
+                           <span className="flex items-center gap-2">{payoutAmount !== undefined ? <Send size={18}/> : <Save size={18}/>} {payoutAmount !== undefined ? (payoutAvailable ? "Cairkan dana" : "Pencairan belum tersedia") : "Simpan Rekening"}</span>
                         )}
                      </Button>
                   </div>
@@ -239,9 +243,9 @@ export function TeacherBankSettings({ onSaved, payoutAmount, payoutAvailable = f
                   <div className="space-y-1">
                      <h4 className="font-bold text-amber-800 text-sm">Penting:</h4>
                      <ul className="text-xs text-amber-700 space-y-1 list-disc ml-4">
-                        <li>Pastikan nama pemilik rekening sama dengan nama di profil tutor Anda.</li>
-                        <li>Nama yang ditampilkan berasal dari profil, bukan hasil pengecekan bank.</li>
-                        <li>Pencairan hanya dapat dikirim setelah layanan verifikasi nama rekening diaktifkan dan pemeriksaan berhasil.</li>
+                        <li>Periksa bank, nomor rekening, dan nama pemilik sesuai data bank Anda.</li>
+                        <li>Kepemilikan rekening belum diverifikasi otomatis. Kesalahan nomor rekening dapat menyebabkan salah transfer.</li>
+                        <li>Setelah dikonfirmasi, data disimpan dan permintaan transfer langsung dikirim. Pantau hasilnya di Dompet Tutor.</li>
                      </ul>
                   </div>
                </div>

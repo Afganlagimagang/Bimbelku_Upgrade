@@ -42,6 +42,8 @@ class UserController extends Controller
             'terms_accepted_at' => $user->terms_accepted_at?->toIso8601String(),
             'privacy_accepted_at' => $user->privacy_accepted_at?->toIso8601String(),
             'role' => $user->role,
+            'status' => $user->status,
+            'google_onboarding_required_at' => $user->google_onboarding_required_at?->toIso8601String(),
             'admin_type' => $user->role === 'admin' ? ($user->isPrimaryAdmin() ? 'super_admin' : 'admin') : null,
             'is_primary_admin' => $user->role === 'admin' && $user->isPrimaryAdmin(),
             'admin_permissions' => $user->role === 'admin'

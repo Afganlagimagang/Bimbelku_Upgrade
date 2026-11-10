@@ -199,21 +199,15 @@ Kegagalan pengiriman OTP mengembalikan respons sementara dan membatalkan kode ya
 
 Pastikan `FRONTEND_URL` berisi tepat satu origin frontend kanonis karena nilai ini digunakan untuk membuat link email. Gunakan `FRONTEND_ORIGINS` sebagai daftar origin CORS yang diizinkan dan pisahkan beberapa origin dengan koma.
 
-## Akun demo opsional
+## Akun demo dan deployment
 
-Data demo tidak dibuat secara default. Untuk lingkungan lokal saja, ubah:
+`php artisan db:seed` mengisi katalog, halaman materi, tutorial, dan admin yang
+secara eksplisit dikonfigurasi. Akun murid/tutor demo tidak dibuat lagi oleh
+DatabaseSeeder; nilai lama `SEED_DEMO_USERS` tidak mengaktifkannya.
 
-```dotenv
-SEED_DEMO_USERS=true
-```
-
-Lalu jalankan:
-
-```bash
-php artisan db:seed
-```
-
-Jangan mengaktifkan akun demo pada produksi.
+Perintah `demo:*` hanya untuk pengembangan local/testing dan menolak environment
+production. Akun yang sudah berada di database tetap ikut jika database diimpor;
+pembersihan akun demo harus dilakukan terpisah dari penghapusan file.
 
 ## Pemeriksaan kualitas
 

@@ -16,7 +16,7 @@ Proyek boleh diserahkan untuk pemasangan dan pengujian di hosting. Namun **sudah
 
 Tiga hal yang tidak selesai hanya dengan mengisi `.env`:
 
-- **Verifikasi nama rekening tutor:** `bimbelku-backend/app/Services/BankAccountNameVerifier.php` saat ini mengembalikan `false`. Pencairan ditahan sebelum dana dikirim. Layanan validasi bank perlu diaktifkan dan integrasinya benar-benar dibuat; tidak ada variabel `.env` yang sekarang dapat menghidupkannya. Jangan mengganti hasilnya menjadi `true` untuk meloloskan tes.
+- **Rekening pencairan tutor:** pencairan memakai Xendit Payout v3 tanpa Iluma. Satu tombol menyimpan rekening/alamat dan mengirim permintaan transfer, tanpa penundaan 24 jam. Nama rekening terpisah dari nama tampilan; kepemilikan tidak diperiksa otomatis. Password, pemeriksaan saldo dan idempotensi tetap berlaku. Ikuti [panduan pencairan](PANDUAN-VERIFIKASI-REKENING.md).
 - **Pembayaran di dalam halaman:** perlu HTTPS, akun dan kanal pembayaran yang mendukung Components, origin yang cocok, serta aturan CSP server yang tidak memblokir SDK/frame penyedia. HTTPS saja belum membuktikan tampilannya berjalan.
 - **Program bebas jenjang:** kode saat ini masih menyaring program dan mapelnya berdasarkan jenjang. Rancangan perubahan ada pada bagian 15; belum diterapkan oleh pembuatan panduan ini.
 
@@ -423,7 +423,7 @@ Tes ini dijalankan manusia melalui UI staging, bukan hanya command demo koneksi.
 | Pembayaran berakhir 1 jam | Pesanan berakhir menurut deadline; pembayaran terlambat tidak menghidupkan kelas yang dibatalkan |
 | Tutor tidak ditemukan seluruh/sebagian | Informasi mapel yang sudah/belum cocok jelas; cari lagi/ubah jadwal/batal konsisten |
 | Refund saldo dan metode asal | Status admin = murid; pending bukan dianggap sukses; dana/jurnal hanya berubah sekali |
-| Pencairan tutor | Saat ini **belum lulus produksi**, menunggu integrasi verifikasi nama bank dan tes payout nyata sandbox |
+| Pencairan tutor | Alur Xendit tanpa Iluma tersedia dan lulus tes simulasi; izin MONEY-OUT, koneksi akun penyedia dan pengiriman webhook nyata tetap perlu diuji sebelum produksi |
 | Bukti, foto, sampul, PDF | Upload tersimpan; hanya media publik bebas diakses; dokumen privat perlu izin |
 | Responsive, CSP, SEO | Tidak overflow; tidak ada frame/script penting terblokir; canonical/sitemap domain benar |
 
